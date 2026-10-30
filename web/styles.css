@@ -1,0 +1,76 @@
+[hidden] { display: none !important; }
+:root {
+  --nen: #f4f5f7; --the: #ffffff; --chu: #1b1f24; --mo: #5d6670; --vien: #dfe3e8;
+  --chinh: #1f3864; --chinh-nhat: #e3e9f4; --tre: #c0392b; --tre-nhat: #fbe9e7;
+  --dang: #1e7e34; --dang-nhat: #e6f4ea; --sap: #9a6700; --sap-nhat: #fff4d6;
+  --goc: #b9c2cc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --nen: #14171a; --the: #1e2328; --chu: #e8eaed; --mo: #9aa3ad; --vien: #333a41;
+    --chinh: #8fb0ea; --chinh-nhat: #22304a; --tre: #ff8a7a; --tre-nhat: #3a1f1c;
+    --dang: #7fd18f; --dang-nhat: #1b3022; --sap: #f2c14e; --sap-nhat: #3a3218; --goc: #4a535c;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--nen); color: var(--chu); padding-bottom: 72px; }
+a { color: var(--chinh); }
+.topbar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--chinh); color: #fff; }
+.topbar .brand { color: #fff; font-weight: 700; text-decoration: none; letter-spacing: .04em; }
+.topbar .title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar .role { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+.topbar select { font-size: 14px; padding: 4px; border-radius: 6px; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.tabs { position: fixed; bottom: 0; left: 0; right: 0; display: flex; background: var(--the); border-top: 1px solid var(--vien); padding-bottom: env(safe-area-inset-bottom); z-index: 5; }
+.tabs a { flex: 1; text-align: center; padding: 14px 4px; text-decoration: none; color: var(--mo); font-weight: 600; }
+.tabs a.on { color: var(--chinh); box-shadow: inset 0 3px 0 var(--chinh); }
+h2 { font-size: 20px; margin: 4px 0 12px; }
+h3 { font-size: 16px; margin: 20px 0 8px; color: var(--mo); text-transform: uppercase; letter-spacing: .03em; }
+.muted { color: var(--mo); font-size: 14px; }
+.card { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 14px; margin-bottom: 10px; display: block; width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; }
+.card .row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.card .name { font-weight: 600; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+.tag.TRE { background: var(--tre-nhat); color: var(--tre); }
+.tag.DANG { background: var(--dang-nhat); color: var(--dang); }
+.tag.SAP { background: var(--sap-nhat); color: var(--sap); }
+.tag.XONG { background: var(--chinh-nhat); color: var(--chinh); }
+.bar { height: 8px; background: var(--vien); border-radius: 99px; overflow: hidden; margin-top: 8px; }
+.bar > i { display: block; height: 100%; background: var(--dang); }
+button, .btn { font: inherit; font-weight: 600; border-radius: 10px; border: 1px solid var(--vien); background: var(--the); color: var(--chu); padding: 12px 14px; min-height: 48px; cursor: pointer; }
+.btn-chinh { background: var(--chinh); color: #fff; border-color: var(--chinh); }
+.btn-do { color: var(--tre); border-color: var(--tre); }
+.grid-btn { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; margin: 10px 0; }
+.grid-btn button.on { background: var(--dang); color: #fff; border-color: var(--dang); }
+label.f { display: block; margin: 10px 0 4px; font-weight: 600; font-size: 14px; }
+input, select, textarea { font: inherit; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--vien); background: var(--the); color: var(--chu); }
+textarea { min-height: 84px; }
+.mic { display: flex; gap: 8px; } .mic textarea { flex: 1; } .mic button { min-width: 56px; }
+dialog { border: none; border-radius: 16px 16px 0 0; padding: 18px 16px 24px; width: 100%; max-width: 640px; margin: auto auto 0; background: var(--the); color: var(--chu); max-height: 90vh; overflow: auto; }
+dialog::backdrop { background: rgba(0,0,0,.45); }
+@media (min-width: 760px) { dialog { border-radius: 16px; margin: auto; } }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; } .actions > * { flex: 1; }
+table { width: 100%; border-collapse: collapse; background: var(--the); border-radius: 12px; overflow: hidden; }
+th, td { padding: 10px; border-bottom: 1px solid var(--vien); text-align: left; font-size: 14px; vertical-align: top; }
+th { color: var(--mo); font-weight: 600; }
+td.so { text-align: right; font-variant-numeric: tabular-nums; }
+.tre { color: var(--tre); font-weight: 700; }
+.wrap { overflow-x: auto; }
+.gantt { position: relative; background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 8px 0; }
+.g-row { display: grid; grid-template-columns: minmax(130px, 34%) 1fr; align-items: center; min-height: 34px; border-bottom: 1px solid var(--vien); }
+.g-row:last-child { border-bottom: none; }
+.g-name { padding: 0 10px; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.g-track { position: relative; height: 26px; margin-right: 10px; }
+.g-goc, .g-hien { position: absolute; border-radius: 4px; }
+.g-goc { top: 17px; height: 5px; background: var(--goc); }
+.g-hien { top: 3px; height: 12px; background: var(--chinh); }
+.g-hien.tre { background: var(--tre); } .g-hien.xong { background: var(--dang); }
+.g-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--sap); }
+.g-group { padding: 10px 10px 4px; font-size: 12px; font-weight: 700; color: var(--mo); text-transform: uppercase; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--mo); margin: 8px 0; }
+.legend i { display: inline-block; width: 18px; height: 8px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+.note { background: var(--sap-nhat); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 10px 0; }
+#toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--chu); color: var(--nen); padding: 10px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast.on { opacity: 1; }
+.chi-van-phong[hidden] { display: none; }
+@media (max-width: 520px) { .an-dt { display: none; } }
