@@ -32,14 +32,15 @@ function datTab(tab, title) {
 }
 
 function route() {
-  const h = location.hash.replace(/^#\/?/, '');
-  const [p, a] = h.split('/');
-  document.body.classList.toggle('che-do-chu-nha', p === 'chu-nha');
-  $('#tabs').hidden = p === 'chu-nha';
-  $('.topbar .role').hidden = p === 'chu-nha';
-  if (p === 'cong-trinh') return a ? manCongTrinh(decodeURIComponent(a)) : manDanhSach();
-  if (p === 'tao') return laVanPhong() ? manTao() : manHomNay();
-  if (p === 'chu-nha') return manChuNha(a);
+  // Hash chỉ gồm chữ, số, gạch ngang: #cong-trinh, #tao, #ct-<mã DA>, #chu-nha-<mã link>
+  const h = location.hash.slice(1);
+  const chuNha = h.startsWith('chu-nha-');
+  $('#tabs').hidden = chuNha;
+  $('.topbar .role').hidden = chuNha;
+  if (chuNha) return manChuNha(h.slice(8));
+  if (h.startsWith('ct-')) return manCongTrinh(h.slice(3));
+  if (h === 'cong-trinh') return manDanhSach();
+  if (h === 'tao') return laVanPhong() ? manTao() : manHomNay();
   return manHomNay();
 }
 
@@ -188,7 +189,7 @@ function manDanhSach() {
       ${db.congTrinh.map((ct) => {
         const th = tongHop(ct, hn);
         const lech = diffDays(th.ketThucGoc, th.ketThuc);
-        return `<tr><td><a href="#/cong-trinh/${encodeURIComponent(ct.ma)}"><b>${esc(ct.ma)}</b></a><br><span class="muted">${esc(ct.ten)}</span></td>
+        return `<tr><td><a href="#ct-${esc(ct.ma)}"><b>${esc(ct.ma)}</b></a><br><span class="muted">${esc(ct.ten)}</span></td>
           <td class="an-dt">${LOAI_HINH[ct.loai]}</td>
           <td class="so">${th.pctThucTe}% / ${th.pctKeHoach}%</td>
           <td class="so ${th.viecTre ? 'tre' : ''}">${th.viecTre}</td>
@@ -221,7 +222,7 @@ function manCongTrinh(ma) {
       <div class="g-track"><span class="g-goc" style="${pos(x.goc.batDau, x.goc.ketThuc)}"></span><span class="g-hien ${cls}" style="${pos(t.batDau, t.ketThuc)}"></span></div>
     </div>`;
   }).join('');
-  const linkChuNha = `${location.origin}${location.pathname}#/chu-nha/${ct.maLinkChuNha}`;
+  const linkChuNha = `${location.origin}${location.pathname}#chu-nha-${ct.maLinkChuNha}`;
   $('#view').innerHTML = `<h2>${esc(ct.ten)}</h2>
     <p class="muted">${LOAI_HINH[ct.loai]} · ${LICH[ct.lich.kieu]} · khởi công ${ddmm(ct.khoiCong)} · xong dự kiến <b>${ddmm(th.ketThuc)}</b> (gốc ${ddmm(th.ketThucGoc)})</p>
     <p>Thực tế <b>${th.pctThucTe}%</b> · kế hoạch ${th.pctKeHoach}% · ${th.viecTre ? `<span class="tre">${th.viecTre} việc trễ</span>` : 'không có việc trễ'}</p>
@@ -230,7 +231,7 @@ function manCongTrinh(ma) {
     <div class="gantt">${rows}<span class="g-today" style="left:calc(34% + (66% - 10px) * ${Math.min(1, Math.max(0, diffDays(tu, hn) / tong))})"></span></div>
     <div class="actions">
       ${laVanPhong() ? `<button id="linkCN">Gửi link cho chủ nhà</button>` : ''}
-      <a class="btn" href="#/chu-nha/${ct.maLinkChuNha}" style="text-align:center">Xem như chủ nhà</a>
+      <a class="btn" href="#chu-nha-${ct.maLinkChuNha}" style="text-align:center">Xem như chủ nhà</a>
     </div>`;
   $('#view').querySelectorAll('[data-viec]').forEach((r) => { r.onclick = () => moViec(r.dataset.ct, r.dataset.viec); });
   const b = $('#linkCN');
@@ -283,8 +284,9 @@ function manTao() {
   };
   $('#loai').onchange = xem; xem();
   $('#tao').onclick = () => {
-    const ma = $('#ma').value.trim(), ten = $('#ten').value.trim();
+    const ma = $('#ma').value.trim().toUpperCase(), ten = $('#ten').value.trim();
     if (!ma || !ten) return bao('Cần mã và tên công trình');
+    if (!/^[A-Z0-9-]+$/.test(ma)) return bao('Mã chỉ gồm chữ không dấu, số và gạch ngang');
     if (db.congTrinh.some((c) => c.ma === ma)) return bao('Mã này đã có');
     const lich = { kieu: $('#lich').value, nghi: [], daHoi: [] };
     const loai = $('#loai').value, khoiCong = $('#kc').value;
@@ -295,7 +297,7 @@ function manTao() {
     hoiNgayLe(leCanHoi(khoiCong, den, lich), (nghi, daHoi) => {
       lich.nghi = nghi; lich.daHoi = daHoi;
       const ct = taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich });
-      luu(); bao('Đã tạo ' + ct.ma); location.hash = '#/cong-trinh/' + encodeURIComponent(ct.ma);
+      luu(); bao('Đã tạo ' + ct.ma); location.hash = '#ct-' + ct.ma;
     });
   };
 }
@@ -315,10 +317,26 @@ function hoiNgayLe(ds, xong) {
   };
 }
 
+// Bản chạy thử: tạo sẵn 1 công trình mẫu đang thi công dở để có cái mà xem.
+function taoMau() {
+  const hn = homNay();
+  const kc = new Date(Date.parse(hn) - 40 * 86400000).toISOString().slice(0, 10);
+  const ct = taoCongTrinh(db, thuVien, { ma: 'MAU-XALA', ten: 'Mẫu: Căn hộ Xa La', loai: 'NTCT', khoiCong: kc, lich: { kieu: 'NGHI_CN', nghi: [], daHoi: [] } });
+  const lich = lichHienTai(ct);
+  for (const v of ct.viec) {
+    const t = lich.get(v.id);
+    if (t.ketThuc < hn && !['XT02', 'DH01'].includes(v.id)) capNhatTienDo(db, ct, v.id, 100, 'KHA', t.ketThuc);
+    else if (t.batDau <= hn) capNhatTienDo(db, ct, v.id, 50, 'KHA', t.batDau);
+  }
+  baoCham(db, ct, 'XT05', { soNgay: 3, nguyenNhan: 'Chủ nhà', ghiChu: 'Chủ nhà đổi vị trí tường bếp, chờ chốt' }, 'KHA');
+  luu();
+}
+
 // ---------- Khởi động ----------
 async function main() {
   khoiDongVaiTro();
   try { thuVien = await (await fetch('data/thu-vien-v1.json')).json(); } catch { bao('Không tải được thư viện'); }
+  if (!db.congTrinh.length && window.KAS_DEMO && thuVien.length) taoMau();
   window.addEventListener('hashchange', route);
   route();
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

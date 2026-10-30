@@ -40,7 +40,11 @@ export function capNhatTienDo(db, ct, viecId, phanTram, nguoi, homNay) {
   const cu = v.phanTram;
   v.phanTram = phanTram;
   v.thucTe = v.thucTe || {};
-  if (phanTram > 0 && !v.thucTe.batDau) v.thucTe.batDau = homNay;
+  if (phanTram > 0 && !v.thucTe.batDau) {
+    // Chưa bấm "bắt đầu" mà báo luôn %: lấy ngày bắt đầu theo lịch nếu đã qua, không thì hôm nay.
+    const kh = lichHienTai(ct).get(viecId).batDau;
+    v.thucTe.batDau = kh < homNay ? kh : homNay;
+  }
   if (phanTram >= 100) { v.thucTe.ketThuc = homNay; v.trangThai = 'XONG'; }
   else { delete v.thucTe.ketThuc; v.trangThai = phanTram > 0 ? 'DANG' : 'CHUA'; }
   ghiLichSu(db, ct, v, nguoi, { loai: 'TIEN_DO', cu, moi: phanTram });
