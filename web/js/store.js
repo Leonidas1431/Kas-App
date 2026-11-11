@@ -1,5 +1,5 @@
-// Kho dữ liệu phía máy. Bản chạy thử lưu trong trình duyệt; khi nối Apps Script,
-// mọi thay đổi đi qua hàng chờ `outbox` để mất sóng vẫn ghi được, có mạng thì gửi.
+// Kho dữ liệu phía máy. Mọi thay đổi vừa ghi vào máy vừa vào hàng chờ `outbox`;
+// api.js gửi hàng chờ lên Apps Script khi có mạng. Mỗi mục có id nên gửi lại không bị trùng.
 import { xepLich, taoTuThuVien, ngayLamTiepTheo, sucLam, addDays } from './schedule.js';
 
 const KEY = 'kas-app-v1';
@@ -8,10 +8,10 @@ export const NGUYEN_NHAN = ['Chủ nhà', 'Thầu phụ', 'Vật tư', 'Thiết 
 export const LOAI_HINH = { TK: 'Thiết kế', XM: 'Xây mới', CT: 'Cải tạo', NTCT: 'Nội thất có cải tạo thô', NT: 'Nội thất riêng' };
 export const VAI_TRO = { THAY: 'Thầy', DUC: 'Đức', TRUNG: 'Trung', KHA: 'Kha (giám sát)' };
 
-const rong = () => ({ congTrinh: [], lichSu: [], outbox: [] });
+const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [] });
 
 export function doc() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || rong(); } catch { return rong(); }
+  try { return { ...rong(), ...JSON.parse(localStorage.getItem(KEY)) }; } catch { return rong(); }
 }
 
 export function ghi(db) {
@@ -20,13 +20,13 @@ export function ghi(db) {
 
 const taoMa = () => Math.random().toString(36).slice(2, 10);
 
-export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNha }) {
+export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive }) {
   const viec = taoTuThuVien(thuVien, loai);
-  const ct = { ma, ten, loai, khoiCong, lich, chuNha, maLinkChuNha: taoMa(), viec, taoLuc: new Date().toISOString() };
+  const ct = { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive: thuMucDrive || '', maLinkChuNha: taoMa() + taoMa(), viec, taoLuc: new Date().toISOString() };
   const lichGoc = xepLich(viec, khoiCong, lich);
   for (const v of viec) v.goc = lichGoc.get(v.id);
   db.congTrinh.push(ct);
-  day(db, { loai: 'TAO_CT', ma });
+  day(db, { loai: 'TAO_CT', ct });
   return ct;
 }
 
@@ -47,6 +47,7 @@ export function capNhatTienDo(db, ct, viecId, phanTram, nguoi, homNay) {
   }
   if (phanTram >= 100) { v.thucTe.ketThuc = homNay; v.trangThai = 'XONG'; }
   else { delete v.thucTe.ketThuc; v.trangThai = phanTram > 0 ? 'DANG' : 'CHUA'; }
+  day(db, { loai: 'VIEC', ma: ct.ma, viec: v });
   ghiLichSu(db, ct, v, nguoi, { loai: 'TIEN_DO', cu, moi: phanTram });
 }
 
@@ -55,6 +56,7 @@ export function baoCham(db, ct, viecId, { soNgay, nguyenNhan, ghiChu }, nguoi) {
   const v = ct.viec.find((x) => x.id === viecId);
   const cu = v.soNgay;
   v.soNgay = cu + Number(soNgay);
+  day(db, { loai: 'VIEC', ma: ct.ma, viec: v });
   ghiLichSu(db, ct, v, nguoi, { loai: 'CHAM', cu, moi: v.soNgay, nguyenNhan, ghiChu, congKhai: false });
 }
 
@@ -69,8 +71,17 @@ function ghiLichSu(db, ct, v, nguoi, chiTiet) {
   day(db, { loai: 'LICH_SU', e });
 }
 
+// Thầy bật/tắt cho chủ nhà thấy một lần báo chậm.
+export function datCongKhai(db, idLichSu, congKhai) {
+  const e = db.lichSu.find((x) => x.id === idLichSu);
+  if (!e) return;
+  e.congKhai = congKhai;
+  day(db, { loai: 'CONG_KHAI', id: idLichSu, congKhai });
+}
+
 function day(db, thayDoi) {
-  db.outbox.push({ ...thayDoi, luc: new Date().toISOString() });
+  // Gửi bản sao để sửa tiếp trên máy không làm đổi mục đang chờ gửi.
+  db.outbox.push(JSON.parse(JSON.stringify({ ...thayDoi, idGui: taoMa() + taoMa(), luc: new Date().toISOString() })));
 }
 
 // Đã làm được bao nhiêu % (theo ngày công) so với kế hoạch tính đến hôm nay.

@@ -79,3 +79,12 @@ td.so { text-align: right; font-variant-numeric: tabular-nums; }
 #toast.on { opacity: 1; }
 .chi-van-phong[hidden] { display: none; }
 @media (max-width: 520px) { .an-dt { display: none; } }
+
+.sync { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 99px; background: rgba(255,255,255,.16); color: #fff; white-space: nowrap; }
+.sync.off { background: #c0392b; } .sync.cho { background: #9a6700; } .sync.demo { background: rgba(255,255,255,.1); font-weight: 600; }
+.ten-nguoi { font-weight: 600; font-size: 14px; }
+details.cham-ds { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 10px 14px; margin: 10px 0; }
+details.cham-ds summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.cham-dong { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 14px; border-top: 1px solid var(--vien); }
+.cham-dong input { width: auto; margin-top: 3px; }
+@media (max-width: 420px) { .topbar { gap: 8px; } .topbar .title { font-size: 14px; } }
