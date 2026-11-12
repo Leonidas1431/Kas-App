@@ -40,6 +40,14 @@ export async function xemChuNha(api, maLink) {
   return j.data;
 }
 
+// Chủ nhà trả lời phương án thiết kế trên link (không cần khoá).
+export async function chuNhaPhanHoi(api, data) {
+  const r = await fetch(apiUrl(api), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'chuNhaPhanHoi', data }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.loi || 'Máy chủ báo lỗi');
+  return j.data;
+}
+
 let dangChay = null;
 
 /**
@@ -52,25 +60,32 @@ export function dongBo(db, luu) {
   if (dangChay) return dangChay;
   dangChay = (async () => {
     const biTuChoi = [];
+    // Máy chủ bản cũ chưa biết loại thay đổi mới (vd hợp đồng): giữ lại trên máy, không bỏ, chờ Thầy cập nhật máy chủ.
+    const giu = new Set();
+    const chuaGui = () => db.outbox.filter((o) => !giu.has(o.idGui));
     try {
-      while (db.outbox.length) {
-        const lo = db.outbox.slice(0, 25);
+      while (chuaGui().length) {
+        const lo = chuaGui().slice(0, 25);
         const kq = await goi('dayLen', { ops: lo });
-        const daXuLy = new Set(kq.map((x) => x.idGui));
-        kq.filter((x) => !x.ok).forEach((x) => biTuChoi.push(x.loi));
+        kq.forEach((x) => { if (!x.ok && /^Loại thay đổi lạ/.test(x.loi || '')) giu.add(x.idGui); else if (!x.ok) biTuChoi.push(x.loi); });
+        const daXuLy = new Set(kq.filter((x) => !giu.has(x.idGui)).map((x) => x.idGui));
         db.outbox = db.outbox.filter((o) => !daXuLy.has(o.idGui));
         luu();
       }
       const d = await goi('keoVe');
-      if (!db.outbox.length) {
+      if (!chuaGui().length) {
         db.congTrinh = d.congTrinh;
         db.lichSu = d.lichSu;
         db.nguoiDung = d.nguoiDung;
         db.khach = d.khach || [];
+        // Máy chủ cũ không trả các bảng mới: giữ bản trên máy.
+        if (d.hopDong) db.hopDong = d.hopDong;
+        if (d.phuongAn) db.phuongAn = d.phuongAn;
+        if (d.gstg) db.gstg = d.gstg;
         db.toi = d.toi;
         luu();
       }
-      return { trangThai: 'xong', biTuChoi };
+      return { trangThai: 'xong', biTuChoi, mayChuCu: giu.size > 0 };
     } catch (e) {
       return { trangThai: navigator.onLine ? 'loi' : 'mat-mang', loi: e.message, biTuChoi };
     } finally {

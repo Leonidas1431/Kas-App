@@ -11,6 +11,7 @@ Thiết kế và quyết định: [doc phân tích nhu cầu & kiến trúc](htt
 | `web/` | App chạy trên trình duyệt (PWA), HTML/JS thuần, không cần build |
 | `web/js/schedule.js` | Bộ xếp lịch: lịch nghỉ, ngày lễ, ràng buộc trước–sau |
 | `web/js/store.js` | Dữ liệu + hàng chờ khi mất sóng |
+| `web/js/hopdong.js`, `web/js/thietke.js` | Hợp đồng (số HĐ, đợt thu, phụ lục, khấu trừ phí TK) và tiến độ thiết kế (phương án gửi khách, lần sửa, giám sát tác giả) |
 | `web/js/khach.js` | Sổ khách: trạng thái, nhắc gọi lại, báo giá, người giới thiệu, chăm sóc sau bàn giao |
 | `web/data/thu-vien-v1.json` | Thư viện hạng mục (bản nháp v1, chờ Thầy và Đức duyệt) |
 | `gas/` | Máy chủ Apps Script: Sheets làm kho dữ liệu, ảnh vào Drive |
@@ -37,7 +38,7 @@ Máy chủ Google: xem [docs/CAI-DAT.md](docs/CAI-DAT.md).
 - [x] Nối Apps Script: khoá riêng từng người, đồng bộ khi có sóng, ảnh lên Drive, bật công khai lý do chậm
 - [x] Khách hàng (A–C): sổ khách, nhắc gọi lại 2/7 ngày, tạm hoãn 30 ngày, báo giá nhiều bản, hoa hồng người giới thiệu, ký → tạo công trình (dùng chung thư mục ảnh khảo sát), chăm sóc 1/3/6/12 tháng, bảo hành 12 tháng
 - [x] Vai trò: Thầy, Đức (toàn quyền), Giám sát, Quyền tạm có hạn
-- [ ] Theo dõi hợp đồng (số HĐ, đợt thanh toán, phí sửa thêm, file xác nhận ký)
-- [ ] Tiến độ thiết kế
+- [x] Hợp đồng: số HĐ YYMM31/TÊN-KAS/dạng, đợt thu (thiếu dồn sang đợt sau), phụ lục, khấu trừ phí TK vào đợt cuối HĐ thi công, nhắc thu khi xong mốc, dừng/hoàn thành
+- [x] Tiến độ thiết kế: gửi phương án → khách đồng ý/cần sửa trên link chủ nhà, đếm lần sửa, phí sửa vượt 5%, nhắc khách sau 3 ngày, file xác nhận để ký, buổi giám sát tác giả
 - [ ] Link thầu, đánh giá thầu
 - [ ] Sửa kế hoạch trên máy tính (số ngày, khối lượng, thầu, thêm/bớt việc)

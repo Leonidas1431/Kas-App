@@ -53,7 +53,9 @@ Làm trên **máy tính**, đăng nhập đúng Gmail của Thầy (tài khoản
 
 ## Khi sửa code máy chủ
 
-Dán `Code.gs` mới → **Triển khai** → **Quản lý triển khai** → bút chì → Phiên bản: **Phiên bản mới** → **Triển khai**. Giữ nguyên URL, anh em không phải làm lại gì.
+Dán `Code.gs` mới → **Lưu** → **Triển khai** → **Quản lý triển khai** → bút chì → Phiên bản: **Phiên bản mới** → **Triển khai**. Giữ nguyên URL, anh em không phải làm lại gì. Tab mới trong Sheets (vd `HopDong`) máy chủ tự tạo, không cần chạy lại setup.
+
+Nếu góc trên app hiện **Cần cập nhật máy chủ**: app đã có tính năng mới nhưng máy chủ còn bản cũ. Dữ liệu vẫn nằm chờ trên máy, cập nhật máy chủ xong app tự gửi.
 
 ## Lỗi hay gặp
 
@@ -61,4 +63,5 @@ Dán `Code.gs` mới → **Triển khai** → **Quản lý triển khai** → b�
 | --- | --- |
 | App báo "Khoá không đúng hoặc đã bị thu hồi" | Thầy vào Người dùng → Gửi lại link cho người đó |
 | Chữ **Mất mạng · chờ gửi N** không mất | Bình thường khi mất sóng. Có sóng lại app tự gửi; đừng xoá dữ liệu trình duyệt khi còn chờ |
+| Góc trên hiện **Cần cập nhật máy chủ** | Làm theo mục "Khi sửa code máy chủ" ở trên |
 | Quên khoá của Thầy | Mở Sheets **KAS App – Dữ liệu** → tab `NguoiDung` → cột `khoa` dòng của Thầy |

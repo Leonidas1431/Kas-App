@@ -23,10 +23,12 @@ function taoMoiTruong() {
   const taoSheet = (ten) => ({ ten, rows: [],
     getDataRange() { const r = this.rows; return { getValues: () => r.map((x) => [...x]) }; },
     getRange(row, col, nr, nc) { const sh = this; return {
+      getValues() { return sh.rows.slice(row - 1, row - 1 + nr).map((r) => { const x = r.slice(col - 1, col - 1 + nc); while (x.length < nc) x.push(''); return x; }); },
       setValues(vals) { vals.forEach((v, i) => { sh.rows[row - 1 + i] = v.map(giaLapO); }); return this; },
       setFontWeight() { return this; } }; },
     appendRow(v) { this.rows.push(v.map(giaLapO)); },
     getLastRow() { return this.rows.length; },
+    getLastColumn() { return this.rows.reduce((m, r) => Math.max(m, r.length), 0); },
     setFrozenRows() {} });
   const sheets = {};
   const ss = { id: 'SS1', getId: () => 'SS1', getUrl: () => 'https://docs/SS1', ds: [taoSheet('Sheet1')],
