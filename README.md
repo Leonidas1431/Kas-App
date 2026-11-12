@@ -27,7 +27,7 @@ Mở http://localhost:8765, bấm "Dùng thử không kết nối" để chạy 
 
 ## Cài thật
 
-App: https://leonidas1431.github.io/kas-app/ (tự đăng lại mỗi lần gộp vào `main`).
+App: https://leonidas1431.github.io/Kas-App/ (tự đăng lại mỗi lần gộp vào `main`).
 Máy chủ Google: xem [docs/CAI-DAT.md](docs/CAI-DAT.md).
 
 ## Tình trạng

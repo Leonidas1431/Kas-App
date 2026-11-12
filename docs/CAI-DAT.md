@@ -34,7 +34,7 @@ Làm trên **máy tính**, đăng nhập đúng Gmail của Thầy (tài khoản
 
 ## Bước 4. Mở app và nối
 
-1. Mở app: **https://leonidas1431.github.io/kas-app/**
+1. Mở app: **https://leonidas1431.github.io/Kas-App/**
 2. Màn hình **Kết nối máy chủ**: dán URL ở bước 3 và khoá ở bước 2 → **Kết nối**.
 3. Góc trên hiện tên **Thầy** và chữ **Đã lưu** là xong.
 
