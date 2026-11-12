@@ -66,6 +66,7 @@ export function dongBo(db, luu) {
         db.congTrinh = d.congTrinh;
         db.lichSu = d.lichSu;
         db.nguoiDung = d.nguoiDung;
+        db.khach = d.khach || [];
         db.toi = d.toi;
         luu();
       }

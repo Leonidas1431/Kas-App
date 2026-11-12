@@ -126,3 +126,63 @@ test('ảnh vào thư mục "Ảnh tiến độ" của công trình; gửi lại
   const chung = m.root.con.find((c) => c.ten === 'KAS App – Ảnh');
   assert.ok(chung.con.find((c) => c.ten === 'NT-B'));
 });
+
+test('sổ khách: văn phòng ghi và kéo về được; giám sát không thấy và không ghi được', () => {
+  const m = khoiDong();
+  const khoaDuc = m.post(m.khoaThay, 'capKhoa', { email: 'duc@example.com', ten: 'Đức', vaiTro: 'DUC' }).data.khoa;
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const kh = { ma: 'KH-2611-XUAN', ten: 'Chị Xuân', sdt: '0912345678', nguon: 'Người quen giới thiệu', nguoiGioiThieu: 'Anh Tú',
+    hoaHong: { soTien: 5000000, daTra: false }, nhuCau: { loai: 'NTCT', dienTich: '90' }, trangThai: 'MOI', nhacGoi: '2026-11-13', soLanNhac: 0,
+    baoGia: [{ id: 'b1', phienBan: 1, ngay: '2026-11-13', giaTri: 25000000, link: '', khachChot: false }], chamSoc: [], thuMucDrive: 'gia-mao' };
+  let r = m.post(khoaDuc, 'dayLen', { ops: [op({ loai: 'KHACH', khach: kh })] });
+  assert.equal(r.data[0].ok, true);
+  r = m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: { ...kh, trangThai: 'BAO_GIA', soLanNhac: 1 } })] });
+  assert.equal(r.data[0].ok, true);
+  const kv = m.post(m.khoaThay, 'keoVe').data;
+  assert.equal(kv.khach.length, 1); // cập nhật, không thêm dòng
+  const k = kv.khach[0];
+  assert.equal(k.sdt, '0912345678'); // giữ số 0 đầu
+  assert.equal(k.trangThai, 'BAO_GIA');
+  assert.equal(k.soLanNhac, 1);
+  assert.equal(k.nhacGoi, '2026-11-13');
+  assert.deepEqual(k.hoaHong, { soTien: 5000000, daTra: false });
+  assert.equal(k.baoGia[0].giaTri, 25000000);
+  assert.equal(k.thuMucDrive, ''); // máy gửi lên không được tự đặt thư mục
+  // Giám sát: không thấy khách, không ghi được, không thấy nhật ký khách
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'LICH_SU', e: { id: 'g1', luc: '2026-11-13T01:00:00Z', ma: 'KH-2611-XUAN', loai: 'KH_GHI', ghiChu: 'Khách muốn tủ bếp chữ L' } })] });
+  const kvKha = m.post(khoaKha, 'keoVe').data;
+  assert.deepEqual(kvKha.khach, []);
+  assert.equal(kvKha.lichSu.length, 0);
+  r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'KHACH', khach: { ...kh, ma: 'KH-2611-KHAC' } })] });
+  assert.equal(r.data[0].ok, false);
+  assert.equal(m.post(khoaKha, 'guiAnh', { id: 'a9', ma: 'KH-2611-XUAN', viec: 'KS', tenFile: 'x.jpg', base64: 'eA==' }).ok, false);
+});
+
+test('ảnh khảo sát vào thư mục khách; ký xong công trình dùng luôn thư mục đó', () => {
+  const m = khoiDong();
+  const kh = { ma: 'KH-2611-XUAN', ten: 'Chị Xuân', trangThai: 'KHAO_SAT', baoGia: [], chamSoc: [] };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: kh })] });
+  assert.equal(m.post(m.khoaThay, 'guiAnh', { id: 'k1', ma: 'KH-2611-XUAN', viec: 'KS', tenFile: 'KH-2611-XUAN_20261113_0900_KS_01.jpg', base64: 'eA==' }).ok, true);
+  const goc = m.root.con.find((c) => c.ten === 'KAS App – Khách').con.find((c) => c.ten === 'KH-2611-XUAN');
+  assert.equal(goc.con.find((c) => c.ten === 'Ảnh khảo sát').files.length, 1);
+  const ct = { ...congTrinhMau('NT-2611-XUAN'), maKhach: 'KH-2611-XUAN' };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
+  m.post(m.khoaThay, 'guiAnh', { id: 'k2', ma: 'NT-2611-XUAN', viec: 'XT01', tenFile: 'a.jpg', base64: 'eA==' });
+  assert.ok(goc.con.find((c) => c.ten === 'Ảnh tiến độ'));
+});
+
+test('Đức toàn quyền như Thầy nhưng không thu hồi được khoá Thầy; quyền tạm hết hạn thì bị chặn', () => {
+  const m = khoiDong();
+  const khoaDuc = m.post(m.khoaThay, 'capKhoa', { email: 'duc@example.com', ten: 'Đức', vaiTro: 'DUC' }).data.khoa;
+  assert.equal(m.post(khoaDuc, 'dsNguoiDung').ok, true);
+  assert.equal(m.post(khoaDuc, 'thuHoi', { khoa: m.khoaThay }).ok, false);
+  assert.equal(m.post(m.khoaThay, 'capKhoa', { email: 'tho@example.com', vaiTro: 'TAM' }).ok, false); // thiếu hạn
+  const conHan = m.post(khoaDuc, 'capKhoa', { email: 'tho@example.com', vaiTro: 'TAM', congTrinh: 'NT-A', hetHan: '2999-01-01' }).data.khoa;
+  assert.equal(m.post(conHan, 'toiLaAi').data.vaiTro, 'TAM');
+  assert.deepEqual(m.post(conHan, 'keoVe').data.khach, []);
+  const hetHan = m.post(khoaDuc, 'capKhoa', { email: 'tho2@example.com', vaiTro: 'TAM', congTrinh: 'NT-A', hetHan: '2020-01-01' }).data.khoa;
+  const r = m.post(hetHan, 'toiLaAi');
+  assert.equal(r.ok, false);
+  assert.match(r.loi, /hết hạn/);
+  assert.equal(m.post(m.khoaThay, 'capKhoa', { email: 'x@example.com', vaiTro: 'TRUNG' }).ok, false);
+});

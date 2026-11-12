@@ -88,3 +88,12 @@ details.cham-ds summary { cursor: pointer; font-weight: 600; font-size: 14px; }
 .cham-dong { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; font-size: 14px; border-top: 1px solid var(--vien); }
 .cham-dong input { width: auto; margin-top: 3px; }
 @media (max-width: 420px) { .topbar { gap: 8px; } .topbar .title { font-size: 14px; } }
+
+.dau-ct { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.dau-ct h3 { margin-bottom: 4px; }
+.nho { font-size: 13px; font-weight: 600; white-space: nowrap; }
+.loc { display: flex; gap: 6px; flex-wrap: wrap; margin: 14px 0 10px; }
+.loc button { min-height: 36px; padding: 6px 12px; font-size: 14px; border-radius: 99px; }
+.loc button.on { background: var(--thanh); color: #fff; border-color: var(--thanh); }
+a.card { color: inherit; }
+.note .actions { margin-top: 8px; }
