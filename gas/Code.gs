@@ -10,8 +10,10 @@
  */
 
 const TAB = {
-  NguoiDung: ['email', 'ten', 'vaiTro', 'congTrinh', 'khoa', 'hoatDong', 'taoLuc'],
-  CongTrinh: ['ma', 'ten', 'loai', 'khoiCong', 'lich', 'chuNha', 'maLinkChuNha', 'thuMucDrive', 'taoLuc'],
+  NguoiDung: ['email', 'ten', 'vaiTro', 'congTrinh', 'khoa', 'hoatDong', 'taoLuc', 'hetHan'],
+  CongTrinh: ['ma', 'ten', 'loai', 'khoiCong', 'lich', 'chuNha', 'maLinkChuNha', 'thuMucDrive', 'taoLuc', 'maKhach'],
+  Khach: ['ma', 'ten', 'sdt', 'diaChi', 'nguon', 'nguoiGioiThieu', 'sdtGioiThieu', 'hoaHong', 'nhuCau', 'trangThai', 'lyDo',
+    'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc'],
   KeHoach: ['ma', 'id', 'thuTu', 'nhom', 'hangMuc', 'dauViec', 'dvt', 'khoiLuong', 'soNgay', 'diSau', 'moc',
     'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc'],
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
@@ -19,9 +21,11 @@ const TAB = {
   DaNhan: ['idGui', 'luc'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe'];
-const VAN_PHONG = ['THAY', 'DUC', 'TRUNG'];
-const VAI_TRO = ['THAY', 'DUC', 'TRUNG', 'KHA'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc'];
+// Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
+const VAN_PHONG = ['THAY', 'DUC'];
+const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
+const laKhach = (ma) => /^KH-/.test(String(ma));
 
 // ---------- Cài đặt: chạy 1 lần trong trình soạn thảo Apps Script ----------
 function setup() {
@@ -82,13 +86,16 @@ function xacThuc(khoa) {
   if (!khoa) throw new Error('Chưa đăng nhập');
   const u = docBang('NguoiDung').find((x) => x.khoa === khoa);
   if (!u || u.hoatDong !== true) throw new Error('Khoá không đúng hoặc đã bị thu hồi. Xin Thầy link mới.');
+  if (u.hetHan && String(u.hetHan) < homNay()) throw new Error('Quyền tạm đã hết hạn ngày ' + u.hetHan + '. Xin Thầy cấp lại nếu cần.');
   return { email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: String(u.congTrinh || '').split(/[,\s]+/).filter(String) };
 }
 
 const laVanPhong = (n) => VAN_PHONG.includes(n.vaiTro);
-const duocXem = (n, ma) => laVanPhong(n) || n.congTrinh.includes(ma);
-function canVanPhong(n) { if (!laVanPhong(n)) throw new Error('Chỉ văn phòng được làm việc này'); }
-function canThay(n) { if (n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy được làm việc này'); }
+// Sổ khách chỉ văn phòng thấy; công trình thì người được giao cũng thấy.
+const duocXem = (n, ma) => laVanPhong(n) || (!laKhach(ma) && n.congTrinh.includes(ma));
+function canVanPhong(n) { if (!laVanPhong(n)) throw new Error('Chỉ Thầy và Đức được làm việc này'); }
+const canThay = canVanPhong;
+function homNay() { return Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd'); }
 
 // ---------- Thao tác ----------
 const HANH_DONG = {
@@ -105,7 +112,8 @@ const HANH_DONG = {
       })).sort((a, b) => a.thuTu - b.thuTu),
     }));
     const lichSu = docBang('LichSu').filter((r) => duocXem(n, r.ma));
-    return { toi: n, congTrinh, lichSu, nguoiDung: n.vaiTro === 'THAY' ? HANH_DONG.dsNguoiDung(n) : [] };
+    const khach = laVanPhong(n) ? docBang('Khach').map((k) => ({ ...k, soLanNhac: Number(k.soLanNhac) || 0, baoGia: k.baoGia || [], chamSoc: k.chamSoc || [] })) : [];
+    return { toi: n, congTrinh, lichSu, khach, nguoiDung: laVanPhong(n) ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
   // Nhận hàng chờ từ máy, áp theo thứ tự. Mục đã nhận (theo idGui) thì bỏ qua.
@@ -146,7 +154,7 @@ const HANH_DONG = {
 
   dsNguoiDung: (n) => {
     canThay(n);
-    return docBang('NguoiDung').map((u) => ({ email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: u.congTrinh, khoa: u.khoa, hoatDong: u.hoatDong }));
+    return docBang('NguoiDung').map((u) => ({ email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: u.congTrinh, khoa: u.khoa, hoatDong: u.hoatDong, hetHan: u.hetHan || '' }));
   },
 
   // Thêm người hoặc cấp lại khoá mới (khoá cũ bị thu hồi).
@@ -155,16 +163,20 @@ const HANH_DONG = {
     if (!VAI_TRO.includes(data.vaiTro)) throw new Error('Vai trò không hợp lệ');
     const email = String(data.email || '').trim().toLowerCase();
     if (!email) throw new Error('Cần Gmail');
+    if (data.vaiTro === 'TAM' && !data.hetHan) throw new Error('Quyền tạm cần ngày hết hạn');
     const khoa = taoKhoa();
     const cu = docBang('NguoiDung').filter((u) => String(u.email).toLowerCase() === email && u.hoatDong === true);
     cu.forEach((u) => capNhatDong('NguoiDung', (r) => r.khoa === u.khoa, { hoatDong: false }));
-    themDong('NguoiDung', { email, ten: data.ten || email, vaiTro: data.vaiTro, congTrinh: data.congTrinh || '', khoa, hoatDong: true, taoLuc: new Date().toISOString() });
+    themDong('NguoiDung', { email, ten: data.ten || email, vaiTro: data.vaiTro, congTrinh: data.congTrinh || '', khoa, hoatDong: true, taoLuc: new Date().toISOString(), hetHan: data.vaiTro === 'TAM' ? data.hetHan : '' });
     return { khoa };
   },
 
   thuHoi: (n, data) => {
     canThay(n);
-    if (data.khoa === docBang('NguoiDung').find((u) => u.email === n.email && u.hoatDong === true).khoa) throw new Error('Không tự thu hồi khoá của mình');
+    const ds = docBang('NguoiDung');
+    if (data.khoa === ds.find((u) => u.email === n.email && u.hoatDong === true).khoa) throw new Error('Không tự thu hồi khoá của mình');
+    const ai = ds.find((u) => u.khoa === data.khoa);
+    if (ai && ai.vaiTro === 'THAY' && n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy thu hồi được khoá của Thầy');
     capNhatDong('NguoiDung', (r) => r.khoa === data.khoa, { hoatDong: false });
     return { ok: true };
   },
@@ -175,7 +187,13 @@ function apDung(n, op) {
     canVanPhong(n);
     const ct = op.ct;
     if (docBang('CongTrinh').some((r) => r.ma === ct.ma)) throw new Error('Mã ' + ct.ma + ' đã có');
-    themDong('CongTrinh', { ...ct, thuMucDrive: layIdThuMuc(ct.thuMucDrive) });
+    let thuMuc = layIdThuMuc(ct.thuMucDrive);
+    // Công trình từ sổ khách, chưa dán thư mục: dùng luôn thư mục của khách (đã có ảnh khảo sát).
+    if (!thuMuc && ct.maKhach) {
+      const kh = docBang('Khach').find((k) => k.ma === ct.maKhach);
+      if (kh && kh.thuMucDrive) thuMuc = kh.thuMucDrive;
+    }
+    themDong('CongTrinh', { ...ct, thuMucDrive: thuMuc });
     themNhieuDong('KeHoach', ct.viec.map((v) => ({ ...v, ma: ct.ma, capNhatLuc: op.luc })));
     return;
   }
@@ -195,6 +213,15 @@ function apDung(n, op) {
     themDong('LichSu', { ...op.e, nguoi: n.vaiTro, congKhai: false });
     return;
   }
+  if (op.loai === 'KHACH') {
+    canVanPhong(n);
+    const k = Object.assign({}, op.khach);
+    if (!laKhach(k.ma)) throw new Error('Mã khách phải bắt đầu bằng KH-');
+    delete k.thuMucDrive; // máy chủ tự quản lý thư mục
+    k.capNhatLuc = op.luc;
+    capNhatDong('Khach', (r) => r.ma === k.ma, k);
+    return;
+  }
   if (op.loai === 'CONG_KHAI') {
     canThay(n);
     capNhatDong('LichSu', (r) => r.id === op.id, { congKhai: op.congKhai === true }, true);
@@ -210,6 +237,18 @@ function layIdThuMuc(s) {
 }
 
 function thuMucAnh(ma) {
+  if (laKhach(ma)) {
+    // Ảnh khảo sát của khách chưa ký: "KAS App – Khách/<mã>/Ảnh khảo sát"
+    const kh = docBang('Khach').find((r) => r.ma === ma);
+    if (!kh) throw new Error('Không có khách ' + ma);
+    let g;
+    if (kh.thuMucDrive) g = DriveApp.getFolderById(kh.thuMucDrive);
+    else {
+      g = timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Khách'), ma);
+      capNhatDong('Khach', (r) => r.ma === ma, { thuMucDrive: g.getId() }, true);
+    }
+    return timHoacTao(g, 'Ảnh khảo sát');
+  }
   const ct = docBang('CongTrinh').find((r) => r.ma === ma);
   if (!ct) throw new Error('Không có công trình ' + ma);
   let goc;

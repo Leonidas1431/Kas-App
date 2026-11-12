@@ -6,9 +6,11 @@ const KEY = 'kas-app-v1';
 
 export const NGUYEN_NHAN = ['Chủ nhà', 'Thầu phụ', 'Vật tư', 'Thiết kế', 'Thời tiết', 'Phát sinh', 'Nội bộ KAS', 'Khác'];
 export const LOAI_HINH = { TK: 'Thiết kế', XM: 'Xây mới', CT: 'Cải tạo', NTCT: 'Nội thất có cải tạo thô', NT: 'Nội thất riêng' };
-export const VAI_TRO = { THAY: 'Thầy', DUC: 'Đức', TRUNG: 'Trung', KHA: 'Kha (giám sát)' };
+export const VAI_TRO = { THAY: 'Thầy', DUC: 'Đức', KHA: 'Giám sát', TAM: 'Quyền tạm' };
+// Văn phòng: toàn quyền, thấy tiền và sổ khách. Giám sát, quyền tạm: chỉ công trình được giao.
+export const VAN_PHONG = ['THAY', 'DUC'];
 
-const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [] });
+export const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [], khach: [] });
 
 export function doc() {
   try { return { ...rong(), ...JSON.parse(localStorage.getItem(KEY)) }; } catch { return rong(); }
@@ -18,11 +20,11 @@ export function ghi(db) {
   try { localStorage.setItem(KEY, JSON.stringify(db)); } catch { /* bộ nhớ đầy hoặc bị chặn: vẫn chạy trong phiên */ }
 }
 
-const taoMa = () => Math.random().toString(36).slice(2, 10);
+export const taoMa = () => Math.random().toString(36).slice(2, 10);
 
-export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive }) {
+export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive, maKhach }) {
   const viec = taoTuThuVien(thuVien, loai);
-  const ct = { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive: thuMucDrive || '', maLinkChuNha: taoMa() + taoMa(), viec, taoLuc: new Date().toISOString() };
+  const ct = { ma, ten, loai, khoiCong, lich, chuNha: chuNha || '', thuMucDrive: thuMucDrive || '', maKhach: maKhach || '', maLinkChuNha: taoMa() + taoMa(), viec, taoLuc: new Date().toISOString() };
   const lichGoc = xepLich(viec, khoiCong, lich);
   for (const v of viec) v.goc = lichGoc.get(v.id);
   db.congTrinh.push(ct);
@@ -79,7 +81,7 @@ export function datCongKhai(db, idLichSu, congKhai) {
   day(db, { loai: 'CONG_KHAI', id: idLichSu, congKhai });
 }
 
-function day(db, thayDoi) {
+export function day(db, thayDoi) {
   // Gửi bản sao để sửa tiếp trên máy không làm đổi mục đang chờ gửi.
   db.outbox.push(JSON.parse(JSON.stringify({ ...thayDoi, idGui: taoMa() + taoMa(), luc: new Date().toISOString() })));
 }
