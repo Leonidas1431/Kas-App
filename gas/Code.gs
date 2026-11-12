@@ -47,7 +47,9 @@ function setup() {
   });
   let thay = docBang('NguoiDung').find((u) => u.vaiTro === 'THAY' && u.hoatDong === true);
   if (!thay) {
-    thay = { email: Session.getEffectiveUser().getEmail(), ten: 'Thầy', vaiTro: 'THAY', congTrinh: '', khoa: taoKhoa(), hoatDong: true, taoLuc: new Date().toISOString() };
+    let email = '';
+    try { email = Session.getEffectiveUser().getEmail(); } catch (e) { /* không có quyền đọc email: bỏ trống */ }
+    thay = { email: email, ten: 'Thầy', vaiTro: 'THAY', congTrinh: '', khoa: taoKhoa(), hoatDong: true, taoLuc: new Date().toISOString() };
     themDong('NguoiDung', thay);
   }
   Logger.log('File dữ liệu: ' + ss.getUrl());
