@@ -15,7 +15,7 @@ const TAB = {
   Khach: ['ma', 'ten', 'sdt', 'diaChi', 'nguon', 'nguoiGioiThieu', 'sdtGioiThieu', 'hoaHong', 'nhuCau', 'trangThai', 'lyDo',
     'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc'],
   KeHoach: ['ma', 'id', 'thuTu', 'nhom', 'hangMuc', 'dauViec', 'dvt', 'khoiLuong', 'soNgay', 'diSau', 'moc',
-    'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc'],
+    'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc', 'batDauCoDinh'],
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
   Anh: ['id', 'ma', 'viec', 'luc', 'tenFile', 'fileId', 'nguoi'],
   HopDong: ['ma', 'soHD', 'dang', 'nguyenTac', 'tenHD', 'maKhach', 'maCongTrinh', 'ngayKy', 'giaTri', 'dot', 'phuLuc', 'soLanSua',
@@ -87,7 +87,7 @@ function doGet(e) {
   // Chỉ trả phần chủ nhà được xem: không tên thầu, không ghi chú nội bộ, không tiền.
   const viec = docBang('KeHoach').filter((r) => r.ma === ct.ma).map((v) => ({
     id: v.id, thuTu: v.thuTu, nhom: v.nhom, hangMuc: v.hangMuc, soNgay: Number(v.soNgay), diSau: v.diSau,
-    moc: v.moc, phanTram: Number(v.phanTram) || 0, goc: v.goc, thucTe: v.thucTe,
+    moc: v.moc, phanTram: Number(v.phanTram) || 0, goc: v.goc, thucTe: v.thucTe, batDauCoDinh: v.batDauCoDinh || '',
   })).sort((a, b) => a.thuTu - b.thuTu);
   const lichSu = docBang('LichSu').filter((r) => r.ma === ct.ma && r.loai === 'CHAM' && r.congKhai === true)
     .map((r) => ({ id: r.id, luc: r.luc, ma: r.ma, tenViec: r.tenViec, loai: r.loai, cu: r.cu, moi: r.moi, nguyenNhan: r.nguyenNhan, congKhai: true }));
@@ -254,6 +254,26 @@ function apDung(n, op) {
     if (!timThay) throw new Error('Không tìm thấy việc ' + v.id);
     return;
   }
+  if (op.loai === 'THEM_VIEC') {
+    canVanPhong(n);
+    if (!docBang('CongTrinh').some((r) => r.ma === op.ma)) throw new Error('Không có công trình ' + op.ma);
+    // Gửi lại (mất sóng) thì ghi đè đúng dòng, không thêm trùng.
+    capNhatDong('KeHoach', (r) => r.ma === op.ma && r.id === op.viec.id, { ...op.viec, ma: op.ma, capNhatLuc: op.luc });
+    return;
+  }
+  if (op.loai === 'XOA_VIEC') {
+    canVanPhong(n);
+    xoaDong('KeHoach', (r) => r.ma === op.ma && r.id === op.id); // đã xoá rồi thì thôi
+    return;
+  }
+  if (op.loai === 'CT_SUA') {
+    canVanPhong(n);
+    const sua = {};
+    ['ten', 'khoiCong', 'lich', 'chuNha', 'thuMucDrive'].forEach((k) => { if (op.sua && k in op.sua) sua[k] = op.sua[k]; });
+    if ('thuMucDrive' in sua) sua.thuMucDrive = layIdThuMuc(sua.thuMucDrive);
+    if (!capNhatDong('CongTrinh', (r) => r.ma === op.ma, sua, true)) throw new Error('Không có công trình ' + op.ma);
+    return;
+  }
   if (op.loai === 'LICH_SU') {
     if (!duocXem(n, op.e.ma)) throw new Error('Không có quyền với công trình ' + op.e.ma);
     // Người ghi lấy theo khoá đăng nhập, không tin giá trị máy gửi lên. Mới ghi luôn ẩn với chủ nhà.
@@ -410,13 +430,25 @@ function capNhatDong(ten, khop, obj, chiSua) {
     const r = {};
     h.forEach((k, j) => { r[k] = giaTriRa(k, v[i][j]); });
     if (khop(r)) {
-      const moi = h.map((k, j) => (k in obj ? giaTriVao(k, obj[k]) : v[i][j]));
+      // Cột không sửa cũng ghi lại; chữ dạng số (sđt 09…, mã link) phải giữ dấu ' để Sheets không đổi thành số.
+      const moi = h.map((k, j) => (k in obj ? giaTriVao(k, obj[k]) : typeof v[i][j] === 'string' && !JSON_COT.includes(k) ? giaTriVao(k, v[i][j]) : v[i][j]));
       sh.getRange(i + 1, 1, 1, h.length).setValues([moi]);
       return true;
     }
   }
   if (!chiSua) themDong(ten, obj);
   return false;
+}
+
+function xoaDong(ten, khop) {
+  const sh = bang(ten);
+  const v = sh.getDataRange().getValues();
+  const h = v[0];
+  for (let i = v.length - 1; i >= 1; i--) {
+    const r = {};
+    h.forEach((k, j) => { r[k] = giaTriRa(k, v[i][j]); });
+    if (khop(r)) sh.deleteRow(i + 1);
+  }
 }
 
 function taoKhoa() {
