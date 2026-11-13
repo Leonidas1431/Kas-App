@@ -86,6 +86,8 @@ export function dongBo(db, luu) {
         if (d.thuChi) db.thuChi = d.thuChi;
         if (d.traThau) db.traThau = d.traThau;
         if (d.chungTu) db.chungTu = d.chungTu;
+        if (d.phatSinh) db.phatSinh = d.phatSinh;
+        if (d.mauVL) db.mauVL = d.mauVL;
         db.toi = d.toi;
         luu();
       }

@@ -27,6 +27,12 @@ const TAB = {
   ThuChi: ['id', 'ngay', 'ma', 'loai', 'hangMuc', 'thamChieu', 'doiTuong', 'soTien', 'noiDung', 'hinhThuc', 'soAnh', 'nguoi', 'xoa', 'taoLuc', 'capNhatLuc'],
   // Đợt trả thầu. Giám sát chỉ thấy phần không có tiền và chỉ ghi được klXacNhan.
   TraThau: ['id', 'maCongTrinh', 'thau', 'hangMuc', 'dot', 'soTien', 'dieuKien', 'viecMoc', 'hanTra', 'klXacNhan', 'ghiChu', 'xoa', 'taoLuc', 'capNhatLuc'],
+  // Phát sinh 4 bước. Giám sát thấy phiếu nhưng không thấy giá; chủ nhà thấy giá bán (không thấy chi gốc).
+  PhatSinh: ['id', 'ma', 'maCongTrinh', 'viec', 'ngayBao', 'nguoiBao', 'moTa', 'viTri', 'giaBan', 'chiGoc', 'ngayBaoGia', 'trangThai', 'ngayKhach',
+    'quaKhach', 'bangChung', 'yKien', 'daLam', 'xoa', 'capNhatLuc'],
+  // Mẫu vật liệu khách cần chốt, kèm người bán. Không có tiền: giám sát và chủ nhà cùng xem được.
+  MauVL: ['id', 'maCongTrinh', 'hangMuc', 'tenMau', 'nguoiBan', 'sdtNguoiBan', 'link', 'viec', 'hanChot', 'ngayGui', 'trangThai', 'ngayKhach', 'quaKhach',
+    'yKien', 'xoa', 'capNhatLuc'],
   // Cài đặt chung của văn phòng (vd tài khoản nhận tiền in vào đề nghị thanh toán). Không để trong mã nguồn.
   CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
@@ -96,7 +102,9 @@ function doGet(e) {
   const lichSu = docBang('LichSu').filter((r) => r.ma === ct.ma && r.loai === 'CHAM' && r.congKhai === true)
     .map((r) => ({ id: r.id, luc: r.luc, ma: r.ma, tenViec: r.tenViec, loai: r.loai, cu: r.cu, moi: r.moi, nguyenNhan: r.nguyenNhan, congKhai: true }));
   const phuongAn = docBang('PhuongAn').filter((p) => p.maCongTrinh === ct.ma).map(paChoChuNha);
-  return json({ ok: true, data: { ct: { ma: ct.ma, ten: ct.ten, loai: ct.loai, khoiCong: ct.khoiCong, lich: ct.lich, maLinkChuNha: ct.maLinkChuNha, viec }, lichSu, phuongAn } });
+  const phatSinh = docBang('PhatSinh').filter((p) => p.maCongTrinh === ct.ma && !p.xoa && p.trangThai !== 'CHO_BAO_GIA').map(psChoChuNha);
+  const mauVL = docBang('MauVL').filter((m) => m.maCongTrinh === ct.ma && !m.xoa).map(mauChoChuNha);
+  return json({ ok: true, data: { ct: { ma: ct.ma, ten: ct.ten, loai: ct.loai, khoiCong: ct.khoiCong, lich: ct.lich, maLinkChuNha: ct.maLinkChuNha, viec }, lichSu, phuongAn, phatSinh, mauVL } });
 }
 
 // Phần phương án chủ nhà được xem: không ghi chú nội bộ, không phí.
@@ -105,14 +113,47 @@ function paChoChuNha(p) {
     ngayPhanHoi: p.ngayPhanHoi, yKien: p.yKien, duyetQua: p.duyetQua, duyetLuc: p.duyetLuc };
 }
 
+// Phần phát sinh chủ nhà được xem: giá bán, không có chi phí gốc, không có ghi chú nội bộ.
+function psChoChuNha(p) {
+  return { id: p.id, ma: p.ma, moTa: p.moTa, viTri: p.viTri, giaBan: Number(p.giaBan) || 0, ngayBaoGia: p.ngayBaoGia, trangThai: p.trangThai,
+    ngayKhach: p.ngayKhach, quaKhach: p.quaKhach, yKien: p.yKien };
+}
+
+function mauChoChuNha(m) {
+  return { id: m.id, hangMuc: m.hangMuc, tenMau: m.tenMau, nguoiBan: m.nguoiBan, link: m.link, hanChot: m.hanChot, ngayGui: m.ngayGui, trangThai: m.trangThai,
+    ngayKhach: m.ngayKhach, quaKhach: m.quaKhach, yKien: m.yKien };
+}
+
 // Chủ nhà bấm "Đồng ý" hoặc "Cần sửa" trên link. Không cần khoá; chỉ được trả lời phương án đang chờ của đúng công trình.
 function chuNhaPhanHoi(data) {
   const ct = docBang('CongTrinh').find((r) => r.maLinkChuNha && r.maLinkChuNha === data.maLink);
   if (!ct) throw new Error('Link không đúng hoặc đã hết hạn');
-  if (data.ketQua !== 'DUYET' && data.ketQua !== 'SUA') throw new Error('Phản hồi không hợp lệ');
+  if (data.ketQua !== 'DUYET' && data.ketQua !== 'SUA' && data.ketQua !== 'TU_CHOI') throw new Error('Phản hồi không hợp lệ');
   const lock = LockService.getScriptLock();
   lock.waitLock(25000);
   try {
+    if (data.loai === 'PS') {
+      const ps = docBang('PhatSinh').find((p) => p.id === data.id && p.maCongTrinh === ct.ma && !p.xoa);
+      if (!ps) throw new Error('Không tìm thấy phát sinh');
+      if (ps.trangThai !== 'CHO_KHACH') return psChoChuNha(ps);
+      const kq = data.ketQua === 'DUYET' ? 'DUYET' : 'TU_CHOI';
+      const moiPs = { trangThai: kq, ngayKhach: homNay(), quaKhach: 'LINK', yKien: String(data.yKien || '').slice(0, 2000), capNhatLuc: new Date().toISOString() };
+      capNhatDong('PhatSinh', (r) => r.id === ps.id, moiPs, true);
+      themDong('LichSu', { id: Utilities.getUuid(), luc: moiPs.capNhatLuc, ma: ct.ma, viec: ps.viec, tenViec: 'Phát sinh ' + ps.ma, nguoi: 'CHU_NHA', loai: 'PHAT_SINH',
+        ghiChu: kq === 'DUYET' ? 'Chủ nhà đồng ý trên link → được làm' : 'Chủ nhà không làm' + (moiPs.yKien ? ': ' + moiPs.yKien : ''), congKhai: false });
+      return psChoChuNha(Object.assign(ps, moiPs));
+    }
+    if (data.loai === 'MAU') {
+      const m = docBang('MauVL').find((r) => r.id === data.id && r.maCongTrinh === ct.ma && !r.xoa);
+      if (!m) throw new Error('Không tìm thấy mẫu');
+      if (m.trangThai !== 'CHO_KHACH') return mauChoChuNha(m);
+      const moiM = { trangThai: data.ketQua === 'DUYET' ? 'DUYET' : 'DOI', ngayKhach: homNay(), quaKhach: 'LINK', yKien: String(data.yKien || '').slice(0, 2000), capNhatLuc: new Date().toISOString() };
+      capNhatDong('MauVL', (r) => r.id === m.id, moiM, true);
+      themDong('LichSu', { id: Utilities.getUuid(), luc: moiM.capNhatLuc, ma: ct.ma, viec: m.viec, tenViec: 'Mẫu ' + m.hangMuc, nguoi: 'CHU_NHA', loai: 'MAU_VL',
+        ghiChu: moiM.trangThai === 'DUYET' ? 'Chủ nhà chốt mẫu ' + m.tenMau + ' trên link' : 'Chủ nhà muốn đổi mẫu' + (moiM.yKien ? ': ' + moiM.yKien : ''), congKhai: false });
+      return mauChoChuNha(Object.assign(m, moiM));
+    }
+    if (data.ketQua === 'TU_CHOI') throw new Error('Phản hồi không hợp lệ');
     const pa = docBang('PhuongAn').find((p) => p.id === data.id && p.maCongTrinh === ct.ma);
     if (!pa) throw new Error('Không tìm thấy phương án');
     if (pa.trangThai !== 'CHO') return paChoChuNha(pa);
@@ -168,8 +209,14 @@ const HANH_DONG = {
     const traThau = docBang('TraThau').filter((t) => duocXem(n, t.maCongTrinh)).map((t) => (vp ? { ...t, soTien: Number(t.soTien) || 0 }
       : { id: t.id, maCongTrinh: t.maCongTrinh, thau: t.thau, hangMuc: t.hangMuc, dot: t.dot, dieuKien: t.dieuKien, viecMoc: t.viecMoc, hanTra: t.hanTra, klXacNhan: t.klXacNhan, xoa: t.xoa }));
     const chungTu = vp ? docBang('Anh').filter((a) => a.loai === 'CHUNG_TU').map((a) => ({ id: a.id, viec: a.viec, fileId: a.fileId, tenFile: a.tenFile })) : [];
+    const phatSinh = docBang('PhatSinh').filter((p) => duocXem(n, p.maCongTrinh)).map((p) => {
+      const o = { ...p, giaBan: Number(p.giaBan) || 0, chiGoc: Number(p.chiGoc) || 0 };
+      if (!vp) { delete o.giaBan; delete o.chiGoc; delete o.bangChung; }
+      return o;
+    });
+    const mauVL = docBang('MauVL').filter((m) => duocXem(n, m.maCongTrinh));
     const gstg = docBang('GSTG').filter((g) => duocXem(n, g.maCongTrinh)).map((g) => ({ ...g, lan: Number(g.lan) || 0, nhacGiamSat: g.nhacGiamSat === true }));
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
   // Nhận hàng chờ từ máy, áp theo thứ tự. Mục đã nhận (theo idGui) thì bỏ qua.
@@ -356,6 +403,57 @@ function apDung(n, op) {
     if (!t || !duocXem(n, t.maCongTrinh)) throw new Error('Không có quyền với đợt trả thầu này');
     if (t.klXacNhan) return; // đã có người xác nhận trước
     capNhatDong('TraThau', (r) => r.id === op.id, { klXacNhan: { ngay: op.ngay, nguoi: n.vaiTro, ghiChu: String(op.ghiChu || '').slice(0, 1000) }, capNhatLuc: op.luc }, true);
+    return;
+  }
+  if (op.loai === 'PS') {
+    canVanPhong(n);
+    const p = Object.assign({}, op.ps);
+    if (!/^PS-/.test(String(p.id))) throw new Error('Mã phát sinh phải bắt đầu bằng PS-');
+    const cu = docBang('PhatSinh').find((r) => r.id === p.id);
+    // Chủ nhà đã trả lời trên link mà máy văn phòng chưa kéo về: giữ câu trả lời của chủ nhà.
+    if (cu && cu.quaKhach === 'LINK' && (cu.trangThai === 'DUYET' || cu.trangThai === 'TU_CHOI') && p.trangThai === 'CHO_KHACH') {
+      ['trangThai', 'ngayKhach', 'quaKhach', 'yKien'].forEach((k) => { p[k] = cu[k]; });
+    }
+    if (cu && cu.daLam && !p.daLam) p.daLam = cu.daLam;
+    p.capNhatLuc = op.luc;
+    capNhatDong('PhatSinh', (r) => r.id === p.id, p);
+    return;
+  }
+  if (op.loai === 'MAU') {
+    canVanPhong(n);
+    const m = Object.assign({}, op.m);
+    if (!/^MAU-/.test(String(m.id))) throw new Error('Mã mẫu phải bắt đầu bằng MAU-');
+    const cu = docBang('MauVL').find((r) => r.id === m.id);
+    // Chủ nhà đã chốt trên link mà máy văn phòng gửi bản cũ: giữ câu trả lời của chủ nhà (trừ khi văn phòng gửi mẫu khác).
+    if (cu && cu.quaKhach === 'LINK' && cu.trangThai !== 'CHO_KHACH' && m.trangThai === 'CHO_KHACH' && m.ngayGui === cu.ngayGui) {
+      ['trangThai', 'ngayKhach', 'quaKhach', 'yKien'].forEach((k) => { m[k] = cu[k]; });
+    }
+    m.capNhatLuc = op.luc;
+    capNhatDong('MauVL', (r) => r.id === m.id, m);
+    return;
+  }
+  if (op.loai === 'PS_BAO') {
+    // Giám sát báo phát sinh: chỉ nhận mô tả; giá và trạng thái do văn phòng.
+    const p = op.ps || {};
+    if (!duocXem(n, p.maCongTrinh)) throw new Error('Không có quyền với công trình ' + p.maCongTrinh);
+    if (!/^PS-/.test(String(p.id))) throw new Error('Mã phát sinh phải bắt đầu bằng PS-');
+    const ds = docBang('PhatSinh');
+    if (ds.some((r) => r.id === p.id)) return;
+    let ma = String(p.ma || '');
+    // Hai người báo cùng lúc trùng số: lấy số tiếp theo.
+    if (!/^PS\d+$/.test(ma) || ds.some((r) => r.maCongTrinh === p.maCongTrinh && r.ma === ma)) {
+      const so = ds.filter((r) => r.maCongTrinh === p.maCongTrinh).map((r) => Number(String(r.ma).replace(/\D/g, '')) || 0);
+      ma = 'PS' + String((so.length ? Math.max.apply(null, so) : 0) + 1).padStart(2, '0');
+    }
+    themDong('PhatSinh', { id: p.id, ma, maCongTrinh: p.maCongTrinh, viec: p.viec || '', ngayBao: p.ngayBao, nguoiBao: n.vaiTro, moTa: String(p.moTa || '').slice(0, 2000),
+      viTri: String(p.viTri || '').slice(0, 200), giaBan: 0, chiGoc: 0, trangThai: 'CHO_BAO_GIA', capNhatLuc: op.luc });
+    return;
+  }
+  if (op.loai === 'PS_XONG') {
+    const p = docBang('PhatSinh').find((r) => r.id === op.id);
+    if (!p || !duocXem(n, p.maCongTrinh)) throw new Error('Không có quyền với phiếu phát sinh này');
+    if (p.trangThai !== 'DUYET') throw new Error('Phát sinh chưa được duyệt, chưa làm');
+    capNhatDong('PhatSinh', (r) => r.id === op.id, { daLam: op.ngay, capNhatLuc: op.luc }, true);
     return;
   }
   if (op.loai === 'CAI_DAT') {
