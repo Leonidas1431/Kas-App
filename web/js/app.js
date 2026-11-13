@@ -28,7 +28,12 @@ import { LINH_VUC, TIEU_CHI, dsThau, timThauTheoTen, themThau, suaThau, viecCuaT
 import { HAN_SUA_MAC_DINH, checklistMacDinh, canNghiemThu, ntCuaViec, nghiemThu, daSuaTonTai, doiHanSua, ketQuaViec, choNghiemThu, tonTaiMo, dieuKienDo, canDoNoiThat } from './nghiemthu.js';
 import { HM_MKT, KENH_MKT, CHUA_GAN, MAC_DINH, goiYHoaHong, tienDoThang, ngayVao, khoangKy, baoCaoNguon, dsNguoiGioiThieu } from './marketing.js';
 import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPhanHoi } from './api.js';
-import { xepAnh, demCho, guiAnhCho } from './anh.js';
+import { xepAnh, xepAnhLayMa, xepAnhSan, anhCho, demCho, guiAnhCho } from './anh.js';
+import {
+  KENH, KENH_TU_DONG, LOAI_BAI, TT_BAI, MAC_DINH_BD, MODEL, caiDatBD, timBai, taoBai, suaBai, xoaBai, nhanBai, boChoGui, kenhXong, kenhLoi, coLoi,
+  MODEL_ANH, dauTuan, lichTuan, choDuyet, chuaHen, loiDang, choDangTay, daDangGanDay, goiYCongTrinh, chiAIThang, chuDeChep, nhomViet, kiemTruocKhiViet,
+} from './dangbai.js';
+import { MAU_BIA, veBia, taiAnh } from './anhbia.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -62,7 +67,14 @@ async function chayDongBo() {
   if (navigator.onLine) await guiAnhCho(goi).catch((e) => bao('Ảnh chưa gửi được: ' + e.message));
   await capNhatTrangThai(r.trangThai);
   // Vẽ lại màn đang xem bằng dữ liệu mới, trừ khi đang mở hộp nhập liệu.
-  if (r.trangThai === 'xong' && !$('#sheet').open) route();
+  if (r.trangThai === 'xong' && !$('#sheet').open && !dangGo()) route();
+}
+
+// Đang gõ trong ô nhập của màn hình, hoặc đang chờ AI: không vẽ lại, kẻo mất chữ đang gõ.
+function dangGo() {
+  if (dangGoiAI) return true;
+  const a = document.activeElement;
+  return !!(a && $('#view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
 }
 
 async function capNhatTrangThai(tt) {
@@ -119,6 +131,8 @@ function route() {
   if (h === 'tao') return laVanPhong() ? manTao() : manHomNay();
   if (h === 'khach') return laVanPhong() ? manKhach() : manHomNay();
   if (h === 'marketing') return laVanPhong() ? manMarketing() : manHomNay();
+  if (h === 'dang-bai') return laVanPhong() ? manDangBai() : manHomNay();
+  if (h.startsWith('BD-')) return laVanPhong() ? manMotBai(h) : manHomNay();
   if (h.startsWith('kh-')) return laVanPhong() ? manMotKhach(h.slice(3)) : manHomNay();
   if (h === 'hop-dong') return laVanPhong() ? manHopDong() : manHomNay();
   if (h === 'thu-chi') return laVanPhong() ? manThuChi(ts.ma !== undefined ? decodeURIComponent(ts.ma) : undefined) : manHomNay();
@@ -136,7 +150,7 @@ function manHomNay() {
   datTab('hom-nay', 'Hôm nay ' + ddmm(homNay()));
   const v = $('#view');
   const hn = homNay();
-  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
+  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
@@ -589,6 +603,7 @@ function moSuaCT(ct) {
     </div>
     <button id="themNghi" class="nho-nut">＋ Thêm ngày nghỉ (từ – đến)</button>
     <label class="f">Link thư mục Drive</label><input id="drive" value="${esc(ct.thuMucDrive || '')}" placeholder="Dán link thư mục">
+    <label class="cham-dong"><input type="checkbox" id="choDang" ${ct.choDangAnh ? 'checked' : ''}><span>Chủ nhà đồng ý cho KAS dùng ảnh công trình để đăng bài (không ghi tên, địa chỉ chủ nhà)</span></label>
     <label class="cham-dong"><input type="checkbox" id="chot" ${daLam ? '' : 'checked'}><span>Chốt luôn kế hoạch gốc theo lịch mới${daLam ? ' (công trình đã có việc làm, thường không nên)' : ' (chưa làm việc nào)'}</span></label>
     <p id="xem" class="note"></p>
     <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
@@ -619,6 +634,7 @@ function moSuaCT(ct) {
     if (!ten || !khoiCong) return bao('Cần tên và ngày khởi công');
     const lich = lichMoi(), chot = $('#chot', d).checked;
     const thayDoi = { ten, khoiCong, lich, chuNha: $('#cn', d).value.trim(), thuMucDrive: $('#drive', d).value.trim() };
+    if (!!ct.choDangAnh !== $('#choDang', d).checked) thayDoi.choDangAnh = $('#choDang', d).checked;
     d.close();
     // Lịch mới có thể rơi vào ngày lễ chưa hỏi: hỏi như lúc tạo công trình.
     const den = ketThucCuoi(xepLich(ct.viec, khoiCong, lich));
@@ -2742,7 +2758,7 @@ function khoiNghiemThu(ct) {
 }
 
 // ---------- Marketing, lead ----------
-const dauKhach = (tab) => `<div class="loc doan khong-in">${[['khach', 'Sổ khách'], ['marketing', 'Marketing']]
+const dauKhach = (tab) => `<div class="loc doan khong-in">${[['khach', 'Sổ khách'], ['marketing', 'Marketing'], ['dang-bai', 'Đăng bài']]
   .map(([h, t]) => `<a class="btn ${h === tab ? 'on' : ''}" href="#${h}">${t}</a>`).join('')}</div>`;
 let kyMkt = 'NAM';
 const KY_MKT = { THANG: 'Tháng này', QUY: '3 tháng', NAM: 'Năm nay', TAT: 'Tất cả' };
@@ -2809,6 +2825,533 @@ function manMarketing() {
     luu(); bao('Đã lưu mục tiêu'); manMarketing();
   };
   $('#ghiMkt').onclick = () => moGhiKhoan({ loai: 'CHI', ma: CTY, hangMuc: HM_MKT });
+}
+
+// ---------- Đăng bài: AI viết, Thầy duyệt, máy chủ đăng ----------
+let tuanBD = null;
+let chuDeAI = [];
+let dangGoiAI = false;
+const thuAnhBD = new Map(); // mã ảnh → ảnh nhỏ base64
+const anhDayDu = new Map(); // mã ảnh → { base64, loai }
+const TAG_BD = { NHAP: 'SAP', CHO_DUYET: 'SAP', DUYET: 'DANG', DA_DANG: 'XONG' };
+
+function kenhNho(b) {
+  return (b.kenh || []).map((k) => `${KENH[k]}${kenhXong(b, k) ? ' ✓' : kenhLoi(b, k) ? ' ⚠' : ''}`).join(' · ');
+}
+
+function theBai(b) {
+  return `<a class="card" href="#${esc(b.id)}"><div class="row"><span class="name">${esc(b.chuDe || '(chưa có chủ đề)')}</span><span class="tag ${coLoi(b) ? 'TRE' : TAG_BD[b.trangThai]}">${coLoi(b) ? 'Đăng lỗi' : TT_BAI[b.trangThai]}</span></div>
+    <div class="muted">${LOAI_BAI[b.loai]} · ${kenhNho(b)}${b.ngayDang ? ` · ${ddmm(b.ngayDang)} ${esc(b.gioDang || caiDatBD(db.caiDat).bdGio)}` : ' · chưa hẹn ngày'}</div></a>`;
+}
+
+// Hôm nay (văn phòng): bài chờ Thầy duyệt, bài đến ngày phải đăng tay TikTok, bài đăng lỗi; từ thứ 5 nhắc tuần còn thiếu bài.
+function baiHomNay(hn) {
+  if (!laVanPhong()) return '';
+  const cho = choDuyet(db), tay = choDangTay(db, hn), loi = loiDang(db);
+  const thieu = lichTuan(db, dauTuan(hn)).kenh.filter((x) => x.thieu);
+  const thu = new Date(hn + 'T00:00:00Z').getUTCDay();
+  const nhacThieu = thieu.length && (thu >= 4 || thu === 0);
+  if (!cho.length && !tay.length && !loi.length && !nhacThieu) return '';
+  return `<h3>Đăng bài</h3>
+    ${cho.length ? `<a class="card" href="#dang-bai"><div class="row"><span class="name">${cho.length} bài chờ Thầy duyệt</span><span class="tag SAP">Duyệt</span></div><div class="muted">${cho.slice(0, 3).map((b) => esc(b.chuDe || 'Bài chưa có chủ đề')).join(' · ')}</div></a>` : ''}
+    ${tay.map((b) => `<a class="card" href="#${esc(b.id)}"><div class="row"><span class="name">Đăng tay ${b.kenh.filter((k) => !KENH_TU_DONG.includes(k) && !kenhXong(b, k)).map((k) => KENH[k]).join(', ')}</span><span class="tag SAP">${ddmm(b.ngayDang)}</span></div><div class="muted">${esc(b.chuDe)}</div></a>`).join('')}
+    ${loi.map(theBai).join('')}
+    ${nhacThieu ? `<p class="muted">Tuần này còn thiếu: ${thieu.map((x) => `${x.ten} ${x.thieu} bài`).join(', ')}. <a href="#dang-bai">Lên lịch</a></p>` : ''}`;
+}
+
+function manDangBai() {
+  datTab('khach', 'Đăng bài');
+  const hn = homNay();
+  tuanBD = tuanBD || dauTuan(hn);
+  const cd = caiDatBD(db.caiDat);
+  const lt = lichTuan(db, tuanBD, cd);
+  const cho = choDuyet(db), loi = loiDang(db), chua = chuaHen(db), goiY = goiYCongTrinh(db), da = daDangGanDay(db);
+  const ai = chiAIThang(db, hn);
+  const THU = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+  $('#view').innerHTML = `${dauKhach('dang-bai')}
+    <div class="actions"><button id="baiMoi" class="btn-chinh">+ Bài mới</button><button id="timCD">AI tìm chủ đề</button></div>
+    ${cho.length ? `<h3>Chờ Thầy duyệt</h3>${cho.map(theBai).join('')}` : ''}
+    ${loi.length ? `<h3>Đăng lỗi</h3>${loi.map(theBai).join('')}` : ''}
+    <div class="dau-ct"><h3>Tuần ${ddmm(tuanBD)} – ${ddmm(addDays(tuanBD, 6))}</h3><span><button id="tuanTruoc" class="nho-nut">‹</button> <button id="tuanSau" class="nho-nut">›</button></span></div>
+    <div class="so-lieu">${lt.kenh.map((x) => `<div><span>${x.ten}</span><b class="${x.thieu ? 'tre' : ''}">${x.co}/${x.can}</b></div>`).join('')}</div>
+    ${lt.ngay.map((d, i) => `<div class="bd-ngay ${d.ngay === hn ? 'hom-nay' : ''}"><div class="row"><b>${THU[i]} ${ddmm(d.ngay)}</b><button class="nho-nut" data-them-ngay="${d.ngay}">+ bài</button></div>
+      ${d.bai.length ? d.bai.map(theBai).join('') : ''}</div>`).join('')}
+    ${chua.length ? `<h3>Chưa hẹn ngày</h3>${chua.map(theBai).join('')}` : ''}
+    ${goiY.length || chuDeAI.length ? '<h3>Gợi ý chủ đề</h3>' : ''}
+    ${goiY.map((ct) => `<div class="card"><div class="row"><span class="name">Dự án ${esc(ct.ten)}</span><button class="nho-nut" data-goi-ct="${esc(ct.ma)}">Tạo bài</button></div><div class="muted">Chủ nhà đã cho đăng ảnh, chưa có bài nào.</div></div>`).join('')}
+    ${chuDeAI.map((x, i) => `<div class="card"><div class="row"><span class="name">${esc(x.tieuDe)}</span><button class="nho-nut" data-goi-ai="${i}">Tạo bài</button></div>
+      <div class="muted">${LOAI_BAI[x.loai] || ''}${x.viSao ? ' · ' + esc(x.viSao) : ''}${x.nguon ? ` · <a href="${esc(x.nguon)}" target="_blank" rel="noopener">nguồn</a>` : ''}</div></div>`).join('')}
+    ${da.length ? `<h3>Đã đăng gần đây</h3>${da.map(theBai).join('')}` : ''}
+    <details class="cham-ds"><summary>Cài đặt đăng bài</summary>
+      <div class="hai-cot"><div><label class="f">Facebook bài/tuần</label><input id="bdFB" inputmode="numeric" value="${esc((db.caiDat || {}).bdFB ?? '')}" placeholder="${MAC_DINH_BD.bdFB}"></div>
+        <div><label class="f">TikTok bài/tuần</label><input id="bdTT" inputmode="numeric" value="${esc((db.caiDat || {}).bdTT ?? '')}" placeholder="${MAC_DINH_BD.bdTT}"></div></div>
+      <div class="hai-cot"><div><label class="f">Website bài/tuần</label><input id="bdWEB" inputmode="numeric" value="${esc((db.caiDat || {}).bdWEB ?? '')}" placeholder="${MAC_DINH_BD.bdWEB}"></div>
+        <div><label class="f">Giờ đăng mặc định</label><input id="bdGio" type="time" value="${esc(cd.bdGio)}"></div></div>
+      <label class="f">AI viết bài</label><select id="bdModel">${Object.entries(MODEL).map(([k, t]) => `<option value="${k}" ${k === cd.bdModel ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <label class="f">Gemini làm ảnh bìa</label><select id="bdGemini">${Object.entries(MODEL_ANH).map(([k, t]) => `<option value="${k}" ${k === cd.bdGemini ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <label class="f">Bài website khi đăng</label><select id="bdWebTrangThai"><option value="draft" ${cd.bdWebTrangThai === 'draft' ? 'selected' : ''}>Lưu nháp trên web, Thầy xem rồi bấm đăng</option><option value="publish" ${cd.bdWebTrangThai === 'publish' ? 'selected' : ''}>Đăng luôn</option></select>
+      <label class="f">Mã chuyên mục website (số, để trống nếu chưa biết)</label><input id="bdWebChuyenMuc" inputmode="numeric" value="${esc((db.caiDat || {}).bdWebChuyenMuc ?? '')}">
+      <p class="muted">Chi AI tháng này (Claude + Gemini): ${ai.lan} lần gọi, khoảng ${String(ai.usd).replace('.', ',')} USD.</p>
+      <div class="actions"><button id="luuBD" class="btn-chinh">Lưu</button></div>
+      <h4>Canva</h4><p id="canvaTT" class="muted">${daKetNoi() ? 'Đang kiểm tra…' : 'Bản thử: cần nối máy chủ.'}</p>
+      ${vaiTro === 'THAY' ? '<div class="actions"><button id="noiCanva">Nối Canva</button></div>' : ''}
+    </details>
+    <p class="muted">Không bài nào lên mạng khi Thầy chưa duyệt. Facebook, Instagram, website tự đăng đúng ngày giờ hẹn; TikTok đến ngày thì đăng tay.</p>`;
+  const v = $('#view');
+  const moi = (du) => { const b = taoBai(db, du, vaiTro); luu(); location.hash = b.id; };
+  $('#baiMoi').onclick = () => moi({});
+  $('#tuanTruoc').onclick = () => { tuanBD = addDays(tuanBD, -7); manDangBai(); };
+  $('#tuanSau').onclick = () => { tuanBD = addDays(tuanBD, 7); manDangBai(); };
+  v.querySelectorAll('[data-them-ngay]').forEach((b) => { b.onclick = () => moi({ ngayDang: b.dataset.themNgay }); });
+  v.querySelectorAll('[data-goi-ct]').forEach((b) => { b.onclick = () => moi({ loai: 'DU_AN', maCongTrinh: b.dataset.goiCt }); });
+  v.querySelectorAll('[data-goi-ai]').forEach((b) => {
+    b.onclick = () => {
+      const x = chuDeAI[Number(b.dataset.goiAi)];
+      chuDeAI = chuDeAI.filter((y) => y !== x);
+      moi({ loai: x.loai, chuDe: x.tieuDe, ghiChu: [x.viSao, x.nguon ? 'Nguồn: ' + x.nguon : ''].filter(Boolean).join('\n'), kenh: (x.kenh || []).filter((k) => KENH[k]), maCongTrinh: x.maCongTrinh || '' });
+    };
+  });
+  $('#timCD').onclick = async () => {
+    if (!daKetNoi()) return bao('Bản thử: cần nối máy chủ để AI tìm chủ đề');
+    if (!navigator.onLine) return bao('Cần mạng để AI tìm chủ đề');
+    const nut = $('#timCD'); nut.disabled = true; nut.textContent = 'AI đang tìm…';
+    try { chuDeAI = await goi('timChuDe', { soLuong: 8 }); bao(`AI gợi ý ${chuDeAI.length} chủ đề`); } catch (e) { bao(e.message); }
+    chayDongBo();
+    if (location.hash === '#dang-bai') manDangBai();
+  };
+  const caiDatChiTiet = v.querySelector('details.cham-ds');
+  caiDatChiTiet.addEventListener('toggle', async () => {
+    if (!caiDatChiTiet.open || !daKetNoi() || !navigator.onLine) return;
+    try {
+      const t = await goi('canvaTrangThai');
+      $('#canvaTT').innerHTML = `${t.daNoi ? 'Đã nối Canva.' : t.coKhoa ? 'Chưa nối Canva: Thầy bấm Nối Canva, đăng nhập rồi bấm Cho phép.' : 'Chưa có khoá Canva trên máy chủ (xem hướng dẫn cài).'}
+        ${t.coGemini ? ' Gemini: đã có khoá.' : ' Gemini: chưa có khoá.'}<br>Địa chỉ chuyển về (dán vào Canva khi tạo tích hợp): <code>${esc(t.redirect)}</code>`;
+    } catch (e) { $('#canvaTT').textContent = e.message.includes('Không có thao tác') ? 'Máy chủ chưa cập nhật bản có Canva, Gemini.' : e.message; }
+  });
+  if ($('#noiCanva')) $('#noiCanva').onclick = async () => {
+    if (!daKetNoi()) return bao('Bản thử: cần nối máy chủ');
+    const w = window.open('', '_blank');
+    try { const r = await goi('canvaNoi'); if (w) w.location = r.url; else location.href = r.url; } catch (e) { if (w) w.close(); bao(e.message); }
+  };
+  $('#luuBD').onclick = () => {
+    ['bdFB', 'bdTT', 'bdWEB'].forEach((k) => { const x = $('#' + k).value.trim(); datCaiDat(db, k, x === '' ? '' : String(Math.max(0, Number(x) || 0))); });
+    datCaiDat(db, 'bdGio', $('#bdGio').value || '');
+    datCaiDat(db, 'bdModel', $('#bdModel').value);
+    datCaiDat(db, 'bdGemini', $('#bdGemini').value);
+    datCaiDat(db, 'bdWebTrangThai', $('#bdWebTrangThai').value);
+    datCaiDat(db, 'bdWebChuyenMuc', String(Number($('#bdWebChuyenMuc').value) || ''));
+    luu(); bao('Đã lưu cài đặt đăng bài'); manDangBai();
+  };
+}
+
+// Ảnh: mã ảnh → base64 (ảnh còn chờ gửi trên máy, hoặc lấy từ máy chủ). Ảnh nhỏ để xem, ảnh đủ để dựng bìa, chia sẻ.
+async function layThuAnh(ids) {
+  const thieu = [];
+  for (const id of ids) {
+    if (thuAnhBD.has(id)) continue;
+    const a = await anhCho(id);
+    if (a) thuAnhBD.set(id, a.base64); else thieu.push(id);
+  }
+  if (thieu.length && daKetNoi() && navigator.onLine) {
+    try { (await goi('anhThu', { ids: thieu })).forEach((x) => thuAnhBD.set(x.id, x.thu)); } catch { /* chưa có mạng: hiện ô trống */ }
+  }
+}
+async function layAnhDayDu(id) {
+  if (anhDayDu.has(id)) return anhDayDu.get(id);
+  const a = await anhCho(id);
+  if (a) return { base64: a.base64, loai: 'image/jpeg' };
+  const x = await goi('layAnh', { id });
+  anhDayDu.set(id, x);
+  return x;
+}
+
+async function anhChuaGui(b) {
+  let n = 0;
+  for (const id of [b.anhBia, ...(b.dsAnh || [])].filter(Boolean)) if (await anhCho(id)) n++;
+  return n;
+}
+
+function manMotBai(id) {
+  const b = timBai(db, id);
+  if (!b || b.xoa) { $('#view').innerHTML = '<p>Không tìm thấy bài này.</p><p><a href="#dang-bai">← Đăng bài</a></p>'; return; }
+  datTab('khach', 'Bài đăng');
+  const cd = caiDatBD(db.caiDat);
+  const bv = b.baiViet || {};
+  const coBai = Object.keys(bv).length > 0;
+  const daDang = b.trangThai === 'DA_DANG';
+  const ct = (db.congTrinh || []).find((c) => c.ma === b.maCongTrinh);
+  const khoa = daDang ? 'disabled' : '';
+  const kq = b.ketQua || {};
+  const dongKenh = (k) => {
+    const r = kq[k] || {};
+    const trangThai = kenhXong(b, k) ? `<span class="tag XONG">${r.tay ? 'Đã đăng tay' : r.trangThai === 'draft' ? 'Đã lưu nháp trên web' : 'Đã đăng'}</span>${r.link ? ` <a href="${esc(r.link)}" target="_blank" rel="noopener">mở</a>` : ''}`
+      : r.loi ? `<span class="tag TRE">Lỗi</span> <span class="muted">${esc(r.loi)}</span>` : '';
+    const nut = [`<button class="nho-nut" data-chep="${k}">Chép chữ</button>`];
+    if (!KENH_TU_DONG.includes(k) || r.loi) nut.push(`<button class="nho-nut" data-chia-se="${k}">Chia sẻ ảnh + chữ</button>`);
+    if ((b.trangThai === 'DUYET' || daDang) && !kenhXong(b, k) && (!KENH_TU_DONG.includes(k) || r.loi)) nut.push(`<button class="nho-nut" data-tay="${k}">Đã đăng tay</button>`);
+    return `<div class="row bd-kenh"><b>${KENH[k]}</b><span>${trangThai}</span></div><div class="actions">${nut.join('')}</div>`;
+  };
+  $('#view').innerHTML = `<p><a href="#dang-bai">← Đăng bài</a></p>
+    <div class="row"><span class="tag ${coLoi(b) ? 'TRE' : TAG_BD[b.trangThai]}">${TT_BAI[b.trangThai]}</span>
+      <span class="muted">${b.lanViet ? `AI đã viết ${b.lanViet} lần` : ''}${b.nguoiDuyet ? ` · ${tenNguoi(b.nguoiDuyet)} duyệt ${ddmm(String(b.duyetLuc).slice(0, 10))}` : ''}</span></div>
+    <h3>Bài viết về gì</h3>
+    <label class="f">Loại bài</label><select id="bLoai" ${khoa}>${Object.entries(LOAI_BAI).map(([k, t]) => `<option value="${k}" ${k === b.loai ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <label class="f">Chủ đề</label><input id="bChuDe" value="${esc(b.chuDe)}" placeholder="Vd: Căn hộ 90m2 phong cách Indochine bàn giao tháng 11" ${khoa}>
+    <label class="f">Ghi chú cho AI (điểm nhấn, chi tiết thật, điều cần tránh)</label><textarea id="bGhiChu" ${khoa}>${esc(b.ghiChu)}</textarea>
+    <label class="f">Công trình</label><select id="bCT" ${khoa}><option value="">Không gắn công trình</option>${(db.congTrinh || []).map((c) => `<option value="${esc(c.ma)}" ${c.ma === b.maCongTrinh ? 'selected' : ''}>${esc(c.ma)} · ${esc(c.ten)}${c.choDangAnh ? '' : ' (chưa cho đăng ảnh)'}</option>`).join('')}</select>
+    ${ct && !ct.choDangAnh ? '<p class="note">Chủ nhà chưa cho phép dùng ảnh công trình này. Hỏi chủ nhà rồi bật ở Công trình → Thông tin công trình.</p>' : ''}
+    <div id="bPT" ${b.loai === 'PHONG_THUY' ? '' : 'hidden'}>
+      <label class="f">Tên tài liệu phong thủy (sách, giáo trình, chương, trang)</label><input id="bNguon" value="${esc(b.nguonTL)}" ${khoa}>
+      <label class="f">Đoạn tài liệu (AI chỉ viết theo đoạn này)</label><textarea id="bTrich" class="cao" ${khoa}>${esc(b.trichDan)}</textarea>
+      ${daDang ? '' : '<div class="actions"><button id="ptThuVien">Lấy từ thư viện phong thủy</button></div>'}
+    </div>
+    <label class="f">Kênh</label><div class="bd-chon">${Object.entries(KENH).map(([k, t]) => `<label class="cham-dong"><input type="checkbox" data-kenh="${k}" ${(b.kenh || []).includes(k) ? 'checked' : ''} ${khoa}><span>${t}${KENH_TU_DONG.includes(k) ? '' : ' (đăng tay)'}</span></label>`).join('')}</div>
+    <div class="hai-cot"><div><label class="f">Ngày đăng</label><input id="bNgay" type="date" value="${esc(b.ngayDang)}" ${khoa}></div>
+      <div><label class="f">Giờ</label><input id="bGio" type="time" value="${esc(b.gioDang)}" placeholder="${esc(cd.bdGio)}" ${khoa}></div></div>
+    <h3>Ảnh <span class="muted">(ảnh đầu làm nền ảnh bìa)</span></h3>
+    <div id="bAnh" class="bd-anh"></div>
+    ${daDang ? '' : `<div class="actions">${b.maCongTrinh ? '<button id="chonAnhCT">Chọn ảnh công trình</button>' : ''}<label class="btn">Thêm ảnh từ máy<input id="themAnh" type="file" accept="image/*" multiple hidden></label></div>`}
+    ${daDang ? '' : `<h3>AI viết</h3>
+      ${coBai ? `<label class="f">Ý kiến sửa của Thầy</label><textarea id="bYKien" placeholder="Vd: mở đầu bằng câu hỏi, bớt hashtag, nhấn mạnh tiến độ đúng hẹn">${esc(b.yKien)}</textarea>` : ''}
+      <div class="actions"><button id="vietAI" class="btn-chinh">${coBai ? 'AI viết lại theo ý kiến' : 'AI viết bài'}</button></div><p id="tienDoAI" class="muted"></p>`}
+    ${coBai ? `<h3>Nội dung</h3>
+      ${(b.kenh || []).includes('FB') ? `<label class="f">Facebook</label><textarea id="vFB" class="cao" ${khoa}>${esc(bv.fb || '')}</textarea>` : ''}
+      ${(b.kenh || []).includes('IG') ? `<label class="f">Instagram</label><textarea id="vIG" class="cao" ${khoa}>${esc(bv.ig || '')}</textarea>` : ''}
+      ${(b.kenh || []).includes('TT') ? `<label class="f">TikTok: tiêu đề</label><input id="vTTt" value="${esc((bv.tt || {}).tieuDe || '')}" ${khoa}>
+        <label class="f">TikTok: chú thích</label><textarea id="vTTc" ${khoa}>${esc((bv.tt || {}).chuThich || '')}</textarea>
+        <label class="f">TikTok: kịch bản video</label><textarea id="vTTk" class="cao" ${khoa}>${esc((bv.tt || {}).kichBan || '')}</textarea>` : ''}
+      ${(b.kenh || []).includes('WEB') ? `<label class="f">Website: tiêu đề</label><input id="vWt" value="${esc((bv.web || {}).tieuDe || '')}" ${khoa}>
+        <label class="f">Website: mô tả ngắn (hiện trên Google)</label><textarea id="vWm" ${khoa}>${esc((bv.web || {}).moTa || '')}</textarea>
+        <label class="f">Website: bài viết (dòng "## " là tiêu đề mục)</label><textarea id="vWn" class="rat-cao" ${khoa}>${esc((bv.web || {}).noiDung || '')}</textarea>
+        <label class="f">Website: từ khóa (cách nhau dấu phẩy)</label><input id="vWk" value="${esc(((bv.web || {}).tuKhoa || []).join(', '))}" ${khoa}>` : ''}
+      <p class="muted">Chỗ AI ghi [Thầy điền: …] là số liệu AI không có, Thầy điền trước khi duyệt.</p>` : ''}
+    ${(b.kenh || []).some((k) => k !== 'WEB') ? `<h3>Ảnh bìa</h3>
+      ${b.anhBia ? '<img id="biaHienTai" class="bia" alt="Ảnh bìa đang dùng">' : ''}<p id="biaTT" class="muted">${b.anhBia ? 'Ảnh bìa đang dùng.' : 'Chưa có ảnh bìa.'}</p>
+      ${daDang ? '' : `<h4>Gemini làm bìa từ ảnh đầu</h4>
+        <select id="gmKieu"><option value="SANG">Giữ ảnh thật, chỉ chỉnh sáng</option><option value="CHU">In chữ trên bìa lên ảnh</option></select>
+        <div class="actions"><button id="geminiBia">Gemini làm bìa</button></div>
+        <h4>Sửa trong Canva</h4>
+        <div class="actions"><button id="canvaMo">${b.canva && b.canva.id ? 'Mở lại trong Canva' : 'Mở ảnh bìa trong Canva'}</button>${b.canva && b.canva.id ? '<button id="canvaLay" class="btn-chinh">Lấy ảnh đã sửa từ Canva</button>' : ''}</div>
+        <p class="muted">Sửa xong trên Canva (không cần tải về), quay lại đây bấm "Lấy ảnh đã sửa từ Canva".</p>
+        <h4>Hoặc dựng bìa ngay trên máy</h4>`}
+      <div class="loc">${Object.entries(MAU_BIA).map(([k, t]) => `<button data-mau="${k}" class="${k === (b.mauBia || 'TRAN') ? 'on' : ''}" ${khoa}>${t}</button>`).join('')}</div>
+      <label class="f">Chữ trên bìa</label><input id="bTieuDe" value="${esc(b.tieuDeBia)}" placeholder="Tối đa 8 chữ" ${khoa}>
+      <label class="f">Dòng phụ</label><input id="bPhuDe" value="${esc(b.phuDeBia)}" ${khoa}>
+      <canvas id="bia" class="bia"></canvas>
+      ${daDang ? '' : `<div class="actions"><button id="luuBia">Dùng ảnh bìa này</button><button id="guiCanva">Chia sẻ sang app Canva</button>
+        <label class="btn">Thay bằng ảnh từ máy<input id="biaTuMay" type="file" accept="image/*" hidden></label></div>`}` : ''}
+    ${b.trangThai === 'DUYET' || daDang ? `<h3>Đăng</h3>${(b.kenh || []).map(dongKenh).join('')}` : coBai ? `<h3>Chép để đăng tay</h3>${(b.kenh || []).map((k) => `<div class="row bd-kenh"><b>${KENH[k]}</b><button class="nho-nut" data-chep="${k}">Chép chữ</button></div>`).join('')}` : ''}
+    <div class="actions">
+      ${vaiTro === 'THAY' && coBai && (b.trangThai === 'CHO_DUYET' || b.trangThai === 'NHAP') ? '<button id="duyet" class="btn-chinh">Duyệt bài</button>' : ''}
+      ${vaiTro === 'THAY' && b.trangThai === 'DUYET' ? '<button id="boDuyet">Bỏ duyệt</button>' : ''}
+      ${b.trangThai === 'DUYET' && (b.kenh || []).some((k) => KENH_TU_DONG.includes(k) && !kenhXong(b, k)) ? '<button id="dangNgay" class="btn-chinh">Đăng ngay</button>' : ''}
+      ${daDang ? '' : '<button id="xoaBai" class="btn-do">Xoá bài</button>'}
+    </div>
+    ${b.trangThai === 'DUYET' ? `<p class="muted">${b.ngayDang ? `Facebook, Instagram, website tự đăng lúc ${esc(b.gioDang || cd.bdGio)} ngày ${ddmm(b.ngayDang)}.` : 'Chưa hẹn ngày: bấm Đăng ngay, hoặc chọn ngày đăng.'}</p>` : ''}`;
+  ganMotBai(b);
+}
+
+function ganMotBai(b) {
+  const v = $('#view');
+  const daDang = b.trangThai === 'DA_DANG';
+  const doc = () => {
+    const bv = JSON.parse(JSON.stringify(b.baiViet || {}));
+    if ($('#vFB')) bv.fb = $('#vFB').value;
+    if ($('#vIG')) bv.ig = $('#vIG').value;
+    if ($('#vTTt')) bv.tt = { tieuDe: $('#vTTt').value, chuThich: $('#vTTc').value, kichBan: $('#vTTk').value };
+    if ($('#vWt')) bv.web = { tieuDe: $('#vWt').value, moTa: $('#vWm').value, noiDung: $('#vWn').value, tuKhoa: $('#vWk').value.split(',').map((x) => x.trim()).filter(Boolean) };
+    return {
+      loai: $('#bLoai').value, chuDe: $('#bChuDe').value.trim(), ghiChu: $('#bGhiChu').value.trim(), maCongTrinh: $('#bCT').value,
+      nguonTL: $('#bNguon').value.trim(), trichDan: $('#bTrich').value.trim(),
+      kenh: [...v.querySelectorAll('[data-kenh]')].filter((x) => x.checked).map((x) => x.dataset.kenh),
+      ngayDang: $('#bNgay').value, gioDang: $('#bGio').value, baiViet: bv,
+      ...($('#bTieuDe') ? { tieuDeBia: $('#bTieuDe').value.trim(), phuDeBia: $('#bPhuDe').value.trim() } : {}),
+      ...($('#bYKien') ? { yKien: $('#bYKien').value.trim() } : {}),
+    };
+  };
+  const ghiLai = (veLai = false) => { if (daDang) return; suaBai(db, b, doc()); luu(); if (veLai) manMotBai(b.id); };
+  v.querySelectorAll('input:not([type=file]), textarea, select').forEach((el) => { el.addEventListener('change', () => ghiLai(['bLoai', 'bCT'].includes(el.id) || el.dataset.kenh !== undefined)); });
+  // Ảnh trong bài
+  const veAnh = async () => {
+    const ids = b.dsAnh || [];
+    const o = $('#bAnh');
+    if (!o) return;
+    if (!ids.length) { o.innerHTML = '<p class="muted">Chưa có ảnh.</p>'; return; }
+    o.innerHTML = ids.map((id, i) => `<div class="bd-o"><img data-thu="${esc(id)}" alt="">${daDang ? '' : `<div class="bd-nut">${i ? `<button data-dau="${esc(id)}" title="Đưa lên đầu">↑</button>` : '<span class="muted">Bìa</span>'}<button data-bo="${esc(id)}" title="Bỏ">✕</button></div>`}</div>`).join('');
+    o.querySelectorAll('[data-dau]').forEach((x) => { x.onclick = () => { suaBai(db, b, { dsAnh: [x.dataset.dau, ...b.dsAnh.filter((y) => y !== x.dataset.dau)] }); luu(); manMotBai(b.id); }; });
+    o.querySelectorAll('[data-bo]').forEach((x) => { x.onclick = () => { suaBai(db, b, { dsAnh: b.dsAnh.filter((y) => y !== x.dataset.bo) }); luu(); manMotBai(b.id); }; });
+    await layThuAnh(ids);
+    o.querySelectorAll('[data-thu]').forEach((im) => { const t = thuAnhBD.get(im.dataset.thu); if (t) im.src = 'data:image/jpeg;base64,' + t; });
+  };
+  veAnh();
+  if ($('#themAnh')) $('#themAnh').onchange = async (e) => {
+    const files = [...e.target.files];
+    if (!files.length) return;
+    try {
+      const ids = await xepAnhLayMa(files, b.id, 'BAI', 'BAI_DANG');
+      suaBai(db, b, { ...doc(), dsAnh: [...(b.dsAnh || []), ...ids] }); luu();
+      bao(`Đã thêm ${ids.length} ảnh${daKetNoi() ? ', đang gửi lên Drive' : ''}`);
+      manMotBai(b.id);
+    } catch (err) { bao('Không đọc được ảnh: ' + err.message); }
+  };
+  if ($('#chonAnhCT')) $('#chonAnhCT').onclick = () => moChonAnhCT(b);
+  // Ảnh bìa
+  const canvas = $('#bia');
+  let nen = null;
+  const veLaiBia = () => { if (canvas) veBia(canvas, nen, { mau: b.mauBia || 'TRAN', tieuDe: $('#bTieuDe').value || b.chuDe, phuDe: $('#bPhuDe').value }); };
+  if (canvas) {
+    veLaiBia();
+    const dau = (b.dsAnh || [])[0];
+    if (dau) layAnhDayDu(dau).then((a) => taiAnh(a.base64, a.loai)).then((im) => { nen = im; veLaiBia(); }).catch(() => { $('#biaTT').textContent = 'Chưa tải được ảnh nền (cần mạng).'; });
+    else if (!b.anhBia) $('#biaTT').textContent = 'Thêm ảnh để làm nền ảnh bìa.';
+    ['bTieuDe', 'bPhuDe'].forEach((k) => { $('#' + k).addEventListener('input', veLaiBia); });
+    v.querySelectorAll('[data-mau]').forEach((x) => { x.onclick = () => { suaBai(db, b, { ...doc(), mauBia: x.dataset.mau }); luu(); manMotBai(b.id); }; });
+    if ($('#luuBia')) $('#luuBia').onclick = async () => {
+      if (!nen) return bao('Cần ảnh nền trước');
+      const base64 = canvas.toDataURL('image/jpeg', 0.86).split(',')[1];
+      const id = await xepAnhSan({ id: crypto.randomUUID(), ma: b.id, viec: 'BIA', tenFile: `${b.id}_bia_${Date.now()}.jpg`, base64, loai: 'BAI_DANG' });
+      thuAnhBD.set(id, base64);
+      suaBai(db, b, { ...doc(), anhBia: id }); luu();
+      bao('Đã lưu ảnh bìa' + (daKetNoi() ? ', đang gửi lên Drive' : ''));
+      chayDongBo();
+      manMotBai(b.id);
+    };
+    // Chia sẻ ảnh bìa sang app Canva (hoặc tải về) để Thầy sửa chi tiết.
+    if ($('#guiCanva')) $('#guiCanva').onclick = async () => {
+      const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.9));
+      const f = new File([blob], `${b.id}_bia.jpg`, { type: 'image/jpeg' });
+      try {
+        if (navigator.canShare && navigator.canShare({ files: [f] })) { await navigator.share({ files: [f] }); return; }
+      } catch (e) { if (e.name === 'AbortError') return; }
+      const u = URL.createObjectURL(f); const el = document.createElement('a'); el.href = u; el.download = f.name; el.click(); setTimeout(() => URL.revokeObjectURL(u), 5000);
+      bao('Đã tải ảnh bìa về máy, mở bằng Canva để sửa');
+    };
+    // Ảnh bìa đã sửa ở Canva (hoặc ảnh bìa có sẵn): tải lên thay ảnh bìa.
+    if ($('#biaTuMay')) $('#biaTuMay').onchange = async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try {
+        const [id] = await xepAnhLayMa([f], b.id, 'BIA', 'BAI_DANG');
+        const a = await anhCho(id); if (a) thuAnhBD.set(id, a.base64);
+        suaBai(db, b, { ...doc(), anhBia: id }); luu();
+        bao('Đã thay ảnh bìa' + (daKetNoi() ? ', đang gửi lên Drive' : ''));
+        chayDongBo();
+        manMotBai(b.id);
+      } catch (err) { bao('Không đọc được ảnh: ' + err.message); }
+    };
+  }
+  if ($('#biaHienTai')) layAnhDayDu(b.anhBia).then((a) => { $('#biaHienTai').src = `data:${a.loai || 'image/jpeg'};base64,${a.base64}`; }).catch(() => { $('#biaTT').textContent = 'Có ảnh bìa, chưa tải được để xem (cần mạng).'; });
+  // Gemini, Canva: máy chủ trả { bai, anhId, base64 } hoặc { bai, url }.
+  const goiAnhBia = async (nut, action, data, chu) => {
+    if (!daKetNoi()) return bao('Bản thử: cần nối máy chủ');
+    if (!navigator.onLine) return bao('Cần mạng');
+    suaBai(db, b, doc()); luu();
+    const n = await anhChuaGui(b);
+    if (n) { chayDongBo(); return bao(`Còn ${n} ảnh đang gửi lên Drive, chờ gửi xong rồi làm`); }
+    const cu = nut.textContent; nut.disabled = true; nut.textContent = chu;
+    const cuaSo = action === 'canvaMo' ? window.open('', '_blank') : null;
+    dangGoiAI = true;
+    let x = null;
+    try {
+      boChoGui(db, b.id);
+      x = await goi(action, { id: b.id, ...data });
+      nhanBai(db, x.bai); luu();
+      if (x.anhId && x.base64) { anhDayDu.set(x.anhId, { base64: x.base64, loai: x.loai }); bao('Đã thay ảnh bìa, Thầy xem lại rồi duyệt'); }
+      if (x.url) { if (cuaSo) cuaSo.location = x.url; else location.href = x.url; }
+    } catch (e) { if (cuaSo) cuaSo.close(); bao(e.message); }
+    dangGoiAI = false;
+    nut.disabled = false; nut.textContent = cu;
+    if (location.hash === '#' + b.id && !(x && x.url && !cuaSo)) manMotBai(b.id);
+  };
+  if ($('#geminiBia')) $('#geminiBia').onclick = () => {
+    if (!(b.dsAnh || []).length && !b.anhBia) return bao('Thêm ảnh công trình trước');
+    const kieu = $('#gmKieu').value;
+    if (kieu === 'CHU' && !$('#bTieuDe').value.trim()) return bao('Ghi chữ trên bìa trước');
+    goiAnhBia($('#geminiBia'), 'geminiBia', { kieu, anhId: (b.dsAnh || [])[0], tieuDe: $('#bTieuDe').value.trim(), phuDe: $('#bPhuDe').value.trim() }, 'Gemini đang làm…');
+  };
+  if ($('#canvaMo')) $('#canvaMo').onclick = () => {
+    if (b.canva && b.canva.sua && confirm('Mở lại thiết kế Canva đã tạo? (Huỷ để tạo thiết kế mới từ ảnh bìa hiện tại)')) { window.open(b.canva.sua, '_blank'); return; }
+    if (!b.anhBia && !(b.dsAnh || []).length) return bao('Chưa có ảnh để đưa sang Canva');
+    goiAnhBia($('#canvaMo'), 'canvaMo', {}, 'Đang đưa sang Canva…');
+  };
+  if ($('#canvaLay')) $('#canvaLay').onclick = () => goiAnhBia($('#canvaLay'), 'canvaLay', {}, 'Đang lấy ảnh…');
+  if ($('#ptThuVien')) $('#ptThuVien').onclick = () => { suaBai(db, b, doc()); luu(); moThuVienPT(b); };
+  // AI viết từng nhóm kênh (máy chủ chờ tối đa khoảng 60 giây mỗi lần).
+  if ($('#vietAI')) $('#vietAI').onclick = async () => {
+    suaBai(db, b, doc()); luu();
+    const loi = kiemTruocKhiViet(b);
+    if (loi) return bao(loi);
+    if (!daKetNoi()) return bao('Bản thử: cần nối máy chủ để AI viết bài');
+    if (!navigator.onLine) return bao('Cần mạng để AI viết bài');
+    if (await anhChuaGui(b)) bao('Ảnh còn đang gửi lên Drive, AI viết không kèm ảnh chưa gửi');
+    const nut = $('#vietAI'); nut.disabled = true;
+    dangGoiAI = true;
+    const nhom = nhomViet(b.kenh);
+    let banMoi = b;
+    try {
+      for (let i = 0; i < nhom.length; i++) {
+        if ($('#tienDoAI')) $('#tienDoAI').textContent = `AI đang viết ${nhom[i].map((k) => KENH[k]).join(' + ')} (${i + 1}/${nhom.length})…`;
+        boChoGui(db, b.id);
+        banMoi = await goi('vietBai', { bai: i === 0 ? banMoi : undefined, id: b.id, kenh: nhom[i] });
+        nhanBai(db, banMoi); ghi(db);
+      }
+      bao('AI viết xong, Thầy xem và duyệt');
+    } catch (e) { bao(e.message); if ($('#tienDoAI')) $('#tienDoAI').textContent = e.message; }
+    dangGoiAI = false;
+    luu();
+    if (location.hash === '#' + b.id) manMotBai(b.id);
+  };
+  const goiVoiBai = async (action, data, thanhCong) => {
+    if (!daKetNoi()) return bao('Bản thử: cần nối máy chủ');
+    if (!navigator.onLine) return bao('Cần mạng');
+    dangGoiAI = true;
+    try { boChoGui(db, b.id); const x = await goi(action, data); nhanBai(db, x); luu(); bao(thanhCong(x)); } catch (e) { bao(e.message); }
+    dangGoiAI = false;
+    if (location.hash === '#' + b.id) manMotBai(b.id);
+  };
+  if ($('#duyet')) $('#duyet').onclick = async () => {
+    suaBai(db, b, doc()); luu();
+    const n = await anhChuaGui(b);
+    if (n) { chayDongBo(); return bao(`Còn ${n} ảnh đang gửi lên Drive, chờ gửi xong rồi duyệt`); }
+    goiVoiBai('duyetBai', { bai: b }, () => 'Đã duyệt' + (b.ngayDang ? `, đăng ngày ${ddmm(b.ngayDang)}` : ''));
+  };
+  if ($('#boDuyet')) $('#boDuyet').onclick = () => goiVoiBai('boDuyet', { id: b.id }, () => 'Đã bỏ duyệt');
+  if ($('#dangNgay')) $('#dangNgay').onclick = () => {
+    $('#dangNgay').disabled = true; $('#dangNgay').textContent = 'Đang đăng…';
+    goiVoiBai('dangBai', { id: b.id }, (x) => (coLoi(x) ? 'Có kênh đăng lỗi, xem chi tiết' : 'Đã đăng'));
+  };
+  v.querySelectorAll('[data-tay]').forEach((x) => {
+    x.onclick = () => {
+      const link = prompt('Dán link bài đã đăng (bỏ trống cũng được)') || '';
+      goiVoiBai('daDangTay', { id: b.id, kenh: x.dataset.tay, link }, () => 'Đã ghi đăng tay');
+    };
+  });
+  v.querySelectorAll('[data-chep]').forEach((x) => {
+    x.onclick = async () => { try { await navigator.clipboard.writeText(chuDeChep(b, x.dataset.chep)); bao('Đã chép chữ'); } catch { bao('Không chép được'); } };
+  });
+  v.querySelectorAll('[data-chia-se]').forEach((x) => { x.onclick = () => chiaSeBai(b, x.dataset.chiaSe); });
+  if ($('#xoaBai')) $('#xoaBai').onclick = () => {
+    if (!confirm('Xoá bài này?')) return;
+    xoaBai(db, b); luu(); bao('Đã xoá bài'); location.hash = 'dang-bai';
+  };
+}
+
+// Đăng tay (TikTok): chia sẻ ảnh bìa + ảnh bài kèm chữ sang app TikTok, Zalo… Máy không chia sẻ được file thì tải ảnh về.
+async function chiaSeBai(b, k) {
+  const ids = [b.anhBia, ...(b.dsAnh || [])].filter((x, i, a) => x && a.indexOf(x) === i).slice(0, 10);
+  const chu = chuDeChep(b, k);
+  try { await navigator.clipboard.writeText(chu); } catch { /* không có quyền chép */ }
+  try {
+    bao('Đang lấy ảnh…');
+    const files = [];
+    for (const [i, id] of ids.entries()) {
+      const a = await layAnhDayDu(id);
+      const bytes = Uint8Array.from(atob(a.base64), (c) => c.charCodeAt(0));
+      files.push(new File([bytes], `${b.id}-${i + 1}.jpg`, { type: a.loai || 'image/jpeg' }));
+    }
+    if (navigator.canShare && navigator.canShare({ files })) { await navigator.share({ files, text: chu }); return; }
+    files.forEach((f) => { const u = URL.createObjectURL(f); const el = document.createElement('a'); el.href = u; el.download = f.name; el.click(); setTimeout(() => URL.revokeObjectURL(u), 5000); });
+    bao('Đã tải ảnh về máy, chữ đã chép sẵn');
+  } catch (e) { if (e.name !== 'AbortError') bao('Không lấy được ảnh: ' + e.message); }
+}
+
+const boDauTV = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+// Thư viện phong thủy trên Drive của Thầy: chọn tài liệu → AI tìm đoạn (chép nguyên văn, máy chủ đối chiếu) hoặc Thầy tự bôi đen đoạn.
+async function moThuVienPT(b) {
+  if (!daKetNoi()) return bao('Bản thử: thư viện nằm trên Drive, cần nối máy chủ');
+  if (!navigator.onLine) return bao('Cần mạng để mở thư viện');
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const loi = (e) => { d.innerHTML = `<h2>Thư viện phong thủy</h2><p class="muted">${esc(e.message)}</p><div class="actions"><button id="dong">Đóng</button></div>`; $('#dong', d).onclick = () => d.close(); };
+  d.innerHTML = '<h2>Thư viện phong thủy</h2><p class="muted">Đang mở thư viện…</p>';
+  d.showModal();
+  let ds;
+  try { ds = await goi('thuVienPT'); } catch (e) { return loi(e); }
+  const veDs = (loc = '') => {
+    const k = boDauTV(loc);
+    const hien = ds.filter((x) => !k || boDauTV(x.thuMuc + ' ' + x.ten).includes(k));
+    d.innerHTML = `<h2>Thư viện phong thủy</h2><input id="tvLoc" placeholder="Tìm tên tài liệu" value="${esc(loc)}">
+      ${hien.length ? hien.map((x) => `<button class="card tv-tl" data-tl="${esc(x.id)}"><span class="name">${esc(x.ten)}</span><span class="muted">${esc(x.thuMuc || 'Thư mục gốc')} · sửa ${ddmm(x.sua)}</span></button>`).join('') : '<p class="muted">Không có tài liệu đọc được (Google Docs, Word, PDF, .md, .txt).</p>'}
+      <div class="actions"><button id="dong">Đóng</button></div>`;
+    $('#tvLoc', d).oninput = (e) => { const v = e.target.value; veDs(v); const o = $('#tvLoc', d); o.focus(); o.setSelectionRange(v.length, v.length); };
+    $('#dong', d).onclick = () => d.close();
+    d.querySelectorAll('[data-tl]').forEach((x) => { x.onclick = () => moTL(ds.find((y) => y.id === x.dataset.tl)); });
+  };
+  const dung = (tl, doan) => {
+    const viTri = [...new Set(doan.map((x) => x.viTri).filter(Boolean))].join('; ');
+    // Đồng bộ trong lúc mở thư viện có thể đã thay bản bài trên máy: lấy bản mới nhất.
+    suaBai(db, timBai(db, b.id) || b, { nguonTL: tl.ten + (viTri ? ' – ' + viTri : ''), trichDan: doan.map((x) => x.trich.trim()).join('\n\n') }); luu();
+    d.close(); bao('Đã lấy đoạn tài liệu, Thầy ghi thêm chương/trang nếu cần'); manMotBai(b.id);
+  };
+  const moTL = (tl) => {
+    d.innerHTML = `<h2>${esc(tl.ten)}</h2><p class="muted">${esc(tl.thuMuc || 'Thư mục gốc')}</p>
+      <label class="f">Chủ đề cần tìm</label><input id="tvChuDe" value="${esc(b.chuDe)}" placeholder="Vd: cửa chính đối cầu thang">
+      <div class="actions"><button id="tvAI" class="btn-chinh">AI tìm đoạn liên quan</button><button id="tvDoc">Xem toàn văn, tự chọn</button></div>
+      <div id="tvKQ"></div><div class="actions"><button id="tvLai">← Tài liệu khác</button><button id="dong">Đóng</button></div>`;
+    $('#dong', d).onclick = () => d.close();
+    $('#tvLai', d).onclick = () => veDs();
+    const kq = $('#tvKQ', d);
+    $('#tvAI', d).onclick = async () => {
+      const chuDe = $('#tvChuDe', d).value.trim();
+      if (!chuDe) return bao('Ghi chủ đề cần tìm');
+      kq.innerHTML = '<p class="muted">AI đang đọc tài liệu…</p>';
+      dangGoiAI = true;
+      try {
+        const r = await goi('timDoanPT', { id: tl.id, chuDe });
+        kq.innerHTML = `${r.doan.length ? r.doan.map((x, i) => `<label class="card cham-dong"><input type="checkbox" data-doan="${i}" ${i === 0 ? 'checked' : ''}><span>${x.viTri ? `<b>${esc(x.viTri)}</b><br>` : ''}${esc(x.trich).replace(/\n/g, '<br>')}<br><span class="muted">${esc(x.viSao)}</span></span></label>`).join('') : '<p class="muted">Tài liệu này không có đoạn nào nói về chủ đề đó.</p>'}
+          ${r.boQua ? `<p class="note">Đã bỏ ${r.boQua} đoạn AI đưa ra nhưng không khớp nguyên văn tài liệu.</p>` : ''}
+          ${r.doan.length ? '<div class="actions"><button id="tvDung" class="btn-chinh">Dùng đoạn đã chọn</button></div>' : ''}`;
+        if ($('#tvDung', d)) $('#tvDung', d).onclick = () => {
+          const chon = [...kq.querySelectorAll('[data-doan]')].filter((x) => x.checked).map((x) => r.doan[Number(x.dataset.doan)]);
+          if (!chon.length) return bao('Chọn ít nhất 1 đoạn');
+          dung(tl, chon);
+        };
+      } catch (e) { kq.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+      dangGoiAI = false;
+    };
+    $('#tvDoc', d).onclick = async () => {
+      kq.innerHTML = '<p class="muted">Đang mở tài liệu…</p>';
+      try {
+        const t = await goi('docTaiLieu', { id: tl.id });
+        kq.innerHTML = `<p class="muted">Bôi đen đoạn cần dùng rồi bấm "Lấy đoạn đang bôi đen".${t.cat ? ' Tài liệu dài, chỉ hiện phần đầu.' : ''}</p>
+          <div class="tv-chu" id="tvChu">${esc(t.chu)}</div>
+          <div class="actions"><button id="tvBoiDen" class="btn-chinh">Lấy đoạn đang bôi đen</button></div>`;
+        $('#tvBoiDen', d).onclick = () => {
+          const sel = String(window.getSelection() || '').trim();
+          if (sel.length < 20) return bao('Bôi đen đoạn dài hơn một chút');
+          dung(tl, [{ trich: sel, viTri: '' }]);
+        };
+      } catch (e) { kq.innerHTML = `<p class="muted">${esc(e.message)}</p>`; }
+    };
+  };
+  veDs();
+}
+
+async function moChonAnhCT(b) {
+  if (!daKetNoi()) return bao('Bản thử: ảnh công trình nằm trên Drive, cần nối máy chủ');
+  if (!navigator.onLine) return bao('Cần mạng để xem ảnh công trình');
+  const d = $('#sheet');
+  if (d.open) d.close();
+  d.innerHTML = '<h2>Chọn ảnh công trình</h2><p class="muted">Đang tải ảnh…</p>';
+  d.showModal();
+  let ds = [];
+  try { ds = await goi('anhThu', { ma: b.maCongTrinh }); } catch (e) { d.innerHTML = `<h2>Chọn ảnh công trình</h2><p class="muted">${esc(e.message)}</p><div class="actions"><button id="dong">Đóng</button></div>`; $('#dong', d).onclick = () => d.close(); return; }
+  ds.forEach((x) => { if (x.thu) thuAnhBD.set(x.id, x.thu); });
+  const chon = new Set(b.dsAnh || []);
+  d.innerHTML = `<h2>Chọn ảnh công trình</h2><p class="muted">${ds.length ? 'Bấm ảnh để chọn hoặc bỏ. Ảnh chọn trước đứng trước.' : 'Công trình chưa có ảnh nào trên Drive.'}</p>
+    <div class="bd-anh">${ds.map((x) => `<button class="bd-o ${chon.has(x.id) ? 'on' : ''}" data-id="${esc(x.id)}">${x.thu ? `<img src="data:image/jpeg;base64,${x.thu}" alt="">` : '<span class="muted">Không có ảnh nhỏ</span>'}<span class="muted">${ddmm(String(x.luc).slice(0, 10))}</span></button>`).join('')}</div>
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Xong</button></div>`;
+  const thuTu = [...(b.dsAnh || [])];
+  d.querySelectorAll('[data-id]').forEach((x) => {
+    x.onclick = () => {
+      const id = x.dataset.id;
+      const i = thuTu.indexOf(id);
+      if (i >= 0) thuTu.splice(i, 1); else thuTu.push(id);
+      x.classList.toggle('on', i < 0);
+    };
+  });
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => { d.close(); suaBai(db, timBai(db, b.id) || b, { dsAnh: thuTu }); luu(); manMotBai(b.id); };
 }
 
 function taoMau() {
@@ -2899,6 +3442,14 @@ function taoMau() {
     { noiDung: 'Tường xây, vị trí tường', dat: true }, { noiDung: 'Chi tiết chờ liên kết kết cấu kế cận', dat: true },
     { noiDung: 'Trát phẳng, thẳng góc, không nứt', dat: false, ghiChu: 'Má cửa WC2 trát lệch 1cm' }] }, 'KHA');
   danhGia(db, timThauTheoTen(db, 'Mẫu: Thầu thô Hưng'), { maCongTrinh: 'MAU-CU', ngay: truoc(90), chatLuong: 4, tienDo: 3, phoiHop: 4, ghiChu: 'Công trình trước: làm chắc, hơi chậm' }, 'THAY');
+  // Bài đăng mẫu: 1 bài AI đã viết chờ Thầy duyệt, 1 bài nháp chưa viết. Chữ mẫu, không phải bài thật.
+  ct.choDangAnh = true;
+  const bd1 = taoBai(db, { loai: 'CAM_HUNG', chuDe: 'Mẫu: Vì sao nên chốt mẫu vật liệu trước khi thi công', ngayDang: truoc(-1) }, 'DUC');
+  suaBai(db, bd1, { tieuDeBia: 'Chốt mẫu trước, nhà lên đúng hẹn', phuDeBia: 'Kinh nghiệm từ công trình KAS', baiViet: {
+    fb: 'Mẫu: Chọn gạch, sàn, đá khi thợ đã đến chân công trình là lúc dễ chậm tiến độ nhất.\n\nỞ KAS, mỗi mẫu vật liệu có hạn chốt trước ngày thi công [Thầy điền: số ngày]. Chủ nhà xem mẫu, đồng ý ngay trên link riêng, thợ đến là có vật tư.\n\nAnh chị đang chuẩn bị làm nhà? Nhắn Fanpage để KAS gửi danh sách mẫu cần chốt theo từng giai đoạn.\n\n#KASHouzing #LamNha #NoiThat',
+    ig: 'Mẫu: Chốt mẫu vật liệu trước, nhà lên đúng hẹn. Nhắn KAS để nhận danh sách mẫu cần chốt.\n\n#KASHouzing #LamNha #NoiThat #HaNoi #ThietKeNoiThat',
+    tt: { tieuDe: 'Mẫu: Chốt mẫu sớm, nhà xong sớm', chuThich: 'Mẫu: Kinh nghiệm chốt vật liệu trước khi thợ vào. #KASHouzing #LamNha #NoiThat', kichBan: 'Mẫu: Cảnh 1 | Thợ chờ vật tư | "Thợ đến mà chưa có gạch?" | Lời đọc mở đầu' } } });
+  taoBai(db, { loai: 'DU_AN', maCongTrinh: ct.ma, chuDe: 'Mẫu: Căn hộ Xa La sau nội thất', ngayDang: truoc(-3) }, 'THAY');
   luu();
 }
 

@@ -11,7 +11,7 @@
 
 const TAB = {
   NguoiDung: ['email', 'ten', 'vaiTro', 'congTrinh', 'khoa', 'hoatDong', 'taoLuc', 'hetHan'],
-  CongTrinh: ['ma', 'ten', 'loai', 'khoiCong', 'lich', 'chuNha', 'maLinkChuNha', 'thuMucDrive', 'taoLuc', 'maKhach'],
+  CongTrinh: ['ma', 'ten', 'loai', 'khoiCong', 'lich', 'chuNha', 'maLinkChuNha', 'thuMucDrive', 'taoLuc', 'maKhach', 'choDangAnh'],
   Khach: ['ma', 'ten', 'sdt', 'diaChi', 'nguon', 'nguoiGioiThieu', 'sdtGioiThieu', 'hoaHong', 'nhuCau', 'trangThai', 'lyDo',
     'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'ngayVao'],
   KeHoach: ['ma', 'id', 'thuTu', 'nhom', 'hangMuc', 'dauViec', 'dvt', 'khoiLuong', 'soNgay', 'diSau', 'moc',
@@ -40,17 +40,22 @@ const TAB = {
   DanhGia: ['id', 'maThau', 'maCongTrinh', 'ngay', 'chatLuong', 'tienDo', 'phoiHop', 'ghiChu', 'nguoi', 'capNhatLuc'],
   // Phiếu nghiệm thu từng việc: checklist, tồn tại cần sửa (hạn, ngày sửa). Không có tiền: giám sát ghi được.
   NghiemThu: ['id', 'maCongTrinh', 'viec', 'ngay', 'nguoi', 'checklist', 'tonTai', 'ghiChu', 'soAnh', 'xoa', 'capNhatLuc'],
+  // Bài đăng mạng xã hội, website. AI viết, Thầy duyệt, máy chủ đăng. ketQua, nguoiDuyet, duyetLuc, lanViet chỉ máy chủ ghi.
+  BaiDang: ['id', 'loai', 'chuDe', 'ghiChu', 'maCongTrinh', 'nguonTL', 'trichDan', 'kenh', 'ngayDang', 'gioDang', 'baiViet', 'dsAnh', 'anhBia',
+    'mauBia', 'tieuDeBia', 'phuDeBia', 'trangThai', 'yKien', 'lanViet', 'nguoiDuyet', 'duyetLuc', 'ketQua', 'nguoiTao', 'xoa', 'taoLuc', 'capNhatLuc', 'canva'],
+  // Mỗi lần gọi Claude API: số token để Thầy theo dõi chi phí AI.
+  ChiAI: ['luc', 'viec', 'model', 'vao', 'ra', 'timWeb', 'usd'],
   CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
 const laKhach = (ma) => /^KH-/.test(String(ma));
 // Sổ khách (KH-), hợp đồng (HD-), thu chi (TC-, TT-) và chi công ty (CTY) chỉ văn phòng thấy, kể cả nhật ký của chúng.
-const laRieng = (ma) => /^(KH|HD|TC|TT)-/.test(String(ma)) || String(ma) === 'CTY';
+const laRieng = (ma) => /^(KH|HD|TC|TT|BD)-/.test(String(ma)) || String(ma) === 'CTY';
 
 // ---------- Cài đặt: chạy 1 lần trong trình soạn thảo Apps Script ----------
 function setup() {
@@ -96,6 +101,12 @@ function doPost(e) {
 }
 
 function doGet(e) {
+  // Canva chuyển về sau khi Thầy bấm Cho phép.
+  if (e && e.parameter && e.parameter.code && e.parameter.state) {
+    let tb;
+    try { tb = canvaNhanMa(e); } catch (x) { tb = x.message; }
+    return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width"><p style="font:18px sans-serif;padding:24px">' + String(tb).replace(/</g, '&lt;') + '</p>');
+  }
   const maThau = e && e.parameter && e.parameter.thau;
   if (maThau) return json(xemChoThau(maThau));
   const ma = e && e.parameter && e.parameter.xem;
@@ -145,7 +156,7 @@ function demAnh(n) {
   const tu = Utilities.formatDate(new Date(Date.now() - 14 * 864e5), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd');
   const dem = {};
   docBang('Anh').forEach((a) => {
-    if (a.loai === 'CHUNG_TU' || !duocXem(n, a.ma)) return;
+    if (a.loai === 'CHUNG_TU' || a.loai === 'BAI_DANG' || !duocXem(n, a.ma)) return;
     const d = a.luc instanceof Date ? a.luc : new Date(a.luc);
     if (isNaN(d)) return;
     const ngay = Utilities.formatDate(d, 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd');
@@ -273,7 +284,10 @@ const HANH_DONG = {
     const anh = demAnh(n);
     const nghiemThu = docBang('NghiemThu').filter((x) => duocXem(n, x.maCongTrinh))
       .map((x) => ({ ...x, checklist: x.checklist || [], tonTai: x.tonTai || [], soAnh: Number(x.soAnh) || 0 }));
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
+    const baiDang = vp ? docBang('BaiDang').map((b) => ({ ...b, kenh: b.kenh || [], dsAnh: b.dsAnh || [], baiViet: b.baiViet || {}, ketQua: b.ketQua || {}, lanViet: Number(b.lanViet) || 0 })) : [];
+    const chiAI = vp ? docBang('ChiAI').map((r) => ({ luc: r.luc, viec: r.viec, model: r.model, usd: Number(r.usd) || 0 })) : [];
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI,
+      nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
   // Nhận hàng chờ từ máy, áp theo thứ tự. Mục đã nhận (theo idGui) thì bỏ qua.
@@ -303,15 +317,19 @@ const HANH_DONG = {
   // Ảnh đã nén trên máy, gửi base64. Lưu vào thư mục "Ảnh tiến độ" trong thư mục công trình.
   guiAnh: (n, data) => {
     const chungTu = data.loai === 'CHUNG_TU';
-    if (chungTu) canVanPhong(n);
+    const baiDang = data.loai === 'BAI_DANG';
+    if (chungTu || baiDang) canVanPhong(n);
     else if (!duocXem(n, data.ma)) throw new Error('Không có quyền với công trình ' + data.ma);
+    if (baiDang && !/^BD-/.test(String(data.ma))) throw new Error('Ảnh bài đăng cần mã bài BD-');
     const daCo = docBang('Anh').find((r) => r.id === data.id);
     if (daCo) return { fileId: daCo.fileId };
     // Chứng từ (ảnh chuyển khoản, hoá đơn) để riêng ngoài thư mục công trình, vì thư mục công trình có thể đã chia sẻ cho giám sát.
-    const thuMuc = chungTu ? timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Chứng từ'), String(data.ma).replace(/[^\w-]/g, '')) : thuMucAnh(data.ma);
+    const sach = String(data.ma).replace(/[^\w-]/g, '');
+    const thuMuc = chungTu ? timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Chứng từ'), sach)
+      : baiDang ? timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Bài đăng'), sach) : thuMucAnh(data.ma);
     const blob = Utilities.newBlob(Utilities.base64Decode(data.base64), 'image/jpeg', data.tenFile);
     const f = thuMuc.createFile(blob);
-    themDong('Anh', { id: data.id, ma: data.ma, viec: data.viec, luc: new Date().toISOString(), tenFile: data.tenFile, fileId: f.getId(), nguoi: n.email, loai: chungTu ? 'CHUNG_TU' : '' });
+    themDong('Anh', { id: data.id, ma: data.ma, viec: data.viec, luc: new Date().toISOString(), tenFile: data.tenFile, fileId: f.getId(), nguoi: n.email, loai: chungTu ? 'CHUNG_TU' : baiDang ? 'BAI_DANG' : '' });
     return { fileId: f.getId() };
   },
 
@@ -385,7 +403,7 @@ function apDung(n, op) {
   if (op.loai === 'CT_SUA') {
     canVanPhong(n);
     const sua = {};
-    ['ten', 'khoiCong', 'lich', 'chuNha', 'thuMucDrive'].forEach((k) => { if (op.sua && k in op.sua) sua[k] = op.sua[k]; });
+    ['ten', 'khoiCong', 'lich', 'chuNha', 'thuMucDrive', 'choDangAnh'].forEach((k) => { if (op.sua && k in op.sua) sua[k] = op.sua[k]; });
     if ('thuMucDrive' in sua) sua.thuMucDrive = layIdThuMuc(sua.thuMucDrive);
     if (!capNhatDong('CongTrinh', (r) => r.ma === op.ma, sua, true)) throw new Error('Không có công trình ' + op.ma);
     return;
@@ -548,6 +566,11 @@ function apDung(n, op) {
       checklist: x.checklist || [], tonTai, ghiChu: String(x.ghiChu || '').slice(0, 2000), soAnh: Number(x.soAnh) || 0, xoa: x.xoa || '', capNhatLuc: op.luc });
     return;
   }
+  if (op.loai === 'BD') {
+    canVanPhong(n);
+    apBai(n, op.b, op.luc);
+    return;
+  }
   if (op.loai === 'CAI_DAT') {
     canVanPhong(n);
     if (!/^[a-zA-Z]{1,40}$/.test(String(op.khoa))) throw new Error('Tên cài đặt không hợp lệ');
@@ -560,6 +583,748 @@ function apDung(n, op) {
     return;
   }
   throw new Error('Loại thay đổi lạ: ' + op.loai);
+}
+
+// ---------- Đăng bài: AI viết, Thầy duyệt, máy chủ đăng ----------
+// Khoá bí mật để trong Cài đặt dự án → Thuộc tính tập lệnh (Script properties), KHÔNG để trong mã hay bảng CaiDat:
+//   ANTHROPIC_API_KEY · FB_PAGE_ID, FB_PAGE_TOKEN · IG_USER_ID · WP_URL, WP_USER, WP_APP_PASSWORD
+//   GEMINI_API_KEY · CANVA_CLIENT_ID, CANVA_CLIENT_SECRET (máy chủ tự lưu CANVA_REFRESH khi Thầy bấm Nối Canva) · PT_FOLDER_ID (nếu thư viện phong thủy để chỗ khác)
+// Không bài nào lên mạng khi Thầy chưa bấm Duyệt (máy chủ tự kiểm, kể cả bài hẹn giờ).
+const KENH_BD = ['FB', 'IG', 'TT', 'WEB'];
+const LOAI_BD = { DU_AN: 'Dự án đã làm', CAM_HUNG: 'Cảm hứng, động lực', PHONG_THUY: 'Phong thủy', KINH_NGHIEM: 'Kinh nghiệm làm nhà' };
+const TEN_LOAI_CT = { TK: 'Thiết kế', XM: 'Xây mới', CT: 'Cải tạo', NTCT: 'Nội thất có cải tạo thô', NT: 'Nội thất' };
+// Giá Claude API (USD / 1 triệu token vào, ra), tra trang giá chính thức ngày 13/11/2026. Tìm web 10 USD / 1.000 lượt.
+const GIA_AI = { 'claude-opus-5-5': [4, 20], 'claude-sonnet-5-5': [2, 10] };
+// Thầy chọn Sonnet 5.5 ngày 13/11/2026 (rẻ bằng nửa Opus). Đổi được trong Cài đặt đăng bài.
+const MODEL_MAC_DINH = 'claude-sonnet-5-5';
+const GRAPH = 'https://graph.facebook.com/v25.0';
+// Máy gửi lên không được tự đặt các trường này.
+const TRUONG_MAY_CHU = ['trangThai', 'ketQua', 'nguoiDuyet', 'duyetLuc', 'lanViet', 'canva'];
+const TRUONG_NOI_DUNG = ['baiViet', 'dsAnh', 'anhBia'];
+
+const bi = (k) => PropertiesService.getScriptProperties().getProperty(k) || '';
+const caiDatMay = () => Object.fromEntries(docBang('CaiDat').map((r) => [r.khoa, String(r.giaTri)]));
+const giong = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+
+// Ghi bài từ máy gửi lên. Sửa nội dung sau khi đã duyệt thì phải duyệt lại; bài đã đăng chỉ sửa được ý kiến, xoá.
+function apBai(n, b, luc) {
+  if (!/^BD-/.test(String(b && b.id))) throw new Error('Mã bài phải bắt đầu bằng BD-');
+  const cu = docBang('BaiDang').find((r) => r.id === b.id);
+  const moi = Object.assign({}, b);
+  TRUONG_MAY_CHU.forEach((k) => { delete moi[k]; });
+  if ('kenh' in moi) moi.kenh = (moi.kenh || []).filter((k) => KENH_BD.indexOf(k) >= 0);
+  if (moi.loai && !LOAI_BD[moi.loai]) throw new Error('Loại bài không hợp lệ');
+  if (cu && cu.trangThai === 'DA_DANG') {
+    const giu = { yKien: moi.yKien, xoa: moi.xoa };
+    Object.keys(moi).forEach((k) => { if (!(k in giu)) delete moi[k]; });
+    Object.keys(giu).forEach((k) => { if (giu[k] === undefined) delete moi[k]; });
+  }
+  if (!cu) {
+    moi.trangThai = moi.baiViet && Object.keys(moi.baiViet).length ? 'CHO_DUYET' : 'NHAP';
+    moi.nguoiTao = n.vaiTro;
+    moi.taoLuc = moi.taoLuc || luc;
+    moi.ketQua = {}; moi.lanViet = 0;
+  } else if (cu.trangThai === 'DUYET' && TRUONG_NOI_DUNG.some((k) => k in moi && !giong(moi[k], cu[k]))) {
+    Object.assign(moi, { trangThai: 'CHO_DUYET', nguoiDuyet: '', duyetLuc: '' });
+  } else if (cu.trangThai === 'NHAP' && moi.baiViet && Object.keys(moi.baiViet).length) {
+    moi.trangThai = 'CHO_DUYET';
+  }
+  moi.capNhatLuc = luc;
+  capNhatDong('BaiDang', (r) => r.id === b.id, moi);
+  return docBang('BaiDang').find((r) => r.id === b.id);
+}
+
+function timBai(id) {
+  const b = docBang('BaiDang').find((r) => r.id === id && !r.xoa);
+  if (!b) throw new Error('Không tìm thấy bài ' + id);
+  b.kenh = b.kenh || []; b.dsAnh = b.dsAnh || []; b.baiViet = b.baiViet || {}; b.ketQua = b.ketQua || {};
+  return b;
+}
+const traBai = (b) => Object.assign({}, b, { lanViet: Number(b.lanViet) || 0 });
+
+// Dữ kiện công trình gửi cho AI: loại hình, hạng mục, thời gian. Không tên công trình (hay có tên chủ nhà), không địa chỉ, không tiền.
+function duKienCongTrinh(ma) {
+  if (!ma) return '';
+  const ct = docBang('CongTrinh').find((c) => c.ma === ma);
+  if (!ct) return '';
+  const vs = docBang('KeHoach').filter((v) => v.ma === ma);
+  const nhom = [];
+  vs.forEach((v) => { const g = String(v.nhom || '').replace(/\s*\(.*\)\s*$/, ''); if (g && nhom.indexOf(g) < 0) nhom.push(g); });
+  const xong = vs.filter((v) => Number(v.phanTram) >= 100).length;
+  const bd = vs.map((v) => (v.thucTe || {}).batDau).filter(Boolean).sort()[0];
+  const kt = vs.map((v) => (v.thucTe || {}).ketThuc).filter(Boolean).sort().pop();
+  const dong = ['Loại hình: ' + (TEN_LOAI_CT[ct.loai] || ct.loai), 'Các nhóm hạng mục: ' + nhom.join(', ')];
+  if (vs.length && xong === vs.length && bd && kt) dong.push('Đã hoàn thành. Thi công thực tế từ ' + bd + ' đến ' + kt + ' (' + (Math.round((Date.parse(kt) - Date.parse(bd)) / 864e5) + 1) + ' ngày lịch).');
+  else dong.push('Đang thi công: xong ' + xong + '/' + vs.length + ' đầu việc.');
+  return dong.join('\n');
+}
+
+const HE_THONG_VIET = [
+  'Bạn viết nội dung cho KAS Houzing (Công ty TNHH KAS Việt Nam): tư vấn thiết kế, thi công trọn gói kiến trúc, xây dựng và nội thất nhà ở, phân khúc trung–cao cấp, ở Hà Nội và các tỉnh lân cận; KAS có tư vấn phong thủy nhà ở.',
+  'Giọng văn: chuyên nghiệp, gần gũi, rõ ràng, tiếng Việt tự nhiên. Không sáo rỗng, không phóng đại, không dùng lời quảng cáo kiểu "số 1", "rẻ nhất", "cam kết 100%".',
+  'Quy tắc bắt buộc:',
+  '1. Chỉ dùng dữ kiện có trong tin nhắn. Không bịa số liệu (giá, diện tích, thời gian, số công trình, số năm kinh nghiệm), không bịa tên người, địa danh, chứng nhận, giải thưởng. Cần một con số mà dữ kiện không có thì viết [Thầy điền: nội dung cần điền].',
+  '2. Không nêu tên, số điện thoại, địa chỉ, số nhà của chủ nhà; không nêu giá trị hợp đồng.',
+  '3. Phong thủy: chỉ diễn giải đúng đoạn TÀI LIỆU PHONG THỦY được đưa, ghi tên nguồn ở cuối bài; không thêm kiến thức ngoài đoạn đó, không trộn trường phái khác. Không hứa hẹn kết quả (giàu có, sức khỏe, may mắn, thăng tiến); dùng cách nói tư vấn như "theo [nguồn]...", "gia chủ có thể cân nhắc...".',
+  '4. Ảnh đính kèm là ảnh thật công trình KAS. Chỉ tả những gì thấy rõ trong ảnh; không chắc vật liệu, thương hiệu thì không nêu.',
+  '5. Kết bài mời liên hệ nhẹ nhàng (nhắn Fanpage hoặc để lại số điện thoại), không gây áp lực.',
+  'Từng kênh:',
+  '- fb (Facebook Fanpage): 120–250 chữ, câu mở đầu gây chú ý, đoạn ngắn dễ đọc trên điện thoại, tối đa 3 biểu tượng cảm xúc, 3–5 hashtag cuối bài, có #KASHouzing.',
+  '- ig (Instagram): bản ngắn của bài Facebook, 60–120 chữ, 5–10 hashtag cuối bài.',
+  '- tt (TikTok): tieuDe dưới 60 ký tự; chuThich 40–100 chữ kèm 3–5 hashtag; kichBan 5–8 cảnh cho video 30–45 giây, mỗi cảnh một dòng: ảnh hoặc cảnh quay | chữ trên màn hình | lời đọc.',
+  '- web (bài website, mục Chia sẻ): tieuDe dưới 65 ký tự có từ khóa chính; moTa 140–160 ký tự; noiDung 800–1200 chữ, chia mục bằng dòng bắt đầu "## ", đoạn ngắn, trả lời thẳng câu khách hay hỏi, cuối bài có mục "## Hỏi đáp" 2–3 câu; tuKhoa gồm từ khóa chính và 3–5 từ khóa phụ.',
+  '- tieuDeBia: tiêu đề in lên ảnh bìa, tối đa 8 chữ; phuDeBia: dòng phụ tối đa 10 chữ.',
+].join('\n');
+
+function luocDo(kenh, coBia) {
+  const chu = { type: 'string' };
+  const p = {}; const r = [];
+  if (kenh.indexOf('FB') >= 0) { p.fb = chu; r.push('fb'); }
+  if (kenh.indexOf('IG') >= 0) { p.ig = chu; r.push('ig'); }
+  if (kenh.indexOf('TT') >= 0) {
+    p.tt = { type: 'object', properties: { tieuDe: chu, chuThich: chu, kichBan: chu }, required: ['tieuDe', 'chuThich', 'kichBan'], additionalProperties: false }; r.push('tt');
+  }
+  if (kenh.indexOf('WEB') >= 0) {
+    p.web = { type: 'object', properties: { tieuDe: chu, moTa: chu, noiDung: chu, tuKhoa: { type: 'array', items: chu } }, required: ['tieuDe', 'moTa', 'noiDung', 'tuKhoa'], additionalProperties: false };
+    r.push('web');
+  }
+  if (coBia) { p.tieuDeBia = chu; p.phuDeBia = chu; r.push('tieuDeBia', 'phuDeBia'); }
+  return { type: 'object', properties: p, required: r, additionalProperties: false };
+}
+
+// Lời nhắn cho AI: dữ kiện, tài liệu, bài mẫu giọng văn (bài Thầy đã duyệt), chủ đề đã đăng để tránh lặp, ý kiến sửa.
+function loiNhanViet(b, kenh, tatCa) {
+  const d = ['LOẠI BÀI: ' + LOAI_BD[b.loai], 'CHỦ ĐỀ: ' + (b.chuDe || '(chưa có, tự chọn theo loại bài)')];
+  if (b.ghiChu) d.push('GHI CHÚ CỦA THẦY:\n' + b.ghiChu);
+  const dk = duKienCongTrinh(b.maCongTrinh);
+  if (dk) d.push('DỮ KIỆN CÔNG TRÌNH:\n' + dk);
+  if (b.loai === 'PHONG_THUY') d.push('TÀI LIỆU PHONG THỦY (nguồn: ' + b.nguonTL + '):\n"""\n' + b.trichDan + '\n"""');
+  const khac = tatCa.filter((x) => x.id !== b.id && !x.xoa);
+  const daDang = khac.filter((x) => x.chuDe).sort((a, c) => String(c.taoLuc).localeCompare(String(a.taoLuc))).slice(0, 15).map((x) => '- ' + x.chuDe);
+  if (daDang.length) d.push('CHỦ ĐỀ ĐÃ CÓ GẦN ĐÂY (tránh lặp ý, lặp câu mở đầu):\n' + daDang.join('\n'));
+  const mau = khac.filter((x) => (x.trangThai === 'DUYET' || x.trangThai === 'DA_DANG') && x.baiViet && x.baiViet.fb)
+    .sort((a, c) => String(c.duyetLuc).localeCompare(String(a.duyetLuc))).slice(0, 2).map((x) => '"""\n' + x.baiViet.fb + '\n"""');
+  if (mau.length && kenh.indexOf('WEB') < 0) d.push('BÀI MẪU GIỌNG VĂN (Thầy đã duyệt, học giọng, không chép ý):\n' + mau.join('\n'));
+  const cu = b.baiViet || {};
+  const banCu = {};
+  if (kenh.indexOf('FB') >= 0 && cu.fb) banCu.fb = cu.fb;
+  if (kenh.indexOf('IG') >= 0 && cu.ig) banCu.ig = cu.ig;
+  if (kenh.indexOf('TT') >= 0 && cu.tt) banCu.tt = cu.tt;
+  if (kenh.indexOf('WEB') >= 0 && cu.web) banCu.web = cu.web;
+  if (b.yKien && Object.keys(banCu).length) d.push('BẢN TRƯỚC:\n' + JSON.stringify(banCu) + '\nÝ KIẾN SỬA CỦA THẦY (làm đúng theo ý kiến này):\n' + b.yKien);
+  d.push('Viết cho: ' + kenh.map((k) => ({ FB: 'fb', IG: 'ig', TT: 'tt', WEB: 'web' }[k])).join(', ') + '.');
+  return d.join('\n\n');
+}
+
+function ghiChiAI(viec, model, usage) {
+  const u = usage || {};
+  const vao = (Number(u.input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0);
+  const ra = Number(u.output_tokens) || 0;
+  const tim = Number((u.server_tool_use || {}).web_search_requests) || 0;
+  const g = GIA_AI[model] || GIA_AI[MODEL_MAC_DINH];
+  const usd = Math.round(((vao * g[0] + ra * g[1]) / 1e6 + tim * 0.01) * 10000) / 10000;
+  themDong('ChiAI', { luc: new Date().toISOString(), viec, model, vao, ra, timWeb: tim, usd });
+}
+
+// Gọi Claude API (Messages). UrlFetchApp tối đa khoảng 60 giây mỗi lần gọi, nên mỗi lần chỉ viết 1 nhóm kênh.
+function goiClaude(viec, body) {
+  const key = bi('ANTHROPIC_API_KEY');
+  if (!key) throw new Error('Chưa có khoá Claude API. Thầy dán khoá vào Thuộc tính tập lệnh ANTHROPIC_API_KEY (xem hướng dẫn cài).');
+  const r = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+    headers: { 'x-api-key': key, 'anthropic-version': '2026-10-21', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+    payload: JSON.stringify(Object.assign({ fallbacks: 'default' }, body)),
+  });
+  const ma = r.getResponseCode();
+  let j = {};
+  try { j = JSON.parse(r.getContentText()); } catch (e) { /* trả về không phải JSON */ }
+  if (ma !== 200) throw new Error('Claude API lỗi ' + ma + ': ' + ((j.error && j.error.message) || r.getContentText().slice(0, 200)));
+  ghiChiAI(viec, j.model || body.model, j.usage);
+  if (j.stop_reason === 'refusal') throw new Error('AI không viết bài này. Thầy đổi cách diễn đạt chủ đề hoặc ghi chú rồi thử lại.');
+  if (j.stop_reason === 'max_tokens') throw new Error('Bài dài quá giới hạn, AI chưa viết xong. Thử lại.');
+  return j;
+}
+const chuCua = (j) => (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('');
+
+function anhChoAI(ids) {
+  const anh = docBang('Anh');
+  return ids.slice(0, 3).map((id) => anh.find((a) => a.id === id)).filter(Boolean).map((a) => {
+    try {
+      const blob = DriveApp.getFileById(a.fileId).getBlob();
+      return { type: 'image', source: { type: 'base64', media_type: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(blob.getBytes()) } };
+    } catch (e) { return null; }
+  }).filter(Boolean);
+}
+
+Object.assign(HANH_DONG, {
+  // Lưu bài rồi để AI viết các kênh được hỏi (mỗi lần 1 nhóm: FB+IG, TT hoặc WEB). Trả bài mới.
+  vietBai: (n, data) => {
+    canVanPhong(n);
+    if (data.bai) apBai(n, data.bai, new Date().toISOString());
+    const b = timBai(data.id || (data.bai && data.bai.id));
+    if (b.trangThai === 'DA_DANG') throw new Error('Bài đã đăng, không viết lại');
+    if (b.loai === 'PHONG_THUY' && (!String(b.trichDan || '').trim() || !String(b.nguonTL || '').trim())) throw new Error('Bài phong thủy cần đoạn tài liệu và tên nguồn');
+    const kenh = (data.kenh || b.kenh).filter((k) => b.kenh.indexOf(k) >= 0);
+    if (!kenh.length) throw new Error('Bài chưa chọn kênh');
+    const cd = caiDatMay();
+    const model = GIA_AI[cd.bdModel] ? cd.bdModel : MODEL_MAC_DINH;
+    const coBia = kenh.indexOf('FB') >= 0 || kenh.indexOf('IG') >= 0 || (kenh.indexOf('TT') >= 0 && b.kenh.indexOf('FB') < 0 && b.kenh.indexOf('IG') < 0);
+    const j = goiClaude('Viết bài ' + kenh.join('+'), {
+      model, max_tokens: kenh.indexOf('WEB') >= 0 ? 12000 : 6000, system: HE_THONG_VIET,
+      output_config: { effort: cd.bdEffort === 'medium' ? 'medium' : 'low', format: { type: 'json_schema', schema: luocDo(kenh, coBia) } },
+      messages: [{ role: 'user', content: anhChoAI(b.dsAnh).concat([{ type: 'text', text: loiNhanViet(b, kenh, docBang('BaiDang')) }]) }],
+    });
+    let ra;
+    try { ra = JSON.parse(chuCua(j)); } catch (e) { throw new Error('AI trả lời sai dạng, thử lại'); }
+    const bv = Object.assign({}, b.baiViet);
+    ['fb', 'ig', 'tt', 'web'].forEach((k) => { if (ra[k] !== undefined) bv[k] = ra[k]; });
+    const sua = { baiViet: bv, lanViet: (Number(b.lanViet) || 0) + 1, trangThai: 'CHO_DUYET', nguoiDuyet: '', duyetLuc: '', capNhatLuc: new Date().toISOString() };
+    if (coBia && ra.tieuDeBia && !b.tieuDeBia) { sua.tieuDeBia = ra.tieuDeBia; sua.phuDeBia = ra.phuDeBia || ''; }
+    capNhatDong('BaiDang', (r) => r.id === b.id, sua, true);
+    return traBai(timBai(b.id));
+  },
+
+  // AI tìm chủ đề: tìm web (tối đa 3 lượt) + công trình đã xong + chủ đề đã đăng. Không lưu, máy hiện để Thầy chọn.
+  timChuDe: (n, data) => {
+    canVanPhong(n);
+    const cd = caiDatMay();
+    const model = GIA_AI[cd.bdModel] ? cd.bdModel : MODEL_MAC_DINH;
+    const daCo = docBang('BaiDang').filter((x) => !x.xoa && x.chuDe).slice(-20).map((x) => '- ' + x.chuDe).join('\n');
+    const ct = docBang('CongTrinh').filter((c) => c.choDangAnh === true).map((c) => '- ' + c.ma + ': ' + duKienCongTrinh(c.ma).replace(/\n/g, '; ')).join('\n');
+    const loi = ['Gợi ý ' + (Number(data.soLuong) || 8) + ' chủ đề bài đăng cho KAS Houzing tuần này, ưu tiên: dự án đã làm, cảm hứng/động lực khi làm nhà, phong thủy nhà ở.',
+      'Tìm trên web xem khách làm nhà, làm nội thất ở Hà Nội đang quan tâm gì (mùa, xu hướng, câu hỏi hay gặp), chỉ dùng nguồn tìm được, không bịa số liệu.',
+      'Chủ đề phong thủy chỉ nêu tên vấn đề, ghi rõ "cần tài liệu Thầy", không tự luận giải.',
+      ct ? 'Công trình chủ nhà đã cho đăng ảnh:\n' + ct : 'Chưa có công trình nào cho đăng ảnh.',
+      daCo ? 'Chủ đề đã có (tránh lặp):\n' + daCo : '',
+      'Trả lời DUY NHẤT một khối JSON: {"chuDe":[{"tieuDe":"...","loai":"DU_AN|CAM_HUNG|PHONG_THUY|KINH_NGHIEM","viSao":"1 câu","kenh":["FB","IG","TT","WEB"],"maCongTrinh":"mã hoặc rỗng","nguon":"link nguồn hoặc rỗng"}]}'].filter(Boolean).join('\n\n');
+    let msgs = [{ role: 'user', content: loi }];
+    let j; let chu = '';
+    for (let lan = 0; lan < 3; lan++) {
+      j = goiClaude('Tìm chủ đề', { model, max_tokens: 8000, system: HE_THONG_VIET, output_config: { effort: 'low' },
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 3 }], messages: msgs });
+      chu += chuCua(j);
+      if (j.stop_reason !== 'pause_turn') break;
+      msgs = msgs.concat([{ role: 'assistant', content: j.content }]);
+    }
+    const a = chu.indexOf('{'); const z = chu.lastIndexOf('}');
+    try { return (JSON.parse(chu.slice(a, z + 1)).chuDe || []).filter((x) => x && x.tieuDe).map((x) => ({ ...x, loai: LOAI_BD[x.loai] ? x.loai : 'KINH_NGHIEM' })); }
+    catch (e) { throw new Error('AI trả lời sai dạng, thử lại'); }
+  },
+
+  // Chỉ Thầy duyệt. Duyệt xong bài đăng theo ngày giờ đã hẹn (hoặc bấm Đăng ngay).
+  duyetBai: (n, data) => {
+    if (n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy duyệt bài');
+    if (data.bai) apBai(n, data.bai, new Date().toISOString());
+    const b = timBai(data.id || data.bai.id);
+    if (b.trangThai === 'DA_DANG') return traBai(b);
+    const bv = b.baiViet;
+    const thieu = b.kenh.filter((k) => (k === 'FB' && !bv.fb) || (k === 'IG' && !bv.ig && !bv.fb) || (k === 'TT' && !bv.tt) || (k === 'WEB' && !(bv.web && bv.web.noiDung)));
+    if (!b.kenh.length) throw new Error('Bài chưa chọn kênh');
+    if (thieu.length) throw new Error('Chưa có nội dung cho ' + thieu.join(', '));
+    if (b.kenh.indexOf('IG') >= 0 && !b.anhBia && !b.dsAnh.length) throw new Error('Instagram cần ít nhất 1 ảnh');
+    capNhatDong('BaiDang', (r) => r.id === b.id, { trangThai: 'DUYET', nguoiDuyet: n.vaiTro, duyetLuc: new Date().toISOString(), capNhatLuc: new Date().toISOString() }, true);
+    return traBai(timBai(b.id));
+  },
+
+  boDuyet: (n, data) => {
+    if (n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy bỏ duyệt');
+    const b = timBai(data.id);
+    if (b.trangThai === 'DUYET') capNhatDong('BaiDang', (r) => r.id === b.id, { trangThai: 'CHO_DUYET', nguoiDuyet: '', duyetLuc: '', capNhatLuc: new Date().toISOString() }, true);
+    return traBai(timBai(b.id));
+  },
+
+  // Đăng ngay các kênh tự đăng được (Facebook, Instagram, website) của bài đã duyệt.
+  dangBai: (n, data) => {
+    canVanPhong(n);
+    return traBai(dangMotBai(timBai(data.id)));
+  },
+
+  // TikTok (và kênh nào đăng tay): đánh dấu đã đăng, kèm link nếu có.
+  daDangTay: (n, data) => {
+    canVanPhong(n);
+    const b = timBai(data.id);
+    if (b.trangThai !== 'DUYET' && b.trangThai !== 'DA_DANG') throw new Error('Bài chưa được Thầy duyệt');
+    if (b.kenh.indexOf(data.kenh) < 0) throw new Error('Bài không có kênh ' + data.kenh);
+    b.ketQua[data.kenh] = { tay: true, luc: new Date().toISOString(), link: String(data.link || '').slice(0, 500), nguoi: n.vaiTro };
+    luuKetQua(b);
+    return traBai(timBai(b.id));
+  },
+
+  // Ảnh nhỏ để chọn: theo công trình / bài (ma) hoặc theo danh sách mã ảnh (ids). Không trả chứng từ.
+  anhThu: (n, data) => {
+    canVanPhong(n);
+    const ds = docBang('Anh').filter((a) => a.loai !== 'CHUNG_TU' && (data.ma ? a.ma === data.ma : (data.ids || []).indexOf(a.id) >= 0))
+      .sort((a, b) => String(b.luc).localeCompare(String(a.luc))).slice(0, 80);
+    return ds.map((a) => {
+      let thu = '';
+      try { const t = DriveApp.getFileById(a.fileId).getThumbnail(); if (t) thu = Utilities.base64Encode(t.getBytes()); } catch (e) { /* file đã xoá */ }
+      return { id: a.id, ma: a.ma, viec: a.viec, luc: a.luc, thu };
+    });
+  },
+
+  // Ảnh đầy đủ (để dựng ảnh bìa, chia sẻ sang TikTok). Chỉ ảnh có trong bảng Anh, không phải chứng từ.
+  layAnh: (n, data) => {
+    canVanPhong(n);
+    const a = docBang('Anh').find((x) => x.id === data.id && x.loai !== 'CHUNG_TU');
+    if (!a) throw new Error('Không có ảnh này');
+    const blob = DriveApp.getFileById(a.fileId).getBlob();
+    return { id: a.id, loai: blob.getContentType() || 'image/jpeg', base64: Utilities.base64Encode(blob.getBytes()) };
+  },
+});
+
+// ---------- Thư viện phong thủy (tài liệu Thầy đã nghiên cứu) ----------
+// Thư mục mặc định: My Drive/LeonidasProject/_shared/phong-thuy-core/_private. Đặt PT_FOLDER_ID trong Thuộc tính tập lệnh nếu để chỗ khác.
+// Đọc được: Google Docs, .md, .txt; Word và PDF thì Drive chuyển tạm sang Google Docs để đọc rồi xoá bản tạm.
+const DUONG_TV_PT = ['LeonidasProject', '_shared', 'phong-thuy-core', '_private'];
+const MIME_DOC = 'application/vnd.google-apps.document';
+const MIME_DOI = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword'];
+
+function thuMucTV() {
+  const id = bi('PT_FOLDER_ID');
+  if (id) return DriveApp.getFolderById(id);
+  let f = DriveApp.getRootFolder();
+  for (let i = 0; i < DUONG_TV_PT.length; i++) {
+    const it = f.getFoldersByName(DUONG_TV_PT[i]);
+    if (!it.hasNext()) throw new Error('Không thấy thư mục thư viện phong thủy (' + DUONG_TV_PT.slice(0, i + 1).join('/') + '). Thầy đặt PT_FOLDER_ID trong Thuộc tính tập lệnh.');
+    f = it.next();
+  }
+  return f;
+}
+
+const docDuoc = (mime, ten) => mime === MIME_DOC || MIME_DOI.indexOf(mime) >= 0 || /^text\//.test(mime) || /\.(md|txt)$/i.test(ten);
+
+// Danh sách file đọc được trong thư viện (đi sâu 3 cấp thư mục, tối đa 300 file).
+function dsTaiLieu() {
+  const ra = [];
+  const di = (f, duong, sau) => {
+    const fs = f.getFiles();
+    while (fs.hasNext() && ra.length < 300) {
+      const x = fs.next();
+      if (docDuoc(x.getMimeType(), x.getName())) ra.push({ id: x.getId(), ten: x.getName(), thuMuc: duong, loai: x.getMimeType(), sua: x.getLastUpdated().toISOString().slice(0, 10) });
+    }
+    if (sau >= 3) return;
+    const ds = f.getFolders();
+    while (ds.hasNext() && ra.length < 300) { const c = ds.next(); di(c, duong ? duong + '/' + c.getName() : c.getName(), sau + 1); }
+  };
+  di(thuMucTV(), '', 0);
+  return ra.sort((a, b) => (a.thuMuc + '/' + a.ten).localeCompare(b.thuMuc + '/' + b.ten));
+}
+
+// Chữ trong 1 tài liệu. Chỉ đọc file nằm trong thư viện.
+function chuTaiLieu(id) {
+  const tl = dsTaiLieu().find((x) => x.id === id);
+  if (!tl) throw new Error('Tài liệu không nằm trong thư viện phong thủy');
+  const tk = { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() };
+  const xuat = (fid) => {
+    const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + fid + '/export?mimeType=text/plain', { headers: tk, muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) throw new Error('Không đọc được ' + tl.ten + ' (' + r.getResponseCode() + ')');
+    return r.getContentText('UTF-8');
+  };
+  let chu;
+  if (tl.loai === MIME_DOC) chu = xuat(id);
+  else if (MIME_DOI.indexOf(tl.loai) >= 0) {
+    const r = UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id + '/copy', {
+      method: 'post', contentType: 'application/json', headers: tk, muteHttpExceptions: true,
+      payload: JSON.stringify({ name: '[tạm KAS App] ' + tl.ten, mimeType: MIME_DOC }),
+    });
+    if (r.getResponseCode() !== 200) throw new Error('Drive không chuyển được ' + tl.ten + ' sang chữ (' + r.getResponseCode() + ')');
+    const tam = JSON.parse(r.getContentText()).id;
+    try { chu = xuat(tam); } finally { try { DriveApp.getFileById(tam).setTrashed(true); } catch (e) { /* đã xoá */ } }
+  } else chu = DriveApp.getFileById(id).getBlob().getDataAsString('UTF-8');
+  return { id, ten: tl.ten, thuMuc: tl.thuMuc, chu: String(chu || '').replace(/\r\n/g, '\n').replace(/^﻿/, '') };
+}
+
+// So khớp đoạn trích với tài liệu, bỏ qua khác biệt khoảng trắng.
+const gonChu = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+
+Object.assign(HANH_DONG, {
+  thuVienPT: (n) => { canVanPhong(n); return dsTaiLieu(); },
+
+  // Đọc 1 tài liệu (Thầy tự chọn đoạn). Trả tối đa 300.000 ký tự.
+  docTaiLieu: (n, data) => {
+    canVanPhong(n);
+    const t = chuTaiLieu(data.id);
+    return Object.assign(t, { chu: t.chu.slice(0, 300000), cat: t.chu.length > 300000 });
+  },
+
+  // AI tìm trong tài liệu các đoạn liên quan chủ đề. AI chỉ được chép nguyên văn; đoạn nào không có trong tài liệu thì máy chủ bỏ.
+  timDoanPT: (n, data) => {
+    canVanPhong(n);
+    const t = chuTaiLieu(data.id);
+    const chuDe = String(data.chuDe || '').trim();
+    if (!chuDe) throw new Error('Ghi chủ đề bài trước để AI tìm đoạn liên quan');
+    const cd = caiDatMay();
+    const model = GIA_AI[cd.bdModel] ? cd.bdModel : MODEL_MAC_DINH;
+    const chu = t.chu.slice(0, 400000);
+    const j = goiClaude('Tìm đoạn phong thủy', {
+      model, max_tokens: 6000,
+      system: 'Bạn là trợ lý tra cứu tài liệu. Chỉ CHÉP NGUYÊN VĂN các đoạn có trong tài liệu, không sửa chữ, không tóm tắt, không thêm kiến thức ngoài. Không có đoạn nào liên quan thì trả danh sách rỗng.',
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false, required: ['doan'], properties: {
+        doan: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['trich', 'viTri', 'viSao'], properties: { trich: { type: 'string' }, viTri: { type: 'string' }, viSao: { type: 'string' } } } } } } } },
+      messages: [{ role: 'user', content: 'TÀI LIỆU: ' + t.ten + '\n"""\n' + chu + '\n"""\n\nTìm tối đa 4 đoạn (mỗi đoạn 1–3 đoạn văn liền nhau) liên quan nhất tới chủ đề: ' + chuDe + '\nviTri: tên chương/mục chứa đoạn đó nếu tài liệu có ghi, không có thì để rỗng. viSao: 1 câu vì sao liên quan.' }],
+    });
+    let ra;
+    try { ra = JSON.parse(chuCua(j)); } catch (e) { throw new Error('AI trả lời sai dạng, thử lại'); }
+    const goc = gonChu(chu);
+    const doan = (ra.doan || []).filter((d) => d && gonChu(d.trich).length >= 20);
+    return { ten: t.ten, doan: doan.map((d) => Object.assign(d, { dung: goc.indexOf(gonChu(d.trich)) >= 0 })).filter((d) => d.dung), boQua: doan.filter((d) => !d.dung).length };
+  },
+});
+
+// ---------- Ảnh bìa: Gemini dựng, Canva sửa ----------
+// Lưu 1 ảnh của bài vào Drive (thư mục "KAS App – Bài đăng/<mã bài>") và bảng Anh. Trả mã ảnh.
+function luuAnhBai(n, maBai, blob, viec) {
+  const id = Utilities.getUuid();
+  const duoi = /png/.test(blob.getContentType()) ? 'png' : 'jpg';
+  const ten = maBai + '_' + Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyyMMdd_HHmm') + '_' + viec + '.' + duoi;
+  const f = timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Bài đăng'), maBai.replace(/[^\w-]/g, '')).createFile(blob.setName(ten));
+  themDong('Anh', { id, ma: maBai, viec, luc: new Date().toISOString(), tenFile: ten, fileId: f.getId(), nguoi: n.email, loai: 'BAI_DANG' });
+  return id;
+}
+
+// Ảnh gốc để dựng bìa: ảnh được chọn, không thì ảnh bìa hiện tại, không thì ảnh đầu của bài. Không lấy chứng từ.
+function anhGoc(b, id) {
+  const ma = id || b.anhBia || b.dsAnh[0];
+  const a = docBang('Anh').find((x) => x.id === ma && x.loai !== 'CHUNG_TU');
+  if (!a) throw new Error('Bài chưa có ảnh. Thêm ảnh công trình trước.');
+  return DriveApp.getFileById(a.fileId).getBlob();
+}
+
+// Đổi ảnh bìa: bài đã duyệt thì về chờ duyệt (ảnh là nội dung).
+function datAnhBia(b, id) {
+  const sua = { anhBia: id, capNhatLuc: new Date().toISOString() };
+  if (b.trangThai === 'DUYET') Object.assign(sua, { trangThai: 'CHO_DUYET', nguoiDuyet: '', duyetLuc: '' });
+  if (b.trangThai === 'NHAP' && Object.keys(b.baiViet).length) sua.trangThai = 'CHO_DUYET';
+  capNhatDong('BaiDang', (r) => r.id === b.id, sua, true);
+}
+
+// Giá Gemini (USD / ảnh 1K), tra trang giá chính thức ngày 13/11/2026. Gói Gemini Pro của Thầy không gồm tiền API: cần bật thanh toán trong Google AI Studio.
+const GIA_GEMINI = { 'gemini-3.1-flash-image': 0.067, 'gemini-3-pro-image': 0.134 };
+const LOI_GEMINI = {
+  SANG: 'Edit this REAL photo of a finished home project by KAS Houzing into a portrait social-media cover. '
+    + 'Keep the space exactly as built: do not add, remove, move or restyle any wall, furniture, material, color, light fixture or decor. Do not invent objects. '
+    + 'Only improve exposure, white balance, contrast and sharpness, straighten vertical lines, and crop to portrait. '
+    + 'Keep a calm, uncluttered area in the lower third for a headline that will be added later. No text, no logo, no watermark.',
+  CHU: 'Turn this REAL photo of a finished home project by KAS Houzing into a clean, premium portrait social-media cover. '
+    + 'Keep the space exactly as built: do not add, remove, move or restyle any wall, furniture, material, color, light fixture or decor. Do not invent objects. '
+    + 'You may improve exposure, white balance and sharpness, and add a soft dark gradient at the bottom for legibility. '
+    + 'Add this Vietnamese headline EXACTLY as written, with correct diacritics, in a modern bold sans-serif, white, lower third: "{T}". '
+    + '{P}Add a small "KAS HOUZING" wordmark near the bottom. No other text.',
+};
+
+function goiGemini(model, anh, loi) {
+  const key = bi('GEMINI_API_KEY');
+  if (!key) throw new Error('Chưa có khoá Gemini API. Thầy dán khoá vào Thuộc tính tập lệnh GEMINI_API_KEY (xem hướng dẫn cài).');
+  const thu = (tl) => UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': key },
+    payload: JSON.stringify({ model, input: [{ type: 'text', text: loi }, { type: 'image', mime_type: anh.getContentType() || 'image/jpeg', data: Utilities.base64Encode(anh.getBytes()) }],
+      response_format: Object.assign({ type: 'image', mime_type: 'image/jpeg', image_size: '1K' }, tl ? { aspect_ratio: tl } : {}) }),
+  });
+  // Tài liệu chưa ghi rõ model này nhận tỉ lệ 4:5 không: thử 4:5, rồi 3:4, rồi để model tự chọn.
+  let r; let j = {};
+  for (const tl of ['4:5', '3:4', '']) {
+    r = thu(tl);
+    try { j = JSON.parse(r.getContentText()); } catch (e) { j = {}; }
+    if (!(r.getResponseCode() === 400 && /aspect/i.test(r.getContentText()))) break;
+  }
+  if (r.getResponseCode() !== 200) throw new Error('Gemini lỗi ' + r.getResponseCode() + ': ' + ((j.error && j.error.message) || r.getContentText().slice(0, 200)));
+  themDong('ChiAI', { luc: new Date().toISOString(), viec: 'Gemini ảnh bìa', model, vao: 0, ra: 0, timWeb: 0, usd: GIA_GEMINI[model] || 0 });
+  const khoi = [];
+  (j.steps || []).forEach((s) => (s.content || []).forEach((c) => khoi.push(c)));
+  if (j.output_image) khoi.push(Object.assign({ type: 'image' }, j.output_image));
+  const img = khoi.filter((c) => c && c.type === 'image' && c.data).pop();
+  if (!img) {
+    const chu = khoi.filter((c) => c && c.type === 'text').map((c) => c.text).join(' ').slice(0, 200);
+    throw new Error('Gemini không trả ảnh' + (chu ? ': ' + chu : '. Thử lại hoặc đổi ảnh gốc.'));
+  }
+  return Utilities.newBlob(Utilities.base64Decode(img.data), img.mime_type || 'image/jpeg');
+}
+
+// ---------- Canva Connect (gói Canva Teams: dùng tích hợp "Public" của chính Thầy, chưa cần gửi Canva duyệt — em chưa thử thật) ----------
+const CANVA = 'https://api.canva.com/rest/v1';
+const CANVA_SCOPE = 'asset:read asset:write design:content:read design:content:write design:meta:read';
+const urlMayChu = () => bi('CANVA_REDIRECT') || ScriptApp.getService().getUrl();
+const b64url = (bytes) => Utilities.base64EncodeWebSafe(bytes).replace(/=+$/, '');
+
+function canvaBatDau() {
+  const id = bi('CANVA_CLIENT_ID');
+  if (!id || !bi('CANVA_CLIENT_SECRET')) throw new Error('Chưa có CANVA_CLIENT_ID, CANVA_CLIENT_SECRET trong Thuộc tính tập lệnh (xem hướng dẫn cài)');
+  const verifier = b64url(Utilities.getUuid() + Utilities.getUuid() + Utilities.getUuid()).slice(0, 96);
+  const state = Utilities.getUuid().replace(/-/g, '');
+  const challenge = b64url(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, verifier, Utilities.Charset.US_ASCII));
+  PropertiesService.getScriptProperties().setProperty('CANVA_PKCE', JSON.stringify({ state, verifier, han: Date.now() + 15 * 60000 }));
+  const q = { code_challenge: challenge, code_challenge_method: 'S256', scope: CANVA_SCOPE, response_type: 'code', client_id: id, state, redirect_uri: urlMayChu() };
+  return { url: 'https://www.canva.com/api/oauth/authorize?' + Object.keys(q).map((k) => k + '=' + encodeURIComponent(q[k])).join('&'), redirect: urlMayChu() };
+}
+
+function canvaLayToken(form) {
+  const r = UrlFetchApp.fetch(CANVA + '/oauth/token', {
+    method: 'post', muteHttpExceptions: true, payload: form,
+    headers: { Authorization: 'Basic ' + Utilities.base64Encode(bi('CANVA_CLIENT_ID') + ':' + bi('CANVA_CLIENT_SECRET')) },
+  });
+  let j = {};
+  try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+  if (r.getResponseCode() !== 200 || !j.access_token) throw new Error('Canva từ chối: ' + (j.error_description || j.message || j.error || r.getResponseCode()) + '. Thầy bấm Nối Canva lại.');
+  const p = PropertiesService.getScriptProperties();
+  // Mỗi refresh token chỉ dùng được 1 lần: lưu ngay cái mới.
+  if (j.refresh_token) p.setProperty('CANVA_REFRESH', j.refresh_token);
+  CacheService.getScriptCache().put('CANVA_AT', j.access_token, Math.max(60, Math.min(21600, (Number(j.expires_in) || 14400) - 300)));
+  return j.access_token;
+}
+
+// Canva chuyển về máy chủ sau khi Thầy bấm Cho phép (doGet có ?code=&state=).
+function canvaNhanMa(e) {
+  const p = PropertiesService.getScriptProperties();
+  let pk = {};
+  try { pk = JSON.parse(p.getProperty('CANVA_PKCE') || '{}'); } catch (x) { /* hỏng */ }
+  if (!pk.state || pk.state !== e.parameter.state || Date.now() > pk.han) return 'Link nối Canva đã hết hạn hoặc không đúng. Thầy bấm Nối Canva lại trong app.';
+  p.deleteProperty('CANVA_PKCE');
+  canvaLayToken({ grant_type: 'authorization_code', code: e.parameter.code, code_verifier: pk.verifier, redirect_uri: urlMayChu() });
+  return 'Đã nối Canva. Thầy quay lại app KAS.';
+}
+
+function canvaToken() {
+  const c = CacheService.getScriptCache().get('CANVA_AT');
+  if (c) return c;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const c2 = CacheService.getScriptCache().get('CANVA_AT');
+    if (c2) return c2;
+    const rt = bi('CANVA_REFRESH');
+    if (!rt) throw new Error('Chưa nối Canva. Thầy vào Cài đặt đăng bài, bấm Nối Canva.');
+    return canvaLayToken({ grant_type: 'refresh_token', refresh_token: rt });
+  } finally { lock.releaseLock(); }
+}
+
+function goiCanva(phuongThuc, duong, opt) {
+  const r = UrlFetchApp.fetch(CANVA + duong, Object.assign({ method: phuongThuc, muteHttpExceptions: true }, opt || {}, {
+    headers: Object.assign({ Authorization: 'Bearer ' + canvaToken() }, (opt && opt.headers) || {}),
+  }));
+  let j = {};
+  try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+  if (r.getResponseCode() >= 300) throw new Error('Canva lỗi ' + r.getResponseCode() + ': ' + (j.message || j.code || r.getContentText().slice(0, 200)));
+  return j;
+}
+
+// Chờ việc của Canva (tải ảnh lên, xuất ảnh) xong. Tối đa khoảng 40 giây.
+function choCanva(duong) {
+  for (let i = 0; i < 20; i++) {
+    const j = goiCanva('get', duong).job || {};
+    if (j.status === 'success') return j;
+    if (j.status === 'failed') throw new Error('Canva báo lỗi: ' + ((j.error && (j.error.message || j.error.code)) || 'không rõ'));
+    Utilities.sleep(2000);
+  }
+  throw new Error('Canva xử lý lâu quá, Thầy bấm lại sau ít phút');
+}
+
+Object.assign(HANH_DONG, {
+  // Gemini dựng ảnh bìa từ ảnh thật. kieu SANG: chỉ chỉnh sáng, chừa chỗ chữ; CHU: in luôn tiêu đề lên ảnh.
+  geminiBia: (n, data) => {
+    canVanPhong(n);
+    const b = timBai(data.id);
+    if (b.trangThai === 'DA_DANG') throw new Error('Bài đã đăng');
+    const cd = caiDatMay();
+    const model = GIA_GEMINI[cd.bdGemini] ? cd.bdGemini : 'gemini-3.1-flash-image';
+    const kieu = data.kieu === 'CHU' ? 'CHU' : 'SANG';
+    const tieuDe = String(data.tieuDe || b.tieuDeBia || '').trim();
+    if (kieu === 'CHU' && !tieuDe) throw new Error('Ghi chữ trên bìa trước');
+    const phu = String(data.phuDe || b.phuDeBia || '').trim();
+    const loi = LOI_GEMINI[kieu].replace('{T}', tieuDe.replace(/"/g, "'")).replace('{P}', phu ? 'Below it, a smaller line EXACTLY: "' + phu.replace(/"/g, "'") + '". ' : '');
+    const anh = goiGemini(model, anhGoc(b, data.anhId), loi);
+    const id = luuAnhBai(n, b.id, anh, 'GEMINI');
+    datAnhBia(b, id);
+    return { bai: traBai(timBai(b.id)), anhId: id, loai: anh.getContentType(), base64: Utilities.base64Encode(anh.getBytes()) };
+  },
+
+  // Thầy bấm Nối Canva: trả link đăng nhập Canva (chỉ Thầy).
+  canvaNoi: (n) => {
+    if (n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy nối Canva');
+    return canvaBatDau();
+  },
+  canvaTrangThai: (n) => { canVanPhong(n); return { daNoi: !!bi('CANVA_REFRESH'), coKhoa: !!bi('CANVA_CLIENT_ID'), coGemini: !!bi('GEMINI_API_KEY'), redirect: urlMayChu() }; },
+
+  // Đưa ảnh bìa (hoặc ảnh chọn) sang Canva thành thiết kế 1080×1350, trả link mở Canva để Thầy sửa.
+  canvaMo: (n, data) => {
+    canVanPhong(n);
+    const b = timBai(data.id);
+    const anh = anhGoc(b, data.anhId);
+    const up = goiCanva('post', '/asset-uploads', {
+      contentType: 'application/octet-stream', payload: anh.getBytes(),
+      headers: { 'Asset-Upload-Metadata': JSON.stringify({ name_base64: Utilities.base64Encode(('KAS ' + b.id).slice(0, 50), Utilities.Charset.UTF_8) }) },
+    });
+    const job = choCanva('/asset-uploads/' + up.job.id);
+    const d = goiCanva('post', '/designs', { contentType: 'application/json', payload: JSON.stringify({
+      type: 'type_and_asset', design_type: { type: 'custom', width: 1080, height: 1350 }, asset_id: job.asset.id, title: ('KAS – ' + (b.tieuDeBia || b.chuDe || b.id)).slice(0, 255) }) }).design;
+    const canva = { id: d.id, sua: d.urls && d.urls.edit_url, luc: new Date().toISOString() };
+    capNhatDong('BaiDang', (r) => r.id === b.id, { canva, capNhatLuc: new Date().toISOString() }, true);
+    return { bai: traBai(timBai(b.id)), url: canva.sua };
+  },
+
+  // Thầy sửa xong trên Canva: xuất trang đầu ra JPG, làm ảnh bìa của bài.
+  canvaLay: (n, data) => {
+    canVanPhong(n);
+    const b = timBai(data.id);
+    if (!b.canva || !b.canva.id) throw new Error('Bài chưa mở bên Canva');
+    if (b.trangThai === 'DA_DANG') throw new Error('Bài đã đăng');
+    const ex = goiCanva('post', '/exports', { contentType: 'application/json', payload: JSON.stringify({ design_id: b.canva.id, format: { type: 'jpg', quality: 92 } }) });
+    const job = choCanva('/exports/' + ex.job.id);
+    const r = UrlFetchApp.fetch(job.urls[0], { muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) throw new Error('Không tải được ảnh từ Canva (' + r.getResponseCode() + ')');
+    const anh = r.getBlob().setContentType('image/jpeg');
+    const id = luuAnhBai(n, b.id, anh, 'CANVA');
+    datAnhBia(b, id);
+    return { bai: traBai(timBai(b.id)), anhId: id, loai: 'image/jpeg', base64: Utilities.base64Encode(anh.getBytes()) };
+  },
+});
+
+function luuKetQua(b) {
+  const xong = b.kenh.length && b.kenh.every((k) => b.ketQua[k] && (b.ketQua[k].id || b.ketQua[k].tay));
+  capNhatDong('BaiDang', (r) => r.id === b.id, { ketQua: b.ketQua, trangThai: xong ? 'DA_DANG' : b.trangThai, capNhatLuc: new Date().toISOString() }, true);
+}
+
+// Ảnh của bài theo thứ tự: ảnh bìa trước, rồi các ảnh đã chọn. Trả blob JPEG.
+function anhCuaBai(b) {
+  const anh = docBang('Anh');
+  const ids = [b.anhBia].concat(b.dsAnh).filter((x, i, a) => x && a.indexOf(x) === i);
+  return ids.map((id) => anh.find((a) => a.id === id)).filter(Boolean).slice(0, 10).map((a) => DriveApp.getFileById(a.fileId).getBlob().setName(a.tenFile || a.id + '.jpg'));
+}
+
+function goiGraph(duongDan, tham, get) {
+  const token = bi('FB_PAGE_TOKEN');
+  if (!token) throw new Error('Chưa có mã truy cập Fanpage (FB_PAGE_TOKEN)');
+  const url = GRAPH + duongDan;
+  const r = get
+    ? UrlFetchApp.fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(token), { muteHttpExceptions: true })
+    : UrlFetchApp.fetch(url, { method: 'post', muteHttpExceptions: true, payload: Object.assign({ access_token: token }, tham) });
+  let j = {};
+  try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+  if (r.getResponseCode() !== 200 || j.error) throw new Error('Meta: ' + ((j.error && j.error.message) || r.getResponseCode()));
+  return j;
+}
+
+// Facebook: tải ảnh lên Trang ở dạng chưa đăng, rồi đăng 1 bài kèm tất cả ảnh (attached_media). Chưa thử với Trang thật.
+function dangFacebook(b, blobs) {
+  const page = bi('FB_PAGE_ID');
+  if (!page) throw new Error('Chưa có FB_PAGE_ID');
+  const anh = blobs.map((bl) => goiGraph('/' + page + '/photos', { source: bl, published: 'false' }).id);
+  const tham = { message: b.baiViet.fb };
+  anh.forEach((id, i) => { tham['attached_media[' + i + ']'] = JSON.stringify({ media_fbid: id }); });
+  const p = goiGraph('/' + page + '/feed', tham);
+  return { id: p.id, anh, link: 'https://www.facebook.com/' + p.id, luc: new Date().toISOString() };
+}
+
+// Instagram cần ảnh JPEG ở địa chỉ công khai: lấy chính ảnh đã tải lên Facebook. Chưa thử với tài khoản thật.
+function dangInstagram(b, blobs, anhFB) {
+  const ig = bi('IG_USER_ID');
+  if (!ig) throw new Error('Chưa có IG_USER_ID');
+  const page = bi('FB_PAGE_ID');
+  const ids = anhFB && anhFB.length ? anhFB : blobs.map((bl) => goiGraph('/' + page + '/photos', { source: bl, published: 'false' }).id);
+  if (!ids.length) throw new Error('Instagram cần ít nhất 1 ảnh');
+  const urls = ids.map((id) => { const im = goiGraph('/' + id + '?fields=images', null, true).images || []; return im.length ? im[0].source : ''; }).filter(Boolean);
+  if (!urls.length) throw new Error('Không lấy được địa chỉ ảnh từ Facebook');
+  const caption = b.baiViet.ig || b.baiViet.fb;
+  let container;
+  if (urls.length === 1) container = goiGraph('/' + ig + '/media', { image_url: urls[0], caption }).id;
+  else {
+    const con = urls.slice(0, 20).map((u) => goiGraph('/' + ig + '/media', { image_url: u, is_carousel_item: 'true' }).id);
+    container = goiGraph('/' + ig + '/media', { media_type: 'CAROUSEL', children: con.join(','), caption }).id;
+  }
+  for (let i = 0; i < 10; i++) {
+    const st = goiGraph('/' + container + '?fields=status_code', null, true).status_code;
+    if (st === 'FINISHED') break;
+    if (st === 'ERROR' || st === 'EXPIRED') throw new Error('Instagram không nhận ảnh (' + st + ')');
+    Utilities.sleep(3000);
+  }
+  const m = goiGraph('/' + ig + '/media_publish', { creation_id: container });
+  let link = '';
+  try { link = goiGraph('/' + m.id + '?fields=permalink', null, true).permalink || ''; } catch (e) { /* không bắt buộc */ }
+  return { id: m.id, link, luc: new Date().toISOString() };
+}
+
+// Bài website: dòng "## " thành tiêu đề mục, dòng "- " thành gạch đầu dòng, còn lại là đoạn văn.
+function htmlWeb(noiDung, anhUrl) {
+  const e = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const ra = []; let ds = [];
+  const dongDs = () => { if (ds.length) { ra.push('<ul>' + ds.map((x) => '<li>' + e(x) + '</li>').join('') + '</ul>'); ds = []; } };
+  let doan = 0;
+  String(noiDung || '').split(/\n+/).map((x) => x.trim()).filter(Boolean).forEach((x) => {
+    if (/^- /.test(x)) { ds.push(x.slice(2)); return; }
+    dongDs();
+    if (/^##+ /.test(x)) ra.push('<h2>' + e(x.replace(/^#+\s*/, '')) + '</h2>');
+    else { ra.push('<p>' + e(x) + '</p>'); doan++; if (doan === 1 && anhUrl[1]) ra.push('<figure><img src="' + anhUrl[1] + '" alt=""></figure>'); }
+  });
+  dongDs();
+  anhUrl.slice(2).forEach((u) => ra.push('<figure><img src="' + u + '" alt=""></figure>'));
+  return ra.join('\n');
+}
+
+// WordPress: mật khẩu ứng dụng (Users → Profile → Application Passwords). Mặc định đăng nháp để Thầy xem trên web trước.
+function dangWeb(b, blobs, cd) {
+  const goc = bi('WP_URL').replace(/\/+$/, '');
+  if (!goc || !bi('WP_USER') || !bi('WP_APP_PASSWORD')) throw new Error('Chưa có WP_URL, WP_USER, WP_APP_PASSWORD');
+  const auth = { Authorization: 'Basic ' + Utilities.base64Encode(bi('WP_USER') + ':' + bi('WP_APP_PASSWORD').replace(/\s+/g, '')) };
+  const goiWP = (duong, opt) => {
+    const r = UrlFetchApp.fetch(goc + '/wp-json/wp/v2' + duong, Object.assign({ method: 'post', muteHttpExceptions: true, headers: auth }, opt));
+    let j = {};
+    try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+    if (r.getResponseCode() >= 300) throw new Error('Website: ' + (j.message || r.getResponseCode()));
+    return j;
+  };
+  const media = blobs.slice(0, 6).map((bl, i) => goiWP('/media', {
+    contentType: 'image/jpeg', payload: bl.getBytes(),
+    headers: Object.assign({ 'Content-Disposition': 'attachment; filename="' + b.id + '-' + (i + 1) + '.jpg"' }, auth) }));
+  const w = b.baiViet.web;
+  const trangThai = cd.bdWebTrangThai === 'publish' ? 'publish' : 'draft';
+  const bai = { title: w.tieuDe, excerpt: w.moTa, content: htmlWeb(w.noiDung, media.map((m) => m.source_url)), status: trangThai };
+  if (media.length) bai.featured_media = media[0].id;
+  if (Number(cd.bdWebChuyenMuc)) bai.categories = [Number(cd.bdWebChuyenMuc)];
+  const p = goiWP('/posts', { contentType: 'application/json', payload: JSON.stringify(bai) });
+  return { id: p.id, link: p.link || '', trangThai, luc: new Date().toISOString() };
+}
+
+// Đăng các kênh tự động chưa đăng của 1 bài đã duyệt. Kênh nào lỗi ghi lỗi, kênh khác vẫn đăng; bấm lại chỉ đăng kênh còn thiếu.
+function dangMotBai(b) {
+  if (b.trangThai !== 'DUYET' || !b.nguoiDuyet) throw new Error('Bài chưa được Thầy duyệt');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    b = timBai(b.id);
+    if (b.trangThai !== 'DUYET') return b;
+    const cd = caiDatMay();
+    const can = (k) => b.kenh.indexOf(k) >= 0 && !(b.ketQua[k] && b.ketQua[k].id);
+    if (!['FB', 'IG', 'WEB'].some(can)) return b;
+    const blobs = anhCuaBai(b);
+    const chay = (k, fn) => {
+      if (!can(k)) return;
+      try { b.ketQua[k] = fn(); } catch (e) { b.ketQua[k] = { loi: String(e.message || e), luc: new Date().toISOString(), lan: ((b.ketQua[k] || {}).lan || 0) + 1 }; }
+    };
+    chay('FB', () => dangFacebook(b, blobs));
+    chay('IG', () => dangInstagram(b, blobs, b.ketQua.FB && b.ketQua.FB.anh));
+    chay('WEB', () => dangWeb(b, blobs, cd));
+    luuKetQua(b);
+    return timBai(b.id);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Chạy theo hẹn giờ (15 phút một lần): bài đã duyệt, đến giờ thì đăng. Kênh lỗi thử lại tối đa 3 lần.
+function dangBaiHenGio() {
+  const bay = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd HH:mm');
+  const gioMD = caiDatMay().bdGio || '19:30';
+  docBang('BaiDang').filter((b) => !b.xoa && b.trangThai === 'DUYET' && b.ngayDang && (b.ngayDang + ' ' + (b.gioDang || gioMD)) <= bay).forEach((b) => {
+    const kq = b.ketQua || {};
+    if (['FB', 'IG', 'WEB'].some((k) => (kq[k] || {}).lan >= 3)) return;
+    try { dangMotBai(timBai(b.id)); } catch (e) { Logger.log('Đăng ' + b.id + ' lỗi: ' + e.message); }
+  });
+}
+
+// Chạy 1 lần trong trình soạn thảo để bật hẹn giờ đăng bài.
+function caiHenGio() {
+  ScriptApp.getProjectTriggers().filter((t) => t.getHandlerFunction() === 'dangBaiHenGio').forEach((t) => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('dangBaiHenGio').timeBased().everyMinutes(15).create();
+  Logger.log('Đã bật hẹn giờ đăng bài: 15 phút kiểm tra 1 lần.');
 }
 
 // ---------- Drive ----------

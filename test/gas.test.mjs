@@ -464,3 +464,328 @@ test('nghiệm thu: giám sát ghi được ở công trình được giao; đá
   assert.deepEqual([x.nguoi, x.tonTai[0].daSua, x.tonTai[0].hanSua, x.checklist.length], ['KHA', '2026-11-13', '2026-11-20', 1]);
   assert.equal(m.post(khoaKha, 'keoVe').data.nghiemThu.length, 1);
 });
+
+// ---------- Đăng bài ----------
+function baiMau(o = {}) {
+  return { id: 'BD-1', loai: 'DU_AN', chuDe: 'Căn hộ 90m2 bàn giao', ghiChu: 'Tông gỗ sáng', maCongTrinh: 'NT-A', nguonTL: '', trichDan: '', kenh: ['FB', 'IG', 'TT'],
+    ngayDang: '2026-11-14', gioDang: '19:30', baiViet: {}, dsAnh: [], anhBia: '', mauBia: 'TRAN', tieuDeBia: '', phuDeBia: '', yKien: '', xoa: '', ...o };
+}
+// Claude trả JSON theo lược đồ được hỏi.
+function claudeTraLoi(m, ra = {}) {
+  m.traLoi.fn = (url, opt) => {
+    if (!url.includes('anthropic')) return null;
+    const body = JSON.parse(opt.payload);
+    const p = body.output_config.format ? Object.keys(body.output_config.format.schema.properties) : [];
+    const o = {};
+    p.forEach((k) => { o[k] = k === 'tt' ? { tieuDe: 'TT tiêu đề', chuThich: 'TT chú thích', kichBan: 'Cảnh 1' } : k === 'web' ? { tieuDe: 'Web', moTa: 'Mô tả', noiDung: '## Mục 1\nĐoạn 1\n- ý a\nĐoạn 2', tuKhoa: ['nội thất'] } : 'Bài ' + k; });
+    return { ma: 200, body: { model: body.model, stop_reason: 'end_turn', usage: { input_tokens: 10000, output_tokens: 4000 }, content: [{ type: 'text', text: JSON.stringify({ ...o, ...ra }) }] } };
+  };
+}
+
+test('đăng bài: văn phòng ghi bài; giám sát không thấy, không ghi; máy gửi lên không tự duyệt được', () => {
+  const m = khoiDong();
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  let r = m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: { ...baiMau(), trangThai: 'DUYET', nguoiDuyet: 'THAY', ketQua: { FB: { id: 'gia' } } } })] });
+  assert.equal(r.data[0].ok, true);
+  const b = m.post(m.khoaThay, 'keoVe').data.baiDang[0];
+  assert.equal(b.trangThai, 'NHAP');
+  assert.equal(b.nguoiDuyet, '');
+  assert.deepEqual(b.ketQua, {});
+  assert.deepEqual(b.kenh, ['FB', 'IG', 'TT']);
+  assert.deepEqual(m.post(khoaKha, 'keoVe').data.baiDang, []);
+  r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'BD', b: baiMau({ id: 'BD-2' }) })] });
+  assert.equal(r.data[0].ok, false);
+  assert.equal(m.post(khoaKha, 'guiAnh', { id: 'x1', ma: 'BD-1', viec: 'BAI', tenFile: 'x.jpg', base64: 'eA==', loai: 'BAI_DANG' }).ok, false);
+});
+
+test('AI viết bài: gửi dữ kiện công trình không có tên, chủ nhà; dùng model trong cài đặt; ghi chi phí; phong thủy bắt buộc có tài liệu', () => {
+  const m = khoiDong();
+  m.props.ANTHROPIC_API_KEY = 'sk-test';
+  const ct = { ...congTrinhMau('NT-A'), ten: 'Nhà anh Tuấn Long Biên', chuNha: 'Anh Tuấn 0912000111' };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct }), op({ loai: 'CAI_DAT', khoa: 'bdModel', giaTri: 'claude-opus-5-5' })] });
+  claudeTraLoi(m, { tieuDeBia: 'Bìa', phuDeBia: 'Phụ' });
+  let r = m.post(m.khoaThay, 'vietBai', { bai: baiMau(), kenh: ['FB', 'IG'] });
+  assert.equal(r.ok, true, r.loi);
+  assert.equal(r.data.trangThai, 'CHO_DUYET');
+  assert.equal(r.data.baiViet.fb, 'Bài fb');
+  assert.equal(r.data.baiViet.ig, 'Bài ig');
+  assert.equal(r.data.tieuDeBia, 'Bìa');
+  const goi = m.goiRa.find((g) => g.url.includes('anthropic'));
+  const body = JSON.parse(goi.opt.payload);
+  assert.equal(goi.opt.headers['x-api-key'], 'sk-test');
+  assert.equal(goi.opt.headers['anthropic-version'], '2026-10-21');
+  assert.equal(body.model, 'claude-opus-5-5');
+  assert.equal(body.fallbacks, 'default');
+  assert.deepEqual(body.output_config.format.schema.required, ['fb', 'ig', 'tieuDeBia', 'phuDeBia']);
+  const chu = JSON.stringify(body.messages);
+  assert.ok(!chu.includes('Tuấn') && !chu.includes('0912000111') && !chu.includes('Long Biên'));
+  assert.match(chu, /Nội thất có cải tạo thô/);
+  // Nhóm TikTok viết sau, giữ bài Facebook
+  r = m.post(m.khoaThay, 'vietBai', { id: 'BD-1', kenh: ['TT'] });
+  assert.equal(r.data.baiViet.fb, 'Bài fb');
+  assert.equal(r.data.baiViet.tt.tieuDe, 'TT tiêu đề');
+  assert.equal(r.data.lanViet, 2);
+  const chi = m.ss.getSheetByName('ChiAI').rows.slice(1);
+  assert.equal(chi.length, 2);
+  assert.equal(chi[0][6], 0.12); // Opus 5.5: 10.000 × 4 + 4.000 × 20 USD / 1 triệu
+  // Phong thủy thiếu tài liệu: không gọi AI
+  const truoc = m.goiRa.length;
+  r = m.post(m.khoaThay, 'vietBai', { bai: baiMau({ id: 'BD-PT', loai: 'PHONG_THUY', maCongTrinh: '' }) });
+  assert.equal(r.ok, false);
+  assert.match(r.loi, /tài liệu/);
+  assert.equal(m.goiRa.length, truoc);
+  r = m.post(m.khoaThay, 'vietBai', { bai: baiMau({ id: 'BD-PT', loai: 'PHONG_THUY', maCongTrinh: '', nguonTL: 'Giáo trình X, chương 2', trichDan: 'Cửa chính nên...' }), kenh: ['FB'] });
+  assert.equal(r.ok, true);
+  assert.match(m.goiRa.at(-1).opt.payload, /Giáo trình X, chương 2/);
+  // Chưa có khoá API: báo rõ
+  delete m.props.ANTHROPIC_API_KEY;
+  assert.match(m.post(m.khoaThay, 'vietBai', { id: 'BD-1', kenh: ['FB'] }).loi, /ANTHROPIC_API_KEY/);
+  // AI từ chối: báo, không ghi đè bài
+  m.props.ANTHROPIC_API_KEY = 'sk-test';
+  m.traLoi.fn = () => ({ ma: 200, body: { model: 'claude-sonnet-5-5', stop_reason: 'refusal', usage: {}, content: [] } });
+  assert.equal(m.post(m.khoaThay, 'vietBai', { id: 'BD-1', kenh: ['FB'] }).ok, false);
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.baiDang.find((b) => b.id === 'BD-1').baiViet.fb, 'Bài fb');
+});
+
+test('duyệt bài: chỉ Thầy; sửa nội dung sau duyệt phải duyệt lại; chưa duyệt thì không đăng được', () => {
+  const m = khoiDong();
+  const khoaDuc = m.post(m.khoaThay, 'capKhoa', { email: 'duc@example.com', ten: 'Đức', vaiTro: 'DUC' }).data.khoa;
+  const bai = baiMau({ kenh: ['FB'], baiViet: { fb: 'Nội dung' } });
+  m.post(khoaDuc, 'dayLen', { ops: [op({ loai: 'BD', b: bai })] });
+  assert.equal(m.post(khoaDuc, 'keoVe').data.baiDang[0].trangThai, 'CHO_DUYET');
+  assert.equal(m.post(khoaDuc, 'dangBai', { id: 'BD-1' }).ok, false);
+  assert.match(m.post(khoaDuc, 'duyetBai', { id: 'BD-1' }).loi, /Chỉ Thầy/);
+  let r = m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  assert.equal(r.data.trangThai, 'DUYET');
+  assert.equal(r.data.nguoiDuyet, 'THAY');
+  // Đổi giờ đăng: vẫn giữ duyệt; đổi chữ: về chờ duyệt
+  m.post(khoaDuc, 'dayLen', { ops: [op({ loai: 'BD', b: { ...bai, gioDang: '08:00' } })] });
+  assert.equal(m.post(khoaDuc, 'keoVe').data.baiDang[0].trangThai, 'DUYET');
+  m.post(khoaDuc, 'dayLen', { ops: [op({ loai: 'BD', b: { ...bai, gioDang: '08:00', baiViet: { fb: 'Sửa chữ' } } })] });
+  const b = m.post(khoaDuc, 'keoVe').data.baiDang[0];
+  assert.equal(b.trangThai, 'CHO_DUYET');
+  assert.equal(b.nguoiDuyet, '');
+  // Instagram cần ảnh; thiếu nội dung kênh thì không duyệt
+  assert.match(m.post(m.khoaThay, 'duyetBai', { bai: { ...bai, kenh: ['FB', 'IG'] } }).loi, /ít nhất 1 ảnh/);
+  assert.match(m.post(m.khoaThay, 'duyetBai', { bai: { ...bai, kenh: ['FB', 'TT'] } }).loi, /TT/);
+});
+
+test('đăng bài: Facebook nhiều ảnh, Instagram dùng ảnh đã lên Facebook, website lưu nháp; kênh lỗi ghi lỗi, bấm lại chỉ đăng kênh thiếu; TikTok đăng tay', () => {
+  const m = khoiDong();
+  Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'tok', IG_USER_ID: 'IG', WP_URL: 'https://noithatkas.com/', WP_USER: 'thay', WP_APP_PASSWORD: 'abcd efgh' });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  ['a1', 'a2'].forEach((id) => m.post(m.khoaThay, 'guiAnh', { id, ma: 'BD-1', viec: 'BAI', tenFile: id + '.jpg', base64: 'eA==', loai: 'BAI_DANG' }));
+  assert.ok(m.root.con.find((c) => c.ten === 'KAS App – Bài đăng').con.find((c) => c.ten === 'BD-1').files.length === 2);
+  const bai = baiMau({ kenh: ['FB', 'IG', 'WEB', 'TT'], dsAnh: ['a1', 'a2'], baiViet: { fb: 'FB chữ', ig: 'IG chữ', tt: { tieuDe: 't', chuThich: 'c', kichBan: 'k' }, web: { tieuDe: 'Tiêu đề web', moTa: 'Mô tả', noiDung: '## Mục\nĐoạn <b>1</b>\n- ý', tuKhoa: [] } } });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: bai })] });
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  let anhSo = 0; let wpLoi = true;
+  m.traLoi.fn = (url, opt) => {
+    if (url.endsWith('/PAGE/photos')) return { ma: 200, body: { id: 'P' + ++anhSo } };
+    if (url.endsWith('/PAGE/feed')) return { ma: 200, body: { id: 'PAGE_123' } };
+    if (url.includes('fields=images')) return { ma: 200, body: { images: [{ source: 'https://cdn.fb/' + url.split('/')[4].split('?')[0] + '.jpg' }] } };
+    if (url.endsWith('/IG/media')) return { ma: 200, body: { id: 'C' + (opt.payload.image_url || 'CAR') } };
+    if (url.includes('fields=status_code')) return { ma: 200, body: { status_code: 'FINISHED' } };
+    if (url.endsWith('/IG/media_publish')) return { ma: 200, body: { id: 'IGM1' } };
+    if (url.includes('fields=permalink')) return { ma: 200, body: { permalink: 'https://instagram.com/p/x' } };
+    if (url.includes('/wp-json/wp/v2/media')) return wpLoi ? { ma: 401, body: { message: 'Sai mật khẩu ứng dụng' } } : { ma: 201, body: { id: 77, source_url: 'https://noithatkas.com/a.jpg' } };
+    if (url.includes('/wp-json/wp/v2/posts')) return { ma: 201, body: { id: 99, link: 'https://noithatkas.com/?p=99' } };
+    return null;
+  };
+  let r = m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
+  assert.equal(r.ok, true, r.loi);
+  const kq = r.data.ketQua;
+  assert.equal(kq.FB.id, 'PAGE_123');
+  const feed = m.goiRa.find((g) => g.url.endsWith('/PAGE/feed')).opt.payload;
+  assert.equal(feed.message, 'FB chữ');
+  assert.equal(feed['attached_media[1]'], JSON.stringify({ media_fbid: 'P2' }));
+  assert.equal(m.goiRa.filter((g) => g.url.endsWith('/PAGE/photos')).length, 2); // Instagram không tải lại ảnh
+  const car = m.goiRa.find((g) => g.url.endsWith('/IG/media') && g.opt.payload.media_type === 'CAROUSEL').opt.payload;
+  assert.equal(car.children, 'Chttps://cdn.fb/P1.jpg,Chttps://cdn.fb/P2.jpg');
+  assert.equal(car.caption, 'IG chữ');
+  assert.equal(kq.IG.id, 'IGM1');
+  assert.match(kq.WEB.loi, /Sai mật khẩu/);
+  assert.equal(r.data.trangThai, 'DUYET');
+  // Bấm lại: chỉ đăng website
+  wpLoi = false;
+  const truoc = m.goiRa.length;
+  r = m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
+  const moi = m.goiRa.slice(truoc).map((g) => g.url);
+  assert.ok(moi.every((u) => u.includes('noithatkas.com/wp-json')), moi.join(' '));
+  const post = JSON.parse(m.goiRa.find((g) => g.url.endsWith('/wp-json/wp/v2/posts')).opt.payload);
+  assert.equal(post.status, 'draft');
+  assert.equal(post.featured_media, 77);
+  assert.match(post.content, /<h2>Mục<\/h2>/);
+  assert.match(post.content, /Đoạn &lt;b&gt;1&lt;\/b&gt;/);
+  assert.match(m.goiRa.find((g) => g.url.includes('/wp-json/wp/v2/media')).opt.headers.Authorization, /^Basic /);
+  assert.equal(r.data.ketQua.WEB.id, 99);
+  assert.equal(r.data.trangThai, 'DUYET'); // còn TikTok đăng tay
+  r = m.post(m.khoaThay, 'daDangTay', { id: 'BD-1', kenh: 'TT', link: 'https://tiktok.com/@kas/1' });
+  assert.equal(r.data.trangThai, 'DA_DANG');
+  // Bài đã đăng: máy gửi bản cũ không sửa được nội dung
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: { ...bai, baiViet: { fb: 'đổi' } } })] });
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.baiDang[0].baiViet.fb, 'FB chữ');
+});
+
+test('hẹn giờ: chỉ đăng bài đã duyệt và đã đến giờ; ảnh chọn bài không lấy chứng từ', () => {
+  const m = khoiDong();
+  Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'tok' });
+  m.traLoi.fn = (url) => (url.endsWith('/PAGE/feed') ? { ma: 200, body: { id: 'PAGE_9' } } : null);
+  const qua = '2020-01-01', toi = '2099-01-01';
+  m.post(m.khoaThay, 'dayLen', { ops: [
+    op({ loai: 'BD', b: baiMau({ id: 'BD-A', kenh: ['FB'], ngayDang: qua, baiViet: { fb: 'a' } }) }),
+    op({ loai: 'BD', b: baiMau({ id: 'BD-B', kenh: ['FB'], ngayDang: toi, baiViet: { fb: 'b' } }) }),
+    op({ loai: 'BD', b: baiMau({ id: 'BD-C', kenh: ['FB'], ngayDang: qua, baiViet: { fb: 'c' } }) })] });
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-A' });
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-B' });
+  m.ctx.dangBaiHenGio();
+  const ds = m.post(m.khoaThay, 'keoVe').data.baiDang;
+  assert.equal(ds.find((b) => b.id === 'BD-A').trangThai, 'DA_DANG');
+  assert.equal(ds.find((b) => b.id === 'BD-B').trangThai, 'DUYET');
+  assert.equal(ds.find((b) => b.id === 'BD-C').trangThai, 'CHO_DUYET'); // chưa duyệt: không đăng
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  m.post(m.khoaThay, 'guiAnh', { id: 'h1', ma: 'NT-A', viec: 'XT01', tenFile: 'h1.jpg', base64: 'eA==' });
+  m.post(m.khoaThay, 'guiAnh', { id: 'ct1', ma: 'NT-A', viec: 'TT1', tenFile: 'ck.jpg', base64: 'eA==', loai: 'CHUNG_TU' });
+  const thu = m.post(m.khoaThay, 'anhThu', { ma: 'NT-A' }).data;
+  assert.deepEqual(thu.map((x) => x.id), ['h1']);
+  assert.ok(thu[0].thu);
+  assert.equal(m.post(m.khoaThay, 'layAnh', { id: 'ct1' }).ok, false);
+  assert.equal(m.post(m.khoaThay, 'layAnh', { id: 'h1' }).data.base64, Buffer.from('jpg').toString('base64') === 'anBn' ? m.post(m.khoaThay, 'layAnh', { id: 'h1' }).data.base64 : 'eA==');
+});
+
+test('AI mặc định dùng Sonnet 5.5 (Thầy chọn 13/11)', () => {
+  const m = khoiDong();
+  m.props.ANTHROPIC_API_KEY = 'sk';
+  claudeTraLoi(m);
+  m.post(m.khoaThay, 'vietBai', { bai: baiMau({ maCongTrinh: '' }), kenh: ['FB'] });
+  assert.equal(JSON.parse(m.goiRa.at(-1).opt.payload).model, 'claude-sonnet-5-5');
+});
+
+// ---------- Thư viện phong thủy ----------
+function thuVienMau(m) {
+  let f = m.root;
+  for (const t of ['LeonidasProject', '_shared', 'phong-thuy-core', '_private']) f = f.createFolder(t);
+  const md = f.createFile({ ten: 'Bat trach.md', bytes: Buffer.from('# Chương 3\nCửa chính nên tránh đối thẳng cầu thang, theo sách mẫu.\n\nĐoạn khác về bếp.'), type: 'text/markdown' });
+  const doc = f.createFolder('Giao trinh').createFile({ ten: 'Giáo trình A', bytes: Buffer.from(''), type: 'application/vnd.google-apps.document' });
+  m.root.createFile({ ten: 'Ngoai.md', bytes: Buffer.from('x'), type: 'text/markdown' });
+  return { md: md.getId(), doc: doc.getId(), ngoai: m.root.files.at(-1).id };
+}
+
+test('thư viện phong thủy: liệt kê, đọc trong thư viện; AI chỉ được chép nguyên văn; giám sát không xem được', () => {
+  const m = khoiDong();
+  const tv = thuVienMau(m);
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  assert.equal(m.post(khoaKha, 'thuVienPT').ok, false);
+  const ds = m.post(m.khoaThay, 'thuVienPT').data;
+  assert.deepEqual(ds.map((x) => x.ten).sort(), ['Bat trach.md', 'Giáo trình A']);
+  assert.equal(ds.find((x) => x.ten === 'Giáo trình A').thuMuc, 'Giao trinh');
+  assert.match(m.post(m.khoaThay, 'docTaiLieu', { id: tv.md }).data.chu, /Cửa chính nên tránh/);
+  assert.equal(m.post(m.khoaThay, 'docTaiLieu', { id: tv.ngoai }).ok, false);
+  m.traLoi.fn = (url) => (url.includes('/export?mimeType=text/plain') ? { ma: 200, body: 'Nội dung giáo trình' } : null);
+  assert.equal(m.post(m.khoaThay, 'docTaiLieu', { id: tv.doc }).data.chu, 'Nội dung giáo trình');
+  m.props.ANTHROPIC_API_KEY = 'sk';
+  m.traLoi.fn = (url) => (url.includes('anthropic') ? { ma: 200, body: { model: 'claude-sonnet-5-5', stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: JSON.stringify({ doan: [
+    { trich: 'Cửa chính nên  tránh đối thẳng\ncầu thang, theo sách mẫu.', viTri: 'Chương 3', viSao: 'đúng chủ đề' },
+    { trich: 'Cửa chính hướng Nam giúp gia chủ giàu có nhanh chóng.', viTri: '', viSao: 'bịa' }] }) }] } } : null);
+  const r = m.post(m.khoaThay, 'timDoanPT', { id: tv.md, chuDe: 'cửa chính' }).data;
+  assert.equal(r.doan.length, 1);
+  assert.equal(r.boQua, 1);
+  assert.equal(r.doan[0].viTri, 'Chương 3');
+  assert.equal(m.post(m.khoaThay, 'timDoanPT', { id: tv.md, chuDe: '' }).ok, false);
+});
+
+// ---------- Gemini, Canva ----------
+function baiCoAnh(m, o = {}) {
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  m.post(m.khoaThay, 'guiAnh', { id: 'h1', ma: 'NT-A', viec: 'XT01', tenFile: 'h1.jpg', base64: 'eA==' });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: baiMau({ kenh: ['FB'], dsAnh: ['h1'], baiViet: { fb: 'a' }, tieuDeBia: 'Nhà xong đúng hẹn', ...o }) })] });
+}
+
+test('Gemini làm bìa: cần khoá; gửi ảnh thật + giữ nguyên công trình; thử tỉ lệ khác khi bị từ chối; ghi chi phí; bài đã duyệt về chờ duyệt', () => {
+  const m = khoiDong();
+  baiCoAnh(m);
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  assert.match(m.post(m.khoaThay, 'geminiBia', { id: 'BD-1' }).loi, /GEMINI_API_KEY/);
+  m.props.GEMINI_API_KEY = 'g';
+  const tl = [];
+  m.traLoi.fn = (url, opt) => {
+    if (!url.includes('generativelanguage')) return null;
+    const b = JSON.parse(opt.payload);
+    tl.push(b.response_format.aspect_ratio);
+    if (b.response_format.aspect_ratio === '4:5') return { ma: 400, body: { error: { message: 'Unsupported aspect ratio' } } };
+    return { ma: 200, body: { steps: [{ type: 'model_output', content: [{ type: 'text', text: 'ok' }, { type: 'image', mime_type: 'image/jpeg', data: 'QUJD' }] }] } };
+  };
+  const r = m.post(m.khoaThay, 'geminiBia', { id: 'BD-1', kieu: 'CHU' });
+  assert.equal(r.ok, true, r.loi);
+  assert.deepEqual(tl, ['4:5', '3:4']);
+  const body = JSON.parse(m.goiRa.at(-1).opt.payload);
+  assert.equal(body.model, 'gemini-3.1-flash-image');
+  assert.equal(m.goiRa.at(-1).opt.headers['x-goog-api-key'], 'g');
+  assert.equal(body.input[1].type, 'image');
+  assert.match(body.input[0].text, /do not add, remove/);
+  assert.match(body.input[0].text, /"Nhà xong đúng hẹn"/);
+  assert.equal(r.data.bai.anhBia, r.data.anhId);
+  assert.equal(r.data.bai.trangThai, 'CHO_DUYET');
+  const d = m.post(m.khoaThay, 'keoVe').data;
+  assert.equal(d.chiAI.at(-1).usd, 0.067);
+  assert.equal(d.anh === undefined || !d.anh.some((a) => a.id === r.data.anhId), true); // ảnh bài đăng không lẫn vào ảnh công trình
+  m.traLoi.fn = (url) => (url.includes('generativelanguage') ? { ma: 200, body: { steps: [{ type: 'model_output', content: [{ type: 'text', text: 'Không sửa được ảnh này' }] }] } } : null);
+  assert.match(m.post(m.khoaThay, 'geminiBia', { id: 'BD-1' }).loi, /Không sửa được ảnh này/);
+});
+
+test('Canva: chỉ Thầy nối; PKCE + state; lưu refresh token mới mỗi lần; đưa ảnh sang Canva, lấy ảnh đã sửa về làm bìa', () => {
+  const m = khoiDong();
+  baiCoAnh(m);
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  assert.match(m.post(m.khoaThay, 'canvaNoi').loi, /CANVA_CLIENT_ID/);
+  Object.assign(m.props, { CANVA_CLIENT_ID: 'cid', CANVA_CLIENT_SECRET: 'sec' });
+  assert.equal(m.post(khoaKha, 'canvaNoi').ok, false);
+  const u = new URL(m.post(m.khoaThay, 'canvaNoi').data.url);
+  assert.equal(u.origin + u.pathname, 'https://www.canva.com/api/oauth/authorize');
+  assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(u.searchParams.get('redirect_uri'), 'https://script.google.com/macros/s/ABC/exec');
+  const pk = JSON.parse(m.props.CANVA_PKCE);
+  const crypto = createRequire(import.meta.url)('crypto');
+  assert.equal(u.searchParams.get('code_challenge'), crypto.createHash('sha256').update(pk.verifier).digest('base64url'));
+  let refresh = 0; const form = [];
+  m.traLoi.fn = (url, opt) => {
+    if (url.endsWith('/oauth/token')) { form.push(opt.payload); return { ma: 200, body: { access_token: 'at' + refresh, refresh_token: 'rt' + ++refresh, expires_in: 14400 } }; }
+    if (url.endsWith('/asset-uploads')) return { ma: 200, body: { job: { id: 'J1', status: 'in_progress' } } };
+    if (url.endsWith('/asset-uploads/J1')) return { ma: 200, body: { job: { id: 'J1', status: 'success', asset: { id: 'A1' } } } };
+    if (url.endsWith('/designs')) return { ma: 200, body: { design: { id: 'D1', urls: { edit_url: 'https://www.canva.com/design/D1/edit' } } } };
+    if (url.endsWith('/exports')) return { ma: 200, body: { job: { id: 'E1', status: 'in_progress' } } };
+    if (url.endsWith('/exports/E1')) return { ma: 200, body: { job: { id: 'E1', status: 'success', urls: ['https://export-download.canva.com/x.jpg'] } } };
+    if (url.startsWith('https://export-download')) return { ma: 200, bytes: 'canva-jpg' };
+    return null;
+  };
+  assert.match(m.get({ code: 'C', state: 'sai' }).html, /hết hạn hoặc không đúng/);
+  assert.equal(form.length, 0);
+  assert.match(m.get({ code: 'C', state: pk.state }).html, /Đã nối Canva/);
+  assert.equal(form[0].grant_type, 'authorization_code');
+  assert.equal(form[0].code_verifier, pk.verifier);
+  assert.equal(m.props.CANVA_REFRESH, 'rt1');
+  assert.equal(m.props.CANVA_PKCE, undefined);
+  assert.match(m.get({ code: 'C', state: pk.state }).html, /hết hạn/); // link chỉ dùng 1 lần
+  let r = m.post(m.khoaThay, 'canvaMo', { id: 'BD-1' });
+  assert.equal(r.ok, true, r.loi);
+  assert.equal(r.data.url, 'https://www.canva.com/design/D1/edit');
+  const up = m.goiRa.find((g) => g.url.endsWith('/asset-uploads'));
+  assert.equal(up.opt.headers.Authorization, 'Bearer at0');
+  assert.ok(JSON.parse(up.opt.headers['Asset-Upload-Metadata']).name_base64);
+  const tk = JSON.parse(m.goiRa.find((g) => g.url.endsWith('/designs')).opt.payload);
+  assert.deepEqual([tk.asset_id, tk.design_type], ['A1', { type: 'custom', width: 1080, height: 1350 }]);
+  // Hết hạn access token: dùng refresh token cũ 1 lần, lưu cái mới.
+  delete m.cache.CANVA_AT;
+  r = m.post(m.khoaThay, 'canvaLay', { id: 'BD-1' });
+  assert.equal(r.ok, true, r.loi);
+  assert.equal(form[1].grant_type, 'refresh_token');
+  assert.equal(form[1].refresh_token, 'rt1');
+  assert.equal(m.props.CANVA_REFRESH, 'rt2');
+  assert.equal(r.data.bai.anhBia, r.data.anhId);
+  assert.equal(Buffer.from(r.data.base64, 'base64').toString(), 'canva-jpg');
+  assert.equal(JSON.parse(m.goiRa.find((g) => g.url.endsWith('/exports')).opt.payload).format.type, 'jpg');
+  // Máy gửi lên không tự đặt được trường canva.
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: { ...r.data.bai, canva: { id: 'GIA' } } })] });
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.baiDang[0].canva.id, 'D1');
+  assert.equal(m.post(khoaKha, 'canvaMo', { id: 'BD-1' }).ok, false);
+});
