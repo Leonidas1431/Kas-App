@@ -186,3 +186,71 @@ test('Đức toàn quyền như Thầy nhưng không thu hồi được khoá Th
   assert.match(r.loi, /hết hạn/);
   assert.equal(m.post(m.khoaThay, 'capKhoa', { email: 'x@example.com', vaiTro: 'TRUNG' }).ok, false);
 });
+
+test('hợp đồng: văn phòng ghi, giám sát không thấy tiền và nhật ký HĐ; máy chủ cũ tự thêm tab mới', () => {
+  const m = khoiDong();
+  // Giả lập máy chủ cài từ bản trước: chưa có tab HopDong
+  m.ss.ds = m.ss.ds.filter((s) => s.ten !== 'HopDong');
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const hd = { ma: 'HD-abc', soHD: '261131/MrNam-KAS/NT', dang: 'NT', nguyenTac: false, tenHD: 'MrNam', maCongTrinh: 'NT-A', ngayKy: '2026-11-13', giaTri: 500000000,
+    dot: [{ id: 'd1', so: 1, ten: 'Ký', tyLe: 50, thu: [{ id: 't1', ngay: '2026-11-13', soTien: 250000000 }], dong: '2026-11-13', chot: 250000000 }], phuLuc: [],
+    soLanSua: 0, soBuoiGSTG: 2, khauTru: { han: '', soTien: 0 }, truTK: { maHD: '', soTien: 0 }, trangThai: 'HIEU_LUC' };
+  let r = m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') }), op({ loai: 'HD', hd }),
+    op({ loai: 'LICH_SU', e: { id: 'h1', luc: '2026-11-13T01:00:00Z', ma: 'HD-abc', loai: 'HD_GHI', ghiChu: 'Thu đợt 1: 250.000.000 đ' } })] });
+  assert.deepEqual(r.data.map((x) => x.ok), [true, true, true]);
+  r = m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...hd, trangThai: 'XONG' } })] });
+  const kv = m.post(m.khoaThay, 'keoVe').data;
+  assert.equal(kv.hopDong.length, 1);
+  assert.equal(kv.hopDong[0].trangThai, 'XONG');
+  assert.equal(kv.hopDong[0].giaTri, 500000000);
+  assert.equal(kv.hopDong[0].ngayKy, '2026-11-13');
+  assert.equal(kv.hopDong[0].soHD, '261131/MrNam-KAS/NT');
+  assert.equal(kv.hopDong[0].dot[0].thu[0].soTien, 250000000);
+  const kvKha = m.post(khoaKha, 'keoVe').data;
+  assert.deepEqual(kvKha.hopDong, []);
+  assert.deepEqual(kvKha.phuongAn, []);
+  assert.equal(kvKha.lichSu.some((e) => e.ma === 'HD-abc'), false);
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...hd, ma: 'HD-x' } })] }).data[0].ok, false);
+  assert.equal(m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...hd, ma: 'NT-A' } })] }).data[0].ok, false);
+  // Cài đặt tài khoản nhận tiền: văn phòng ghi và đọc, giám sát không thấy, ghi lại không tạo dòng mới
+  const tk = 'Số TK: 0123\nNgân hàng X';
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'taiKhoan', giaTri: 'cũ' }), op({ loai: 'CAI_DAT', khoa: 'taiKhoan', giaTri: tk })] });
+  assert.deepEqual(m.post(m.khoaThay, 'keoVe').data.caiDat, { taiKhoan: tk });
+  assert.deepEqual(m.post(khoaKha, 'keoVe').data.caiDat, {});
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'taiKhoan', giaTri: 'x' })] }).data[0].ok, false);
+});
+
+test('chủ nhà duyệt phương án trên link; văn phòng gửi bản cũ không ghi đè câu trả lời', () => {
+  const m = khoiDong();
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('TK-A') })] });
+  const pa = { id: 'PA-1', maCongTrinh: 'TK-A', hangMuc: 'Phương án 3D', lan: 0, viec: 'TK03', ngayGui: '2026-11-10', link: 'https://drive/x', ghiChu: 'nội bộ: khách khó tính', trangThai: 'CHO', phi: '' };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'PA', pa })] });
+  let g = m.get({ xem: '0123456789' });
+  assert.equal(g.data.phuongAn.length, 1);
+  assert.equal(g.data.phuongAn[0].ghiChu, undefined); // không lộ ghi chú nội bộ
+  // Link sai hoặc phương án của công trình khác: từ chối
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: 'sai', id: 'PA-1', ketQua: 'DUYET' }).ok, false);
+  const r = m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', id: 'PA-1', ketQua: 'DUYET', yKien: 'Ok em' });
+  assert.equal(r.ok, true);
+  assert.equal(r.data.trangThai, 'DUYET');
+  // Trả lời lần nữa không đổi được
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', id: 'PA-1', ketQua: 'SUA' }).data.trangThai, 'DUYET');
+  // Máy văn phòng chưa kéo về, sửa link file và gửi lên với trạng thái cũ
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'PA', pa: { ...pa, link: 'https://drive/y' } })] });
+  const p = m.post(m.khoaThay, 'keoVe').data.phuongAn[0];
+  assert.equal(p.trangThai, 'DUYET');
+  assert.equal(p.duyetQua, 'LINK');
+  assert.equal(p.link, 'https://drive/y');
+  assert.ok(m.post(m.khoaThay, 'keoVe').data.lichSu.some((e) => e.nguoi === 'CHU_NHA'));
+});
+
+test('GSTG: giám sát được giao thấy buổi giám sát tác giả, không sửa được', () => {
+  const m = khoiDong();
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const gs = { id: 'GS-1', maCongTrinh: 'NT-A', lan: 1, ten: 'sau phá dỡ', viec: 'CB08', ngay: '', xong: '', nhacGiamSat: true };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'GSTG', gs }), op({ loai: 'GSTG', gs: { ...gs, id: 'GS-2', maCongTrinh: 'NT-B' } })] });
+  const ds = m.post(khoaKha, 'keoVe').data.gstg;
+  assert.deepEqual(ds.map((g) => g.id), ['GS-1']);
+  assert.equal(ds[0].nhacGiamSat, true);
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'GSTG', gs: { ...gs, xong: '2026-11-13' } })] }).data[0].ok, false);
+});
