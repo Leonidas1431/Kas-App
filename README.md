@@ -44,5 +44,7 @@ Máy chủ Google: xem [docs/CAI-DAT.md](docs/CAI-DAT.md).
 - [x] Phát sinh 4 bước: giám sát báo (không thấy giá) → văn phòng báo giá → khách đồng ý trên link hoặc Zalo → giám sát thấy "Được làm"; thu phát sinh theo mã PS, cảnh báo phát sinh vượt ngưỡng % HĐ
 - [x] Duyệt mẫu vật liệu: tên mẫu, người bán, việc dùng mẫu, hạn chốt trước ngày làm, khách chốt hoặc đổi trên link
 - [x] Nhà thầu: danh bạ (giám sát thấy tên, số; không thấy ghi chú nội bộ), việc theo công trình, ngày chậm do thầu, chấm 1–5 (chất lượng, tiến độ, phối hợp) khi thầu xong việc; link riêng cho thầu xem lịch việc của mình + mẫu đã chốt, không tiền, không việc thầu khác
+- [x] Nghiệm thu: thầu xong việc → nhắc nghiệm thu theo checklist (lấy từ tab Nghiệm thu của Hồ sơ thi công, mục em đề xuất có dấu *), bắt buộc ảnh; mục lỗi thành tồn tại có hạn sửa, đánh dấu đã sửa kèm ảnh; trả thầu cảnh báo khi việc mốc còn tồn tại
+- [x] Nhắc đo sản xuất nội thất khi xong thạch cao, sơn bả (hoặc trát tường) và cán nền/lát sàn
 - [x] Nhắc ảnh 16h: sau 16h, công trình đang thi công chưa có ảnh hôm nay hiện đỏ đầu màn Hôm nay, bấm chụp luôn
 - [x] Sửa kế hoạch (bảng sửa nhanh trên máy tính, sửa từng việc trên điện thoại): số ngày, khối lượng, thầu, việc đi trước, thêm/xoá việc, khởi công, ngày nghỉ Tết, chốt lại kế hoạch gốc

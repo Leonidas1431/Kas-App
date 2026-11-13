@@ -163,3 +163,11 @@ table.kh .kh-kl { min-width: 150px; }
 .sao { color: #b7791f; white-space: nowrap; }
 a.card { display: block; color: inherit; text-decoration: none; }
 a.btn { text-decoration: none; }
+/* Nghiệm thu */
+.nthu-muc { border-bottom: 1px solid var(--vien); padding: 8px 0; }
+.nthu-muc .row { align-items: center; gap: 8px; }
+.nthu-muc input { margin-top: 6px; }
+.nthu-nut { display: flex; gap: 4px; flex-shrink: 0; }
+.nthu-nut button { min-height: 38px; padding: 6px 10px; font-size: 14px; }
+.nthu-nut button.on { background: var(--thanh); color: #fff; border-color: var(--thanh); }
+.nthu-nut button.on.loi { background: var(--tre); border-color: var(--tre); }

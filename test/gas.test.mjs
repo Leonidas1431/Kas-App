@@ -448,3 +448,19 @@ test('đếm ảnh hiện trường theo ngày cho nhắc 16h: không tính ch�
   assert.deepEqual(vp.map((a) => [a.ma, a.ngay, a.so]).sort(), [['NT-A', hn, 2], ['NT-B', hn, 1]]);
   assert.deepEqual(m.post(khoaKha, 'keoVe').data.anh.map((a) => a.ma), ['NT-A']);
 });
+
+test('nghiệm thu: giám sát ghi được ở công trình được giao; đánh dấu đã sửa ở máy khác không bị bản cũ ghi đè', () => {
+  const m = khoiDong();
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') }), op({ loai: 'TAO_CT', ct: { ...congTrinhMau('NT-B'), maLinkChuNha: '999' } })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const n = { id: 'NTH-1', maCongTrinh: 'NT-A', viec: 'XT01', ngay: '2026-11-11', checklist: [{ noiDung: 'Trát phẳng', dat: false }],
+    tonTai: [{ id: 't1', noiDung: 'Trát phẳng', hanSua: '2026-11-14', daSua: '', nguoiSua: '' }], soAnh: 2 };
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'NGHIEM_THU', n: { ...n, maCongTrinh: 'NT-B', id: 'NTH-2' } })] }).data[0].ok, false);
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'NGHIEM_THU', n })] }).data[0].ok, true);
+  // Kha báo đã sửa; Thầy gửi bản cũ (đổi hạn) sau đó: vẫn giữ đã sửa
+  m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'NGHIEM_THU', n: { ...n, tonTai: [{ ...n.tonTai[0], daSua: '2026-11-13', nguoiSua: 'KHA' }] } })] });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'NGHIEM_THU', n: { ...n, tonTai: [{ ...n.tonTai[0], hanSua: '2026-11-20' }] } })] });
+  const x = m.post(m.khoaThay, 'keoVe').data.nghiemThu[0];
+  assert.deepEqual([x.nguoi, x.tonTai[0].daSua, x.tonTai[0].hanSua, x.checklist.length], ['KHA', '2026-11-13', '2026-11-20', 1]);
+  assert.equal(m.post(khoaKha, 'keoVe').data.nghiemThu.length, 1);
+});
