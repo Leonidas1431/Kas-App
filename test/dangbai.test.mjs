@@ -9,6 +9,9 @@ test('mặc định Thầy chốt: FB 3, TikTok 1, web 1 bài/tuần, Sonnet 5.5
   assert.deepEqual([cd.bdFB, cd.bdTT, cd.bdWEB, cd.bdModel, cd.bdWebTrangThai], [3, 1, 1, 'claude-sonnet-5-5', 'draft']);
   assert.equal(caiDatBD({ bdFB: '5', bdModel: 'la' }).bdFB, 5);
   assert.equal(caiDatBD({ bdModel: 'la' }).bdModel, 'claude-sonnet-5-5');
+  assert.equal(cd.bdGemini, 'gemini-3.1-flash-image');
+  assert.equal(caiDatBD({ bdGemini: 'gemini-3-pro-image' }).bdGemini, 'gemini-3-pro-image');
+  assert.equal(caiDatBD({ bdGemini: 'la' }).bdGemini, 'gemini-3.1-flash-image');
 });
 
 test('tạo bài: kênh mặc định theo loại; sửa chữ sau khi duyệt thì về chờ duyệt; bài đã đăng chỉ ghi ý kiến', () => {

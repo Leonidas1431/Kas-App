@@ -15,6 +15,8 @@ const KENH_MAC_DINH = { DU_AN: ['FB', 'IG', 'TT'], CAM_HUNG: ['FB', 'IG', 'TT'],
 export const MAC_DINH_BD = { bdFB: 3, bdTT: 1, bdWEB: 1, bdGio: '19:30' };
 // Thầy chọn Sonnet 5.5 ngày 13/11/2026.
 export const MODEL = { 'claude-sonnet-5-5': 'Claude Sonnet 5.5 (Thầy chọn, rẻ bằng nửa)', 'claude-opus-5-5': 'Claude Opus 5.5 (viết tự nhiên hơn)' };
+// Gemini làm ảnh bìa: giá 1 ảnh khổ 1K, tra trang giá Google ngày 13/11/2026.
+export const MODEL_ANH = { 'gemini-3.1-flash-image': 'Gemini 3.1 Flash Image (khoảng 0,067 USD/ảnh)', 'gemini-3-pro-image': 'Gemini 3 Pro Image (chữ trên ảnh đẹp hơn, khoảng 0,134 USD/ảnh)' };
 export function caiDatBD(caiDat = {}) {
   const o = {};
   for (const [k, v] of Object.entries(MAC_DINH_BD)) {
@@ -23,6 +25,7 @@ export function caiDatBD(caiDat = {}) {
   }
   o.bdModel = MODEL[caiDat.bdModel] ? caiDat.bdModel : 'claude-sonnet-5-5';
   o.bdWebTrangThai = caiDat.bdWebTrangThai === 'publish' ? 'publish' : 'draft';
+  o.bdGemini = MODEL_ANH[caiDat.bdGemini] ? caiDat.bdGemini : 'gemini-3.1-flash-image';
   return o;
 }
 

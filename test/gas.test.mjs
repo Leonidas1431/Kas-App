@@ -660,3 +660,132 @@ test('AI mặc định dùng Sonnet 5.5 (Thầy chọn 13/11)', () => {
   m.post(m.khoaThay, 'vietBai', { bai: baiMau({ maCongTrinh: '' }), kenh: ['FB'] });
   assert.equal(JSON.parse(m.goiRa.at(-1).opt.payload).model, 'claude-sonnet-5-5');
 });
+
+// ---------- Thư viện phong thủy ----------
+function thuVienMau(m) {
+  let f = m.root;
+  for (const t of ['LeonidasProject', '_shared', 'phong-thuy-core', '_private']) f = f.createFolder(t);
+  const md = f.createFile({ ten: 'Bat trach.md', bytes: Buffer.from('# Chương 3\nCửa chính nên tránh đối thẳng cầu thang, theo sách mẫu.\n\nĐoạn khác về bếp.'), type: 'text/markdown' });
+  const doc = f.createFolder('Giao trinh').createFile({ ten: 'Giáo trình A', bytes: Buffer.from(''), type: 'application/vnd.google-apps.document' });
+  m.root.createFile({ ten: 'Ngoai.md', bytes: Buffer.from('x'), type: 'text/markdown' });
+  return { md: md.getId(), doc: doc.getId(), ngoai: m.root.files.at(-1).id };
+}
+
+test('thư viện phong thủy: liệt kê, đọc trong thư viện; AI chỉ được chép nguyên văn; giám sát không xem được', () => {
+  const m = khoiDong();
+  const tv = thuVienMau(m);
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  assert.equal(m.post(khoaKha, 'thuVienPT').ok, false);
+  const ds = m.post(m.khoaThay, 'thuVienPT').data;
+  assert.deepEqual(ds.map((x) => x.ten).sort(), ['Bat trach.md', 'Giáo trình A']);
+  assert.equal(ds.find((x) => x.ten === 'Giáo trình A').thuMuc, 'Giao trinh');
+  assert.match(m.post(m.khoaThay, 'docTaiLieu', { id: tv.md }).data.chu, /Cửa chính nên tránh/);
+  assert.equal(m.post(m.khoaThay, 'docTaiLieu', { id: tv.ngoai }).ok, false);
+  m.traLoi.fn = (url) => (url.includes('/export?mimeType=text/plain') ? { ma: 200, body: 'Nội dung giáo trình' } : null);
+  assert.equal(m.post(m.khoaThay, 'docTaiLieu', { id: tv.doc }).data.chu, 'Nội dung giáo trình');
+  m.props.ANTHROPIC_API_KEY = 'sk';
+  m.traLoi.fn = (url) => (url.includes('anthropic') ? { ma: 200, body: { model: 'claude-sonnet-5-5', stop_reason: 'end_turn', usage: {}, content: [{ type: 'text', text: JSON.stringify({ doan: [
+    { trich: 'Cửa chính nên  tránh đối thẳng\ncầu thang, theo sách mẫu.', viTri: 'Chương 3', viSao: 'đúng chủ đề' },
+    { trich: 'Cửa chính hướng Nam giúp gia chủ giàu có nhanh chóng.', viTri: '', viSao: 'bịa' }] }) }] } } : null);
+  const r = m.post(m.khoaThay, 'timDoanPT', { id: tv.md, chuDe: 'cửa chính' }).data;
+  assert.equal(r.doan.length, 1);
+  assert.equal(r.boQua, 1);
+  assert.equal(r.doan[0].viTri, 'Chương 3');
+  assert.equal(m.post(m.khoaThay, 'timDoanPT', { id: tv.md, chuDe: '' }).ok, false);
+});
+
+// ---------- Gemini, Canva ----------
+function baiCoAnh(m, o = {}) {
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  m.post(m.khoaThay, 'guiAnh', { id: 'h1', ma: 'NT-A', viec: 'XT01', tenFile: 'h1.jpg', base64: 'eA==' });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: baiMau({ kenh: ['FB'], dsAnh: ['h1'], baiViet: { fb: 'a' }, tieuDeBia: 'Nhà xong đúng hẹn', ...o }) })] });
+}
+
+test('Gemini làm bìa: cần khoá; gửi ảnh thật + giữ nguyên công trình; thử tỉ lệ khác khi bị từ chối; ghi chi phí; bài đã duyệt về chờ duyệt', () => {
+  const m = khoiDong();
+  baiCoAnh(m);
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  assert.match(m.post(m.khoaThay, 'geminiBia', { id: 'BD-1' }).loi, /GEMINI_API_KEY/);
+  m.props.GEMINI_API_KEY = 'g';
+  const tl = [];
+  m.traLoi.fn = (url, opt) => {
+    if (!url.includes('generativelanguage')) return null;
+    const b = JSON.parse(opt.payload);
+    tl.push(b.response_format.aspect_ratio);
+    if (b.response_format.aspect_ratio === '4:5') return { ma: 400, body: { error: { message: 'Unsupported aspect ratio' } } };
+    return { ma: 200, body: { steps: [{ type: 'model_output', content: [{ type: 'text', text: 'ok' }, { type: 'image', mime_type: 'image/jpeg', data: 'QUJD' }] }] } };
+  };
+  const r = m.post(m.khoaThay, 'geminiBia', { id: 'BD-1', kieu: 'CHU' });
+  assert.equal(r.ok, true, r.loi);
+  assert.deepEqual(tl, ['4:5', '3:4']);
+  const body = JSON.parse(m.goiRa.at(-1).opt.payload);
+  assert.equal(body.model, 'gemini-3.1-flash-image');
+  assert.equal(m.goiRa.at(-1).opt.headers['x-goog-api-key'], 'g');
+  assert.equal(body.input[1].type, 'image');
+  assert.match(body.input[0].text, /do not add, remove/);
+  assert.match(body.input[0].text, /"Nhà xong đúng hẹn"/);
+  assert.equal(r.data.bai.anhBia, r.data.anhId);
+  assert.equal(r.data.bai.trangThai, 'CHO_DUYET');
+  const d = m.post(m.khoaThay, 'keoVe').data;
+  assert.equal(d.chiAI.at(-1).usd, 0.067);
+  assert.equal(d.anh === undefined || !d.anh.some((a) => a.id === r.data.anhId), true); // ảnh bài đăng không lẫn vào ảnh công trình
+  m.traLoi.fn = (url) => (url.includes('generativelanguage') ? { ma: 200, body: { steps: [{ type: 'model_output', content: [{ type: 'text', text: 'Không sửa được ảnh này' }] }] } } : null);
+  assert.match(m.post(m.khoaThay, 'geminiBia', { id: 'BD-1' }).loi, /Không sửa được ảnh này/);
+});
+
+test('Canva: chỉ Thầy nối; PKCE + state; lưu refresh token mới mỗi lần; đưa ảnh sang Canva, lấy ảnh đã sửa về làm bìa', () => {
+  const m = khoiDong();
+  baiCoAnh(m);
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  assert.match(m.post(m.khoaThay, 'canvaNoi').loi, /CANVA_CLIENT_ID/);
+  Object.assign(m.props, { CANVA_CLIENT_ID: 'cid', CANVA_CLIENT_SECRET: 'sec' });
+  assert.equal(m.post(khoaKha, 'canvaNoi').ok, false);
+  const u = new URL(m.post(m.khoaThay, 'canvaNoi').data.url);
+  assert.equal(u.origin + u.pathname, 'https://www.canva.com/api/oauth/authorize');
+  assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(u.searchParams.get('redirect_uri'), 'https://script.google.com/macros/s/ABC/exec');
+  const pk = JSON.parse(m.props.CANVA_PKCE);
+  const crypto = createRequire(import.meta.url)('crypto');
+  assert.equal(u.searchParams.get('code_challenge'), crypto.createHash('sha256').update(pk.verifier).digest('base64url'));
+  let refresh = 0; const form = [];
+  m.traLoi.fn = (url, opt) => {
+    if (url.endsWith('/oauth/token')) { form.push(opt.payload); return { ma: 200, body: { access_token: 'at' + refresh, refresh_token: 'rt' + ++refresh, expires_in: 14400 } }; }
+    if (url.endsWith('/asset-uploads')) return { ma: 200, body: { job: { id: 'J1', status: 'in_progress' } } };
+    if (url.endsWith('/asset-uploads/J1')) return { ma: 200, body: { job: { id: 'J1', status: 'success', asset: { id: 'A1' } } } };
+    if (url.endsWith('/designs')) return { ma: 200, body: { design: { id: 'D1', urls: { edit_url: 'https://www.canva.com/design/D1/edit' } } } };
+    if (url.endsWith('/exports')) return { ma: 200, body: { job: { id: 'E1', status: 'in_progress' } } };
+    if (url.endsWith('/exports/E1')) return { ma: 200, body: { job: { id: 'E1', status: 'success', urls: ['https://export-download.canva.com/x.jpg'] } } };
+    if (url.startsWith('https://export-download')) return { ma: 200, bytes: 'canva-jpg' };
+    return null;
+  };
+  assert.match(m.get({ code: 'C', state: 'sai' }).html, /hết hạn hoặc không đúng/);
+  assert.equal(form.length, 0);
+  assert.match(m.get({ code: 'C', state: pk.state }).html, /Đã nối Canva/);
+  assert.equal(form[0].grant_type, 'authorization_code');
+  assert.equal(form[0].code_verifier, pk.verifier);
+  assert.equal(m.props.CANVA_REFRESH, 'rt1');
+  assert.equal(m.props.CANVA_PKCE, undefined);
+  assert.match(m.get({ code: 'C', state: pk.state }).html, /hết hạn/); // link chỉ dùng 1 lần
+  let r = m.post(m.khoaThay, 'canvaMo', { id: 'BD-1' });
+  assert.equal(r.ok, true, r.loi);
+  assert.equal(r.data.url, 'https://www.canva.com/design/D1/edit');
+  const up = m.goiRa.find((g) => g.url.endsWith('/asset-uploads'));
+  assert.equal(up.opt.headers.Authorization, 'Bearer at0');
+  assert.ok(JSON.parse(up.opt.headers['Asset-Upload-Metadata']).name_base64);
+  const tk = JSON.parse(m.goiRa.find((g) => g.url.endsWith('/designs')).opt.payload);
+  assert.deepEqual([tk.asset_id, tk.design_type], ['A1', { type: 'custom', width: 1080, height: 1350 }]);
+  // Hết hạn access token: dùng refresh token cũ 1 lần, lưu cái mới.
+  delete m.cache.CANVA_AT;
+  r = m.post(m.khoaThay, 'canvaLay', { id: 'BD-1' });
+  assert.equal(r.ok, true, r.loi);
+  assert.equal(form[1].grant_type, 'refresh_token');
+  assert.equal(form[1].refresh_token, 'rt1');
+  assert.equal(m.props.CANVA_REFRESH, 'rt2');
+  assert.equal(r.data.bai.anhBia, r.data.anhId);
+  assert.equal(Buffer.from(r.data.base64, 'base64').toString(), 'canva-jpg');
+  assert.equal(JSON.parse(m.goiRa.find((g) => g.url.endsWith('/exports')).opt.payload).format.type, 'jpg');
+  // Máy gửi lên không tự đặt được trường canva.
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: { ...r.data.bai, canva: { id: 'GIA' } } })] });
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.baiDang[0].canva.id, 'D1');
+  assert.equal(m.post(khoaKha, 'canvaMo', { id: 'BD-1' }).ok, false);
+});
