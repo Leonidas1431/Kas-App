@@ -11,7 +11,7 @@ Thiết kế và quyết định: [doc phân tích nhu cầu & kiến trúc](htt
 | `web/` | App chạy trên trình duyệt (PWA), HTML/JS thuần, không cần build |
 | `web/js/schedule.js` | Bộ xếp lịch: lịch nghỉ, ngày lễ, ràng buộc trước–sau |
 | `web/js/store.js` | Dữ liệu + hàng chờ khi mất sóng |
-| `web/js/hopdong.js`, `web/js/thietke.js`, `web/js/kehoach.js` | Hợp đồng (số HĐ, đợt thu, phụ lục, khấu trừ phí TK), tiến độ thiết kế (phương án gửi khách, lần sửa, giám sát tác giả) và sửa kế hoạch công trình |
+| `web/js/hopdong.js`, `web/js/thietke.js`, `web/js/kehoach.js`, `web/js/thuchi.js` | Hợp đồng (số HĐ, đợt thu, phụ lục, khấu trừ phí TK), tiến độ thiết kế (phương án gửi khách, lần sửa, giám sát tác giả), sửa kế hoạch công trình, thu chi và trả thầu |
 | `web/js/khach.js` | Sổ khách: trạng thái, nhắc gọi lại, báo giá, người giới thiệu, chăm sóc sau bàn giao |
 | `web/data/thu-vien-v1.json` | Thư viện hạng mục (bản nháp v1, chờ Thầy và Đức duyệt) |
 | `gas/` | Máy chủ Apps Script: Sheets làm kho dữ liệu, ảnh vào Drive |
@@ -40,5 +40,7 @@ Máy chủ Google: xem [docs/CAI-DAT.md](docs/CAI-DAT.md).
 - [x] Vai trò: Thầy, Đức (toàn quyền), Giám sát, Quyền tạm có hạn
 - [x] Hợp đồng: số HĐ YYMM31/TÊN-KAS/dạng, đợt thu (thiếu dồn sang đợt sau), phụ lục, khấu trừ phí TK vào đợt cuối HĐ thi công, nhắc thu khi xong mốc, dừng/hoàn thành
 - [x] Tiến độ thiết kế: gửi phương án → khách đồng ý/cần sửa trên link chủ nhà, đếm lần sửa, phí sửa vượt 5%, nhắc khách sau 3 ngày, file xác nhận để ký, buổi giám sát tác giả
-- [ ] Link thầu, đánh giá thầu
+- [x] Thu chi (theo Sổ cái): ghi chi công trình / chi công ty / thu ngoài HĐ, gõ nhanh "12tr", ảnh chứng từ để riêng; đợt trả thầu, giám sát xác nhận khối lượng (không thấy tiền), đến hạn trả; chi dự kiến, lãi gộp, cảnh báo vượt chi
+- [ ] Phát sinh 4 bước, duyệt mẫu vật liệu
+- [ ] Link thầu, đánh giá thầu, nhắc ảnh 16h
 - [x] Sửa kế hoạch (bảng sửa nhanh trên máy tính, sửa từng việc trên điện thoại): số ngày, khối lượng, thầu, việc đi trước, thêm/xoá việc, khởi công, ngày nghỉ Tết, chốt lại kế hoạch gốc

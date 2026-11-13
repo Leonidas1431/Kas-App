@@ -285,3 +285,45 @@ test('sửa kế hoạch: thêm, xoá việc, sửa công trình; giám sát kh�
   assert.ok(c.viec.some((x) => x.id === 'VMOI1'));
   assert.equal(c.ten, 'Căn hộ thử');
 });
+
+test('thu chi: văn phòng ghi; giám sát chỉ thấy đợt trả thầu không có tiền, chỉ xác nhận được khối lượng', () => {
+  const m = khoiDong();
+  const ct = congTrinhMau('NT-A', '');
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const t = { id: 'TT-1', maCongTrinh: 'NT-A', thau: 'Thầu Tâm', hangMuc: 'Điện nước', dot: 'DN1', soTien: 12000000, dieuKien: 'Đi ống xong', viecMoc: '', hanTra: '2026-12-01', klXacNhan: null, ghiChu: 'giữ 5% bảo hành', xoa: '' };
+  const e = { id: 'TC-1', ngay: '2026-11-13', ma: 'NT-A', loai: 'CHI', hangMuc: 'Chi thầu phụ', thamChieu: 'TT-1', doiTuong: 'Thầu Tâm', soTien: 5000000, noiDung: '', hinhThuc: 'CK', soAnh: 1, xoa: '' };
+  const ls = { id: 'ls-tc', luc: '2026-11-13T01:00:00Z', ma: 'TC-1', viec: '', tenViec: 'Thu chi', nguoi: 'THAY', loai: 'THU_CHI', ghiChu: 'Xoá khoản 5.000.000 đ' };
+  let r = m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TT', t }), op({ loai: 'TC', e }), op({ loai: 'LICH_SU', e: ls })] });
+  assert.deepEqual(r.data.map((x) => x.ok), [true, true, true]);
+  // Giám sát: không thấy tiền, ghi chú, sổ thu chi, nhật ký tiền
+  let kv = m.post(khoaKha, 'keoVe').data;
+  assert.equal(kv.traThau.length, 1);
+  assert.equal(kv.traThau[0].soTien, undefined);
+  assert.equal(kv.traThau[0].ghiChu, undefined);
+  assert.equal(kv.traThau[0].dieuKien, 'Đi ống xong');
+  assert.deepEqual(kv.thuChi, []);
+  assert.ok(!kv.lichSu.some((x) => x.id === 'ls-tc'));
+  assert.ok(!JSON.stringify(kv).includes('12000000'));
+  // Giám sát không ghi được thu chi hay sửa đợt; xác nhận KL được, 1 lần
+  r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'TC', e: { ...e, soTien: 1 } }), op({ loai: 'TT', t: { ...t, soTien: 1 } }), op({ loai: 'XAC_NHAN_KL', id: 'TT-1', ngay: '2026-11-13', ghiChu: 'đủ' })] });
+  assert.deepEqual(r.data.map((x) => x.ok), [false, false, true]);
+  // Văn phòng gửi bản đợt cũ (chưa có xác nhận) không xoá mất xác nhận của giám sát
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TT', t: { ...t, hanTra: '2026-12-05' } })] });
+  kv = m.post(m.khoaThay, 'keoVe').data;
+  assert.deepEqual(kv.traThau[0].klXacNhan, { ngay: '2026-11-13', nguoi: 'KHA', ghiChu: 'đủ' });
+  assert.equal(kv.traThau[0].hanTra, '2026-12-05');
+  assert.equal(kv.traThau[0].soTien, 12000000);
+  assert.equal(kv.thuChi[0].soTien, 5000000);
+  assert.equal(kv.thuChi[0].soAnh, 1);
+  assert.ok(kv.lichSu.some((x) => x.id === 'ls-tc'));
+  // Công trình không được giao: không xác nhận được
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TT', t: { ...t, id: 'TT-2', maCongTrinh: 'NT-B' } })] });
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'XAC_NHAN_KL', id: 'TT-2', ngay: '2026-11-13' })] }).data[0].ok, false);
+  // Ảnh chứng từ: chỉ văn phòng, để riêng thư mục "KAS App – Chứng từ"
+  assert.equal(m.post(khoaKha, 'guiAnh', { id: 'a1', ma: 'NT-A', viec: 'TC-1', tenFile: 'x.jpg', base64: 'eA==', loai: 'CHUNG_TU' }).ok, false);
+  assert.equal(m.post(m.khoaThay, 'guiAnh', { id: 'a2', ma: 'CTY', viec: 'TC-9', tenFile: 'ck.jpg', base64: 'eA==', loai: 'CHUNG_TU' }).ok, true);
+  assert.equal(m.root.con.find((c) => c.ten === 'KAS App – Chứng từ').con.find((c) => c.ten === 'CTY').files.length, 1);
+  assert.deepEqual(m.post(m.khoaThay, 'keoVe').data.chungTu.map((a) => a.viec), ['TC-9']);
+  assert.deepEqual(m.post(khoaKha, 'keoVe').data.chungTu, []);
+});

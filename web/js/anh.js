@@ -38,13 +38,14 @@ export function tenAnh(ma, viec, luc, stt) {
   return `${ma}_${d.getFullYear()}${hai(d.getMonth() + 1)}${hai(d.getDate())}_${hai(d.getHours())}${hai(d.getMinutes())}_${viec}_${hai(stt)}.jpg`;
 }
 
-export async function xepAnh(files, ma, viec) {
+// loai 'CHUNG_TU': ảnh chuyển khoản / hoá đơn, máy chủ cất riêng (chỉ văn phòng).
+export async function xepAnh(files, ma, viec, loai = '') {
   const luc = new Date();
   const ds = [];
   let stt = 1;
   for (const f of files) {
     const base64 = await nenAnh(f);
-    ds.push({ id: crypto.randomUUID(), ma, viec, tenFile: tenAnh(ma, viec, luc, stt++), base64 });
+    ds.push({ id: crypto.randomUUID(), ma, viec, tenFile: tenAnh(ma, viec, luc, stt++), base64, ...(loai ? { loai } : {}) });
   }
   await giaoDich('readwrite', (s) => ds.forEach((a) => s.put(a)));
   return ds.length;
