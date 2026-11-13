@@ -28,6 +28,7 @@ function taoMoiTruong() {
       setFontWeight() { return this; } }; },
     appendRow(v) { this.rows.push(v.map(giaLapO)); },
     getLastRow() { return this.rows.length; },
+    deleteRow(i) { this.rows.splice(i - 1, 1); },
     getLastColumn() { return this.rows.reduce((m, r) => Math.max(m, r.length), 0); },
     setFrozenRows() {} });
   const sheets = {};

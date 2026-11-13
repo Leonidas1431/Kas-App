@@ -1,4 +1,5 @@
-import { LICH, leCanHoi, diffDays } from './schedule.js';
+import { LICH, KIEU_NOI, leCanHoi, diffDays, addDays, xepLich } from './schedule.js';
+import { suaViec, themViec, xoaViec, suaCongTrinh, chotKeHoachGoc, xemTruoc, dsNhaThau } from './kehoach.js';
 import {
   doc, ghi, taoCongTrinh, lichHienTai, capNhatTienDo, baoCham, ghiChu, tongHop, viecHomNay, datCongKhai,
   NGUYEN_NHAN, LOAI_HINH, VAI_TRO, VAN_PHONG, rong, datCaiDat,
@@ -98,6 +99,7 @@ function route() {
   if (!daKetNoi() && !daChonDemo()) return manKetNoi();
   if (h === 'ket-noi') return manKetNoi();
   if (h.startsWith('ct-')) return manCongTrinh(h.slice(3));
+  if (h.startsWith('sua-kh-')) return laVanPhong() ? manSuaKeHoach(h.slice(7)) : manHomNay();
   if (h === 'cong-trinh') return manDanhSach();
   if (h === 'tao') return laVanPhong() ? manTao() : manHomNay();
   if (h === 'khach') return laVanPhong() ? manKhach() : manHomNay();
@@ -149,7 +151,7 @@ function moViec(maCt, id) {
   const lsu = db.lichSu.filter((e) => e.ma === maCt && e.viec === id).slice(-5).reverse();
   d.innerHTML = `<h2>${esc(x.hangMuc)}</h2>
     <p class="muted">${esc(x.nhom)}${x.dauViec ? ' · ' + esc(x.dauViec) : ''}<br>
-      Kế hoạch gốc ${ddmm(x.goc.batDau)}–${ddmm(x.goc.ketThuc)} · hiện tại ${ddmm(t.batDau)}–${ddmm(t.ketThuc)} · ${x.soNgay} ngày công</p>
+      Kế hoạch gốc ${ddmm(x.goc.batDau)}–${ddmm(x.goc.ketThuc)} · hiện tại ${ddmm(t.batDau)}–${ddmm(t.ketThuc)} · ${x.soNgay} ngày công${x.khoiLuong != null && x.khoiLuong !== '' ? ` · ${esc(x.khoiLuong)} ${esc(x.dvt || '')}` : ''}${x.nhaThau ? ` · thầu ${esc(x.nhaThau)}` : ''}</p>
     <label class="f">Tiến độ</label>
     <div class="grid-btn">${[0, 25, 50, 75, 100].map((p) => `<button data-pct="${p}" class="${x.phanTram === p ? 'on' : ''}">${p === 100 ? 'Xong' : p + '%'}</button>`).join('')}</div>
     <label class="f">Ghi chú / phát sinh (bấm micro trên bàn phím để nói)</label>
@@ -163,6 +165,7 @@ function moViec(maCt, id) {
       <button id="zalo">Gửi Zalo</button>
       <button id="cham" class="btn-do">Báo chậm</button>
     </div>
+    ${laVanPhong() ? '<div class="actions"><button id="suaViec">✏️ Sửa việc: số ngày, khối lượng, thầu, việc đi trước</button></div>' : ''}
     ${lsu.length ? `<h3>Gần đây</h3>${lsu.map((e) => `<p class="muted">${ddmm(String(e.luc).slice(0, 10))} · ${esc(tenNguoi(e.nguoi))}: ${moTa(e)}</p>`).join('')}` : ''}
     <div class="actions"><button id="dong">Đóng</button></div>`;
   d.showModal();
@@ -191,6 +194,7 @@ function moViec(maCt, id) {
   };
   $('#zalo', d).onclick = () => chiaSe(`[${ct.ma}] ${x.hangMuc}\nLịch: ${ddmm(t.batDau)} – ${ddmm(t.ketThuc)}\nTiến độ: ${x.phanTram}%`);
   $('#cham', d).onclick = () => moBaoCham(ct, x);
+  if ($('#suaViec', d)) $('#suaViec', d).onclick = () => moSuaViec(ct, id);
   $('#dong', d).onclick = () => d.close();
 }
 
@@ -318,7 +322,7 @@ function manCongTrinh(ma) {
     <div class="legend"><span><i style="background:var(--chinh)"></i>Hiện tại</span><span><i style="background:var(--goc)"></i>Kế hoạch gốc</span><span><i style="background:var(--tre)"></i>Trễ</span><span><i style="background:var(--dang)"></i>Xong</span><span><i style="background:var(--sap)"></i>Hôm nay</span></div>
     <div class="gantt">${rows}<span class="g-today" style="left:calc(34% + (66% - 10px) * ${Math.min(1, Math.max(0, diffDays(tu, hn) / tong))})"></span></div>
     <div class="actions">
-      ${laVanPhong() ? `<button id="linkCN">Gửi link cho chủ nhà</button>` : ''}
+      ${laVanPhong() ? `<a class="btn" href="#sua-kh-${esc(ct.ma)}" style="text-align:center">Sửa kế hoạch</a><button id="linkCN">Gửi link cho chủ nhà</button>` : ''}
       <a class="btn" href="#chu-nha-${ct.maLinkChuNha}${kn ? '&api=' + maApi(kn.api) : ''}" style="text-align:center">Xem như chủ nhà</a>
     </div>
     ${laVanPhong() ? khoiHDCongTrinh(ct) : ''}
@@ -330,6 +334,283 @@ function manCongTrinh(ma) {
   const b = $('#linkCN');
   if (b) b.onclick = () => chiaSe(`KAS gửi anh/chị link theo dõi tiến độ công trình ${ct.ten}:\n${linkChuNha}`);
   ganNutThietKe(ct);
+}
+
+// ---------- Sửa kế hoạch (văn phòng, tiện nhất trên máy tính) ----------
+const ketThucCuoi = (m) => [...m.values()].reduce((a, b) => (b.ketThuc > a ? b.ketThuc : a), '');
+const tenViecTruoc = (ct, v) => {
+  const ten = new Map(ct.viec.map((x, i) => [x.id, `${i + 1}. ${x.hangMuc}`]));
+  return (v.diSau || []).filter((p) => ten.has(p.id))
+    .map((p) => `${ten.get(p.id)}${p.kieu !== 'XS' ? ` (${KIEU_NOI[p.kieu].toLowerCase()})` : ''}${Number(p.goi) ? ` +${p.goi}n` : ''}`).join('; ');
+};
+const soHoacRong = (s) => (String(s).trim() === '' ? null : Number(String(s).replace(',', '.')));
+
+function manSuaKeHoach(ma) {
+  const ct = db.congTrinh.find((c) => c.ma === ma);
+  if (!ct) return manDanhSach();
+  datTab('cong-trinh', 'Sửa kế hoạch ' + ct.ma);
+  const lich = lichHienTai(ct);
+  const gocCuoi = ct.viec.reduce((m, v) => (v.goc && v.goc.ketThuc > m ? v.goc.ketThuc : m), ct.khoiCong);
+  let nhom = '';
+  const o = (v, f, cls = '', them = '') => `<input data-f="${f}" class="${cls}" value="${esc(v[f] ?? '')}" ${them}>`;
+  const rows = ct.viec.map((v, i) => {
+    const g = v.nhom !== nhom ? `<tr class="kh-nhom"><td colspan="9">${esc((nhom = v.nhom))}</td></tr>` : '';
+    return `${g}<tr data-id="${esc(v.id)}">
+      <td class="so muted">${i + 1}</td>
+      <td class="kh-ten">${o(v, 'hangMuc')}</td>
+      <td>${o(v, 'soNgay', 'o-so', 'type="number" min="0.5" step="0.5" inputmode="decimal"')}</td>
+      <td><div class="kh-kl">${o(v, 'khoiLuong', 'o-so', 'inputmode="decimal"')}${o(v, 'dvt', 'o-dvt', 'placeholder="đv"')}</div></td>
+      <td>${o(v, 'nhaThau', '', 'list="dsThau"')}</td>
+      <td><button class="o-nut" data-chi-tiet>${esc(tenViecTruoc(ct, v)) || '<span class="muted">—</span>'}</button></td>
+      <td class="so kh-ngay"></td>
+      <td>${o(v, 'moc')}</td>
+      <td class="kh-nut"><button data-chi-tiet title="Sửa chi tiết">✏️</button><button data-them-sau title="Thêm việc ngay sau">＋</button></td>
+    </tr>`;
+  }).join('');
+  $('#view').innerHTML = `<h2>${esc(ct.ten)}</h2>
+    <p class="muted">Khởi công ${fmtNgay(ct.khoiCong)} · ${LICH[ct.lich.kieu]}${(ct.lich.nghi || []).length ? ` · ${ct.lich.nghi.length} ngày nghỉ lễ` : ''}</p>
+    <p id="khTong"></p>
+    <p class="note">Sửa ô nào, bấm ra ngoài là lưu, các việc sau tự lùi hoặc tiến theo. Kế hoạch gốc (để so chậm) giữ nguyên, chỉ đổi khi bấm "Chốt kế hoạch gốc". Đổi việc đi trước, ngày cố định, nhóm: bấm ✏️.</p>
+    <div class="actions khong-in">
+      <button id="suaCT">Thông tin công trình, lịch nghỉ</button>
+      <button id="chotGoc">Chốt kế hoạch gốc</button>
+      <a class="btn" href="#ct-${esc(ct.ma)}" style="text-align:center">Xem Gantt</a>
+    </div>
+    <div class="wrap"><table class="kh">
+      <tr><th>#</th><th>Hạng mục</th><th>Số ngày</th><th>Khối lượng</th><th>Nhà thầu</th><th>Đi sau</th><th>Lịch hiện tại</th><th>Mốc</th><th></th></tr>
+      ${rows}
+    </table></div>
+    <div class="actions"><button id="themCuoi">＋ Thêm việc cuối</button></div>
+    <datalist id="dsThau">${dsNhaThau(db).map((t) => `<option value="${esc(t)}">`).join('')}</datalist>`;
+  const capNhatNgay = () => {
+    const l = lichHienTai(ct);
+    $('#view').querySelectorAll('tr[data-id]').forEach((tr) => {
+      const v = ct.viec.find((x) => x.id === tr.dataset.id);
+      const t = l.get(v.id);
+      const lech = v.goc ? diffDays(v.goc.ketThuc, t.ketThuc) : 0;
+      $('.kh-ngay', tr).innerHTML = `${ddmm(t.batDau)}–${ddmm(t.ketThuc)}${lech ? `<br><span class="${lech > 0 ? 'tre' : 'muted'}">${lech > 0 ? '+' : ''}${lech} ngày</span>` : ''}`;
+    });
+    const kt = ketThucCuoi(l);
+    const lech = diffDays(gocCuoi, kt);
+    $('#khTong').innerHTML = `Xong dự kiến <b>${fmtNgay(kt)}</b> · kế hoạch gốc ${fmtNgay(gocCuoi)}${lech ? ` (<span class="${lech > 0 ? 'tre' : ''}">${lech > 0 ? 'chậm' : 'sớm'} ${Math.abs(lech)} ngày</span>)` : ''}`;
+  };
+  capNhatNgay();
+  $('#view').querySelectorAll('tr[data-id] input[data-f]').forEach((inp) => {
+    inp.onchange = () => {
+      const id = inp.closest('tr').dataset.id, f = inp.dataset.f;
+      let val = inp.value.trim();
+      if (f === 'soNgay') { val = soHoacRong(val); if (!(val > 0)) { bao('Số ngày phải lớn hơn 0'); inp.value = ct.viec.find((x) => x.id === id).soNgay; return; } }
+      if (f === 'khoiLuong') val = soHoacRong(val);
+      if (f === 'hangMuc' && !val) { bao('Hạng mục không được trống'); inp.value = ct.viec.find((x) => x.id === id).hangMuc; return; }
+      if (suaViec(db, ct, id, { [f]: val }, vaiTro).length) { luu(); capNhatNgay(); bao('Đã lưu'); }
+    };
+  });
+  $('#view').querySelectorAll('[data-chi-tiet]').forEach((b) => { b.onclick = () => moSuaViec(ct, b.closest('tr').dataset.id); });
+  $('#view').querySelectorAll('[data-them-sau]').forEach((b) => { b.onclick = () => moThemViec(ct, b.closest('tr').dataset.id); });
+  $('#themCuoi').onclick = () => moThemViec(ct, ct.viec.length ? ct.viec[ct.viec.length - 1].id : '');
+  $('#suaCT').onclick = () => moSuaCT(ct);
+  $('#chotGoc').onclick = () => moChotGoc(ct);
+}
+
+// Sửa đầy đủ 1 việc (cả trên điện thoại): tên, số ngày, việc đi trước, ngày cố định, xoá.
+function moSuaViec(ct, id) {
+  const x = ct.viec.find((v) => v.id === id);
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const khac = ct.viec.map((v, i) => [v, i]).filter(([v]) => v.id !== id);
+  const nhoms = [...new Set(ct.viec.map((v) => v.nhom))];
+  let sau = (x.diSau || []).map((p) => ({ ...p }));
+  const dongSau = (p, k) => `<div class="kh-sau" data-k="${k}">
+      <select data-p="id">${khac.map(([v, i]) => `<option value="${esc(v.id)}" ${v.id === p.id ? 'selected' : ''}>${i + 1}. ${esc(v.hangMuc)}</option>`).join('')}</select>
+      <select data-p="kieu">${Object.entries(KIEU_NOI).map(([k2, t]) => `<option value="${k2}" ${k2 === p.kieu ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      <input data-p="goi" type="number" step="1" inputmode="numeric" value="${Number(p.goi) || 0}" title="Cách bao nhiêu ngày công">
+      <button data-bo="${k}" title="Bỏ">✕</button></div>`;
+  d.innerHTML = `<h2>Sửa việc</h2>
+    <label class="f">Hạng mục</label><input id="hm" value="${esc(x.hangMuc)}">
+    <label class="f">Nhóm</label><input id="nhom" value="${esc(x.nhom)}" list="dsNhom"><datalist id="dsNhom">${nhoms.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+    <label class="f">Đầu việc / ghi chú kỹ thuật</label><input id="dv" value="${esc(x.dauViec || '')}">
+    <div class="hai-cot">
+      <div><label class="f">Số ngày công</label><input id="sn" type="number" min="0.5" step="0.5" inputmode="decimal" value="${x.soNgay}"></div>
+      <div><label class="f">Khối lượng · đơn vị</label><div class="kh-kl"><input id="kl" inputmode="decimal" value="${x.khoiLuong ?? ''}"><input id="dvt" value="${esc(x.dvt || '')}" placeholder="m2"></div></div>
+    </div>
+    <label class="f">Nhà thầu</label><input id="thau" value="${esc(x.nhaThau || '')}" list="dsThau2"><datalist id="dsThau2">${dsNhaThau(db).map((t) => `<option value="${esc(t)}">`).join('')}</datalist>
+    <label class="f">Mốc (vd: Nghiệm thu, Thu tiền đợt 2, GSTG)</label><input id="moc" value="${esc(x.moc || '')}">
+    <label class="f">Làm sau việc nào</label>
+    <p class="muted">Xong mới làm: bắt đầu sau khi việc trước xong. Gối đầu, cuốn chiếu: bắt đầu sau khi việc trước bắt đầu. Ô số: cách thêm bao nhiêu ngày công.</p>
+    <div id="dsSau"></div>
+    <button id="themSau" class="nho-nut">＋ Thêm việc đi trước</button>
+    <label class="f">Ngày bắt đầu cố định (bỏ trống = theo việc đi trước)</label><input id="cd" type="date" value="${esc(x.batDauCoDinh || '')}">
+    <label class="f">Lý do sửa (không bắt buộc)</label><input id="ld" placeholder="Vd: chủ nhà đổi vật liệu sàn">
+    <p id="xem" class="note"></p>
+    <div class="actions"><button id="xoa" class="btn-do">Xoá việc</button><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  const veSau = () => {
+    $('#dsSau', d).innerHTML = sau.map(dongSau).join('') || '<p class="muted">Không đi sau việc nào (bắt đầu từ ngày khởi công).</p>';
+    d.querySelectorAll('.kh-sau').forEach((r) => {
+      r.querySelectorAll('[data-p]').forEach((s) => { s.onchange = () => { const p = sau[+r.dataset.k]; p[s.dataset.p] = s.dataset.p === 'goi' ? Number(s.value) || 0 : s.value; xem(); }; });
+    });
+    d.querySelectorAll('[data-bo]').forEach((b) => { b.onclick = () => { sau.splice(+b.dataset.bo, 1); veSau(); xem(); }; });
+  };
+  const layForm = () => ({
+    hangMuc: $('#hm', d).value.trim(), nhom: $('#nhom', d).value.trim() || x.nhom, dauViec: $('#dv', d).value.trim(),
+    soNgay: soHoacRong($('#sn', d).value), khoiLuong: soHoacRong($('#kl', d).value), dvt: $('#dvt', d).value.trim(),
+    nhaThau: $('#thau', d).value.trim(), moc: $('#moc', d).value.trim(), batDauCoDinh: $('#cd', d).value,
+    diSau: sau.filter((p, i) => p.id && sau.findIndex((q) => q.id === p.id) === i),
+  });
+  const xem = () => {
+    const p = $('#xem', d);
+    try {
+      const td = layForm();
+      if (!(td.soNgay > 0)) throw new Error('Số ngày phải lớn hơn 0');
+      const r = xemTruoc(ct, id, td);
+      const t = xepLich(ct.viec.map((v) => (v.id === id ? { ...v, ...td } : v)), ct.khoiCong, ct.lich).get(id);
+      p.innerHTML = `Việc này: ${ddmm(t.batDau)}–${ddmm(t.ketThuc)}. Xong công trình: ${ddmm(r.truoc)}${r.sau !== r.truoc ? ` → <b>${ddmm(r.sau)}</b>` : ' (không đổi)'}.`;
+      $('#ok', d).disabled = false;
+    } catch (e) {
+      p.innerHTML = `<span class="tre">${esc(/vòng tròn/.test(e.message) ? 'Không lưu được: các việc đang đi sau nhau thành vòng tròn. Bỏ bớt 1 việc đi trước.' : e.message)}</span>`;
+      $('#ok', d).disabled = true;
+    }
+  };
+  veSau(); xem();
+  d.querySelectorAll('input').forEach((i) => { if (!i.closest('.kh-sau')) i.oninput = xem; });
+  $('#themSau', d).onclick = () => {
+    if (!khac.length) return;
+    const i = ct.viec.findIndex((v) => v.id === id);
+    sau.push({ id: (ct.viec[i - 1] || khac[0][0]).id, kieu: 'XS', goi: 0 }); veSau(); xem();
+  };
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const td = layForm();
+    if (!td.hangMuc) return bao('Hạng mục không được trống');
+    try {
+      const doi = suaViec(db, ct, id, td, vaiTro, $('#ld', d).value.trim());
+      d.close();
+      if (doi.length) { luu(); bao('Đã lưu, lịch đã tính lại'); } else bao('Không có gì thay đổi');
+      route();
+    } catch (e) { bao(e.message); }
+  };
+  let bamXoa = false;
+  $('#xoa', d).onclick = () => {
+    const sauNo = ct.viec.filter((v) => (v.diSau || []).some((p) => p.id === id)).length;
+    if (!bamXoa) {
+      bamXoa = true;
+      $('#xoa', d).textContent = 'Bấm lần nữa để xoá';
+      $('#xem', d).innerHTML = `${x.phanTram ? `<b class="tre">Việc đã làm ${x.phanTram}%.</b> ` : ''}Xoá "${esc(x.hangMuc)}"${sauNo ? `: ${sauNo} việc đi sau nó sẽ nối thẳng vào việc trước nó` : ''}. Nhật ký cũ vẫn giữ.`;
+      return;
+    }
+    xoaViec(db, ct, id, vaiTro, $('#ld', d).value.trim());
+    luu(); d.close(); bao('Đã xoá việc'); route();
+  };
+}
+
+function moThemViec(ct, sauId) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const nhoms = [...new Set(ct.viec.map((v) => v.nhom))];
+  const truocDo = ct.viec.find((v) => v.id === sauId);
+  d.innerHTML = `<h2>Thêm việc</h2>
+    <label class="f">Hạng mục</label><input id="hm" placeholder="Vd: Chống thấm WC tầng 2">
+    <label class="f">Làm ngay sau việc</label>
+    <select id="sau">${ct.viec.map((v, i) => `<option value="${esc(v.id)}" ${v.id === sauId ? 'selected' : ''}>${i + 1}. ${esc(v.hangMuc)}</option>`).join('')}</select>
+    <label class="f">Nhóm</label><input id="nhom" value="${esc(truocDo ? truocDo.nhom : '')}" list="dsNhom"><datalist id="dsNhom">${nhoms.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+    <div class="hai-cot">
+      <div><label class="f">Số ngày công</label><input id="sn" type="number" min="0.5" step="0.5" inputmode="decimal" value="1"></div>
+      <div><label class="f">Nhà thầu</label><input id="thau" list="dsThau3"><datalist id="dsThau3">${dsNhaThau(db).map((t) => `<option value="${esc(t)}">`).join('')}</datalist></div>
+    </div>
+    <label class="f">Mốc (không bắt buộc)</label><input id="moc">
+    <p class="muted">Việc mới tính là xong mới làm sau việc đã chọn. Muốn gối đầu hay đổi việc đi trước: lưu xong bấm ✏️. Việc thêm sau lấy luôn lịch hiện tại làm kế hoạch gốc.</p>
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Thêm</button></div>`;
+  d.showModal();
+  $('#sau', d).onchange = () => { const v = ct.viec.find((y) => y.id === $('#sau', d).value); if (v) $('#nhom', d).value = v.nhom; };
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const hangMuc = $('#hm', d).value.trim(), soNgay = soHoacRong($('#sn', d).value);
+    if (!hangMuc) return bao('Cần tên hạng mục');
+    if (!(soNgay > 0)) return bao('Số ngày phải lớn hơn 0');
+    themViec(db, ct, { hangMuc, soNgay, sauId: $('#sau', d).value, nhom: $('#nhom', d).value.trim(), nhaThau: $('#thau', d).value.trim(), moc: $('#moc', d).value.trim() }, vaiTro);
+    luu(); d.close(); bao('Đã thêm việc'); route();
+  };
+}
+
+// Danh sách ngày từ a đến b (tối đa 60 ngày, đủ cho Tết).
+const khoangNgay = (a, b) => { const ds = []; for (let x = a; x <= (b || a) && ds.length < 60; x = addDays(x, 1)) ds.push(x); return ds; };
+
+function moSuaCT(ct) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  let nghi = [...(ct.lich.nghi || [])].sort();
+  const daLam = ct.viec.some((v) => v.phanTram > 0);
+  d.innerHTML = `<h2>Thông tin công trình</h2>
+    <label class="f">Tên công trình</label><input id="ten" value="${esc(ct.ten)}">
+    <label class="f">Chủ nhà</label><input id="cn" value="${esc(ct.chuNha || '')}">
+    <div class="hai-cot">
+      <div><label class="f">Ngày khởi công</label><input id="kc" type="date" value="${esc(ct.khoiCong)}"></div>
+      <div><label class="f">Lịch làm việc</label><select id="lich">${Object.entries(LICH).map(([k, v]) => `<option value="${k}" ${k === ct.lich.kieu ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <label class="f">Ngày nghỉ (lễ, Tết, chủ nhà yêu cầu nghỉ)</label>
+    <div id="dsNghi" class="nghi"></div>
+    <div class="hai-cot kh-them-nghi">
+      <div><span class="muted">Từ ngày</span><input id="tu" type="date"></div><div><span class="muted">Đến ngày (nghỉ 1 ngày thì bỏ trống)</span><input id="den" type="date"></div>
+    </div>
+    <button id="themNghi" class="nho-nut">＋ Thêm ngày nghỉ (từ – đến)</button>
+    <label class="f">Link thư mục Drive</label><input id="drive" value="${esc(ct.thuMucDrive || '')}" placeholder="Dán link thư mục">
+    <label class="cham-dong"><input type="checkbox" id="chot" ${daLam ? '' : 'checked'}><span>Chốt luôn kế hoạch gốc theo lịch mới${daLam ? ' (công trình đã có việc làm, thường không nên)' : ' (chưa làm việc nào)'}</span></label>
+    <p id="xem" class="note"></p>
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  const lichMoi = () => ({ ...ct.lich, kieu: $('#lich', d).value, nghi });
+  const xem = () => {
+    const a = ketThucCuoi(lichHienTai(ct));
+    const b = ketThucCuoi(xepLich(ct.viec, $('#kc', d).value || ct.khoiCong, lichMoi()));
+    $('#xem', d).innerHTML = `Xong công trình: ${ddmm(a)}${a !== b ? ` → <b>${ddmm(b)}</b>` : ' (không đổi)'}.`;
+  };
+  const veNghi = () => {
+    $('#dsNghi', d).innerHTML = nghi.length ? nghi.map((n) => `<span class="chip">${ddmm(n)}/${n.slice(2, 4)}<button data-bo="${n}" title="Bỏ">✕</button></span>`).join('') : '<span class="muted">Chưa có ngày nghỉ nào.</span>';
+    d.querySelectorAll('[data-bo]').forEach((b) => { b.onclick = () => { nghi = nghi.filter((n) => n !== b.dataset.bo); veNghi(); xem(); }; });
+  };
+  veNghi(); xem();
+  ['kc', 'lich'].forEach((k) => { $('#' + k, d).onchange = xem; });
+  $('#themNghi', d).onclick = () => {
+    const tu = $('#tu', d).value, den = $('#den', d).value;
+    if (!tu) return bao('Chọn ngày bắt đầu nghỉ');
+    if (den && den < tu) return bao('Ngày kết thúc trước ngày bắt đầu');
+    nghi = [...new Set([...nghi, ...khoangNgay(tu, den)])].sort();
+    $('#tu', d).value = ''; $('#den', d).value = '';
+    veNghi(); xem();
+  };
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const ten = $('#ten', d).value.trim(), khoiCong = $('#kc', d).value;
+    if (!ten || !khoiCong) return bao('Cần tên và ngày khởi công');
+    const lich = lichMoi(), chot = $('#chot', d).checked;
+    const thayDoi = { ten, khoiCong, lich, chuNha: $('#cn', d).value.trim(), thuMucDrive: $('#drive', d).value.trim() };
+    d.close();
+    // Lịch mới có thể rơi vào ngày lễ chưa hỏi: hỏi như lúc tạo công trình.
+    const den = ketThucCuoi(xepLich(ct.viec, khoiCong, lich));
+    hoiNgayLe(leCanHoi(khoiCong, den, lich), (nghiLe, daHoi) => {
+      lich.nghi = [...new Set([...lich.nghi, ...nghiLe])].sort();
+      lich.daHoi = [...new Set([...(lich.daHoi || []), ...daHoi])];
+      const doi = suaCongTrinh(db, ct, thayDoi, vaiTro);
+      if (chot && doi.some((k) => k === 'khoiCong' || k === 'lich')) chotKeHoachGoc(db, ct, vaiTro, 'Đổi khởi công / lịch trước khi làm');
+      if (doi.length) { luu(); bao('Đã lưu thông tin công trình'); } else bao('Không có gì thay đổi');
+      route();
+    });
+  };
+}
+
+function moChotGoc(ct) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const hien = ketThucCuoi(lichHienTai(ct));
+  const gocCuoi = ct.viec.reduce((m, v) => (v.goc && v.goc.ketThuc > m ? v.goc.ketThuc : m), ct.khoiCong);
+  d.innerHTML = `<h2>Chốt kế hoạch gốc</h2>
+    <p>Lịch hiện tại (xong <b>${fmtNgay(hien)}</b>) sẽ thành kế hoạch gốc mới, thay cho gốc cũ (xong ${fmtNgay(gocCuoi)}).</p>
+    <p class="muted">Dùng khi sửa xong kế hoạch trước khởi công, hoặc khi ký phụ lục đổi tiến độ với chủ nhà. Sau khi chốt, các việc đang chậm sẽ không còn hiện là chậm so với gốc. Các lần báo chậm và nhật ký cũ vẫn giữ nguyên.</p>
+    <label class="f">Lý do</label><input id="ld" placeholder="Vd: phụ lục 01 đổi tiến độ">
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Chốt</button></div>`;
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => { chotKeHoachGoc(db, ct, vaiTro, $('#ld', d).value.trim()); luu(); d.close(); bao('Đã chốt kế hoạch gốc mới'); route(); };
 }
 
 function linkChuNhaCua(ct) {
@@ -474,7 +755,7 @@ function hoiNgayLe(ds, xong) {
   d.innerHTML = `<h2>Công trình vướng ngày lễ</h2>
     <p class="muted">Tick những ngày công trình nghỉ thực tế. Ngày không tick sẽ tính là ngày làm.</p>
     ${ds.map((n) => `<label class="card" style="display:flex;gap:10px;align-items:center"><input type="checkbox" value="${n}" checked style="width:auto"> ${ddmm(n)}/${n.slice(0, 4)}</label>`).join('')}
-    <p class="muted">Tết âm lịch, Giỗ Tổ: thêm sau trong phần sửa lịch (bản thử chưa có).</p>
+    <p class="muted">Tết âm lịch, Giỗ Tổ: thêm sau trong Sửa kế hoạch → Thông tin công trình, lịch nghỉ.</p>
     <div class="actions"><button id="ok" class="btn-chinh">Xếp lịch</button></div>`;
   d.showModal();
   $('#ok', d).onclick = () => {

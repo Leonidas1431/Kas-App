@@ -160,7 +160,7 @@ test('sổ khách: văn phòng ghi và kéo về được; giám sát không th�
 
 test('ảnh khảo sát vào thư mục khách; ký xong công trình dùng luôn thư mục đó', () => {
   const m = khoiDong();
-  const kh = { ma: 'KH-2611-XUAN', ten: 'Chị Xuân', trangThai: 'KHAO_SAT', baoGia: [], chamSoc: [] };
+  const kh = { ma: 'KH-2611-XUAN', ten: 'Chị Xuân', sdt: '0912345678', trangThai: 'KHAO_SAT', baoGia: [], chamSoc: [] };
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: kh })] });
   assert.equal(m.post(m.khoaThay, 'guiAnh', { id: 'k1', ma: 'KH-2611-XUAN', viec: 'KS', tenFile: 'KH-2611-XUAN_20261113_0900_KS_01.jpg', base64: 'eA==' }).ok, true);
   const goc = m.root.con.find((c) => c.ten === 'KAS App – Khách').con.find((c) => c.ten === 'KH-2611-XUAN');
@@ -169,6 +169,8 @@ test('ảnh khảo sát vào thư mục khách; ký xong công trình dùng luô
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
   m.post(m.khoaThay, 'guiAnh', { id: 'k2', ma: 'NT-2611-XUAN', viec: 'XT01', tenFile: 'a.jpg', base64: 'eA==' });
   assert.ok(goc.con.find((c) => c.ten === 'Ảnh tiến độ'));
+  // Ghi thư mục vào dòng khách không làm mất số 0 đầu của số điện thoại
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.khach[0].sdt, '0912345678');
 });
 
 test('Đức toàn quyền như Thầy nhưng không thu hồi được khoá Thầy; quyền tạm hết hạn thì bị chặn', () => {
@@ -253,4 +255,33 @@ test('GSTG: giám sát được giao thấy buổi giám sát tác giả, không
   assert.deepEqual(ds.map((g) => g.id), ['GS-1']);
   assert.equal(ds[0].nhacGiamSat, true);
   assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'GSTG', gs: { ...gs, xong: '2026-11-13' } })] }).data[0].ok, false);
+});
+
+test('sửa kế hoạch: thêm, xoá việc, sửa công trình; giám sát không làm được', () => {
+  const m = khoiDong();
+  const ct = congTrinhMau('NT-A', '');
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const v = { id: 'VMOI1', thuTu: 2, nhom: 'Thô', hangMuc: 'Chống thấm', soNgay: 2, diSau: [{ id: ct.viec[1].id, kieu: 'XS', goi: 0 }], phanTram: 0, trangThai: 'CHUA', goc: { batDau: '2026-11-04', ketThuc: '2026-11-05' }, batDauCoDinh: '2026-11-20' };
+  const them = op({ loai: 'THEM_VIEC', ma: 'NT-A', viec: v });
+  let r = m.post(m.khoaThay, 'dayLen', { ops: [them, op({ loai: 'XOA_VIEC', ma: 'NT-A', id: ct.viec[0].id }),
+    op({ loai: 'CT_SUA', ma: 'NT-A', sua: { khoiCong: '2026-11-09', lich: { ...lich, nghi: ['2026-11-10'] }, thuMucDrive: 'https://drive.google.com/drive/folders/' + 'a'.repeat(30), maLinkChuNha: 'doi' } })] });
+  assert.deepEqual(r.data.map((x) => x.ok), [true, true, true]);
+  m.post(m.khoaThay, 'dayLen', { ops: [{ ...them, idGui: 'khac' }] }); // gửi lại không trùng
+  let c = m.post(m.khoaThay, 'keoVe').data.congTrinh[0];
+  assert.equal(c.viec.length, ct.viec.length);
+  assert.equal(c.viec.filter((x) => x.id === 'VMOI1').length, 1);
+  assert.ok(!c.viec.some((x) => x.id === ct.viec[0].id));
+  assert.equal(c.viec.find((x) => x.id === 'VMOI1').batDauCoDinh, '2026-11-20');
+  assert.equal(c.khoiCong, '2026-11-09');
+  assert.deepEqual(c.lich.nghi, ['2026-11-10']);
+  assert.equal(c.thuMucDrive, 'a'.repeat(30));
+  assert.equal(c.maLinkChuNha, '0123456789'); // không cho đổi link chủ nhà qua đây
+  assert.equal(m.get({ xem: '0123456789' }).data.ct.viec.find((x) => x.id === 'VMOI1').batDauCoDinh, '2026-11-20');
+  // Giám sát: không thêm, xoá, sửa công trình
+  r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'THEM_VIEC', ma: 'NT-A', viec: { ...v, id: 'VMOI2' } }), op({ loai: 'XOA_VIEC', ma: 'NT-A', id: 'VMOI1' }), op({ loai: 'CT_SUA', ma: 'NT-A', sua: { ten: 'x' } })] });
+  assert.deepEqual(r.data.map((x) => x.ok), [false, false, false]);
+  c = m.post(m.khoaThay, 'keoVe').data.congTrinh[0];
+  assert.ok(c.viec.some((x) => x.id === 'VMOI1'));
+  assert.equal(c.ten, 'Căn hộ thử');
 });
