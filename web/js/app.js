@@ -6,7 +6,7 @@ import {
 } from './store.js';
 import {
   TRANG_THAI, DANG_THEO, NGUON, LY_DO_MAT, NHU_CAU_LOAI, O_NHU_CAU, taoKhach, timTheoSdt, suaKhach, doiTrangThai, daGoi,
-  ghiChuKhach, themBaoGia, chotBaoGia, ganCongTrinh, banGiao, xongChamSoc, viecKhachHomNay, thongKe,
+  ghiChuKhach, themBaoGia, chotBaoGia, ganCongTrinh, banGiao, xongChamSoc, viecKhachHomNay,
 } from './khach.js';
 import {
   DANG_HD, TT_HD, goiYTenHD, soHopDong, dotMacDinh, taoHopDong, suaHopDong, tinhDot, ghiThu, dongDot, moLaiDot, suaDot, themDot,
@@ -26,6 +26,7 @@ import {
 import { TT_MAU, NGAY_DAT_HANG, mauCuaCongTrinh, hanChotMacDinh, themMau, suaMau, xoaMau, khachChotMau, guiLaiMau, mauCanChot, tinGuiMau } from './mauvl.js';
 import { LINH_VUC, TIEU_CHI, dsThau, timThauTheoTen, themThau, suaThau, viecCuaThau, danhGia, tongHopThau, canDanhGia, thieuAnh, ghiDaChupAnh, tinLinkThau } from './nhathau.js';
 import { HAN_SUA_MAC_DINH, checklistMacDinh, canNghiemThu, ntCuaViec, nghiemThu, daSuaTonTai, doiHanSua, ketQuaViec, choNghiemThu, tonTaiMo, dieuKienDo, canDoNoiThat } from './nghiemthu.js';
+import { HM_MKT, KENH_MKT, CHUA_GAN, MAC_DINH, goiYHoaHong, tienDoThang, ngayVao, khoangKy, baoCaoNguon, dsNguoiGioiThieu } from './marketing.js';
 import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPhanHoi } from './api.js';
 import { xepAnh, demCho, guiAnhCho } from './anh.js';
 
@@ -117,6 +118,7 @@ function route() {
   if (h.startsWith('nt-')) return manMotThau(h.slice(3));
   if (h === 'tao') return laVanPhong() ? manTao() : manHomNay();
   if (h === 'khach') return laVanPhong() ? manKhach() : manHomNay();
+  if (h === 'marketing') return laVanPhong() ? manMarketing() : manHomNay();
   if (h.startsWith('kh-')) return laVanPhong() ? manMotKhach(h.slice(3)) : manHomNay();
   if (h === 'hop-dong') return laVanPhong() ? manHopDong() : manHomNay();
   if (h === 'thu-chi') return laVanPhong() ? manThuChi(ts.ma !== undefined ? decodeURIComponent(ts.ma) : undefined) : manHomNay();
@@ -985,8 +987,7 @@ function manKhach() {
   const ds = db.khach || [];
   const LOC = { DANG: ['Đang theo', (k) => DANG_THEO.includes(k.trangThai)], KY: ['Đã ký', (k) => k.trangThai === 'KY'], TAM_HOAN: ['Tạm hoãn', (k) => k.trangThai === 'TAM_HOAN'], MAT: ['Mất', (k) => k.trangThai === 'MAT'], TAT: ['Tất cả', () => true] };
   const loc = ds.filter(LOC[locKhach][1]).sort((a, b) => (a.nhacGoi || '9').localeCompare(b.nhacGoi || '9'));
-  const tk = thongKe(db);
-  $('#view').innerHTML = `<h2>Khách hàng</h2>
+  $('#view').innerHTML = `${dauKhach('khach')}
     <div class="actions"><button id="themKh" class="btn-chinh">+ Thêm khách</button></div>
     ${khachHomNay(hn)}
     <div class="loc">${Object.entries(LOC).map(([k, [ten, f]]) => `<button data-loc="${k}" class="${k === locKhach ? 'on' : ''}">${ten} ${ds.filter(f).length}</button>`).join('')}</div>
@@ -994,10 +995,7 @@ function manKhach() {
       const bg = k.baoGia && k.baoGia.length ? k.baoGia[k.baoGia.length - 1] : null;
       return theKhach(k, `${esc(k.ma)} · ${esc(k.nguon)}${k.nguoiGioiThieu ? ' (' + esc(k.nguoiGioiThieu) + ')' : ''}${bg ? ' · báo giá v' + bg.phienBan + ' ' + tien(bg.giaTri) : ''}${k.nhacGoi && k.trangThai !== 'KY' ? ' · gọi ' + ddmm(k.nhacGoi) : ''}${k.maCongTrinh ? ' · ' + esc(k.maCongTrinh) : ''}`);
     }).join('') : '<p class="muted">Chưa có khách nào ở mục này.</p>'}
-    ${ds.length ? `<details class="cham-ds"><summary>Khách đến từ đâu</summary>
-      ${Object.entries(tk.theoNguon).map(([n, x]) => `<p class="muted">${esc(n)}: ${x.tong} khách, ký ${x.ky}</p>`).join('')}
-      ${tk.theoTT.MAT ? `<p class="muted">Mất ${tk.theoTT.MAT} khách. Lý do: ${[...new Set(ds.filter((k) => k.trangThai === 'MAT').map((k) => k.lyDo))].map(esc).join(', ')}</p>` : ''}
-    </details>` : ''}`;
+    ${ds.length ? '<p class="muted">Khách đến từ đâu, tỉ lệ chốt, chi phí quảng cáo: xem mục <a href="#marketing">Marketing</a>.</p>' : ''}`;
   $('#themKh').onclick = moThemKhach;
   $('#view').querySelectorAll('[data-loc]').forEach((b) => { b.onclick = () => { locKhach = b.dataset.loc; manKhach(); }; });
 }
@@ -1011,6 +1009,7 @@ function moThemKhach() {
     <label class="f">Khách đến từ đâu</label><select id="kNguon">${NGUON.map((n) => `<option>${esc(n)}</option>`).join('')}</select>
     <div id="gt"><label class="f">Người giới thiệu (để cảm ơn và trả hoa hồng)</label><input id="kGt" placeholder="Tên người giới thiệu">
       <input id="kSdtGt" type="tel" inputmode="tel" placeholder="SĐT người giới thiệu" style="margin-top:6px"></div>
+    <label class="f">Ngày khách liên hệ lần đầu</label><input id="kNgay" type="date" value="${homNay()}">
     <label class="f">Khách cần làm gì</label><select id="kLoai"><option value="">Chưa rõ</option>${Object.entries(NHU_CAU_LOAI).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select>
     <label class="f">Nhu cầu (bấm 🎤 nói, bấm lại để nói tiếp)</label>
     <div class="mic"><textarea id="kTom" placeholder="Vd: căn hộ 90m2 ở Xa La, muốn làm nội thất trước Tết, ngân sách khoảng 600 triệu"></textarea><button id="noi">🎤</button></div>
@@ -1032,7 +1031,7 @@ function moThemKhach() {
     const ten = $('#kTen', d).value.trim();
     if (!ten) return bao('Cần tên khách');
     const laGt = !gt.hidden;
-    const kh = taoKhach(db, { ten, sdt: $('#kSdt', d).value, nguon: $('#kNguon', d).value, nguoiGioiThieu: laGt ? $('#kGt', d).value.trim() : '', sdtGioiThieu: laGt ? $('#kSdtGt', d).value : '', loai: $('#kLoai', d).value, tomTat: $('#kTom', d).value.trim() }, vaiTro, homNay());
+    const kh = taoKhach(db, { ten, sdt: $('#kSdt', d).value, nguon: $('#kNguon', d).value, nguoiGioiThieu: laGt ? $('#kGt', d).value.trim() : '', sdtGioiThieu: laGt ? $('#kSdtGt', d).value : '', loai: $('#kLoai', d).value, tomTat: $('#kTom', d).value.trim(), ngayVao: $('#kNgay', d).value || homNay() }, vaiTro, homNay());
     luu(); d.close(); bao('Đã thêm ' + kh.ten); location.hash = '#kh-' + kh.ma;
   };
 }
@@ -1084,10 +1083,12 @@ function manMotKhach(ma) {
     </details>
 
     <details class="cham-ds"><summary>Người giới thiệu, hoa hồng</summary>
-      <label class="f">Nguồn</label><select id="hNguon">${NGUON.map((n) => `<option ${n === kh.nguon ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <label class="f">Nguồn</label><select id="hNguon">${(NGUON.includes(kh.nguon) ? NGUON : [kh.nguon, ...NGUON]).map((n) => `<option ${n === kh.nguon ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <label class="f">Ngày liên hệ lần đầu</label><input id="hNgay" type="date" value="${esc(ngayVao(kh))}">
       <label class="f">Người giới thiệu</label><input id="hTen" value="${esc(kh.nguoiGioiThieu)}">
       <input id="hSdt" type="tel" value="${esc(kh.sdtGioiThieu)}" placeholder="SĐT người giới thiệu" style="margin-top:6px">
       <label class="f">Hoa hồng (đồng)</label><input id="hTien" type="number" inputmode="numeric" value="${esc((kh.hoaHong && kh.hoaHong.soTien) || '')}">
+      ${(() => { const g = goiYHoaHong(db, kh); return g.chiTiet.length ? `<p class="muted">Gợi ý theo % mặc định: ${g.chiTiet.map((x) => `${x.pct}% HĐ ${x.dang === 'TK' ? 'thiết kế' : 'thi công'} ${tienGon(x.giaTri)}`).join(' + ')} = <b>${tien(g.soTien)}</b> <button id="hGoiY" data-tien="${g.soTien}" class="nho">Dùng số này</button></p>` : ''; })()}
       <label class="cham-dong"><input type="checkbox" id="hDaTra" ${kh.hoaHong && kh.hoaHong.daTra ? 'checked' : ''}> <span>Đã trả hoa hồng / đã cảm ơn</span></label>
       <div class="actions"><button id="luuH">Lưu</button></div>
     </details>
@@ -1138,8 +1139,9 @@ function manMotKhach(ma) {
     themBaoGia(db, kh, { giaTri: gia, link: $('#bgLink').value.trim(), ghiChu: $('#bgGc').value.trim() }, vaiTro, hn);
     bao('Đã lưu báo giá'); ve();
   };
+  if ($('#hGoiY')) $('#hGoiY').onclick = () => { $('#hTien').value = $('#hGoiY').dataset.tien; };
   $('#luuH').onclick = () => {
-    suaKhach(db, kh, { nguon: $('#hNguon').value, nguoiGioiThieu: $('#hTen').value.trim(), sdtGioiThieu: $('#hSdt').value.replace(/\s+/g, ''), hoaHong: { ...(kh.hoaHong || {}), soTien: Number($('#hTien').value) || 0, daTra: $('#hDaTra').checked } }, hn);
+    suaKhach(db, kh, { nguon: $('#hNguon').value, ngayVao: $('#hNgay').value || ngayVao(kh), nguoiGioiThieu: $('#hTen').value.trim(), sdtGioiThieu: $('#hSdt').value.replace(/\s+/g, ''), hoaHong: { ...(kh.hoaHong || {}), soTien: Number($('#hTien').value) || 0, daTra: $('#hDaTra').checked } }, hn);
     bao('Đã lưu'); ve();
   };
   const nutBg = $('#luuBanGiao');
@@ -1669,7 +1671,7 @@ function moGhiKhoan(du, cu) {
     </div>
     <label class="f">Hạng mục</label><select id="hm"></select>
     <div id="dotBox"><label class="f" id="dotNhan">Trả đợt nào</label><select id="dot"></select></div>
-    <label class="f">Đối tượng (thầu, nhà cung cấp, người nhận)</label><input id="dt" list="dsDt" value="${esc(e0.doiTuong)}"><datalist id="dsDt">${dsDoiTuong(db).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
+    <label class="f" id="dtNhan">Đối tượng (thầu, nhà cung cấp, người nhận)</label><input id="dt" list="dsDt" value="${esc(e0.doiTuong)}"><datalist id="dsDt"></datalist>
     <label class="f">Số tiền</label><input id="st" inputmode="decimal" value="${e0.soTien ? esc(e0.soTien) : ''}" placeholder="Vd: 12tr, 500k, 12000000"><p id="stChu" class="muted"></p>
     <label class="f">Nội dung</label><div class="mic"><textarea id="nd" placeholder="Vd: Thầu điện nước đợt 1">${esc(e0.noiDung)}</textarea><button id="noi">🎤</button></div>
     <label class="f">Hình thức</label><select id="ht">${Object.entries(HINH_THUC).map(([k, t]) => `<option value="${k}" ${k === e0.hinhThuc ? 'selected' : ''}>${t}</option>`).join('')}</select>
@@ -1697,6 +1699,10 @@ function moGhiKhoan(du, cu) {
   // Chi thầu phụ → chọn đợt trả thầu; Thu phát sinh → chọn phiếu phát sinh đã duyệt. Để tự trừ công nợ.
   const veDot = () => {
     const ma = $('#ma', d).value, hm = $('#hm', d).value;
+    // Chi quảng cáo: ô Đối tượng là kênh, để tính chi phí trên mỗi khách theo nguồn.
+    const mkt = hm === HM_MKT;
+    $('#dtNhan', d).textContent = mkt ? 'Kênh quảng cáo (chọn đúng tên để tính chi phí trên mỗi khách)' : 'Đối tượng (thầu, nhà cung cấp, người nhận)';
+    $('#dsDt', d).innerHTML = (mkt ? KENH_MKT : dsDoiTuong(db)).map((x) => `<option value="${esc(x)}">`).join('');
     const ds = loai === 'CHI' && hm === 'Chi thầu phụ'
       ? dsTraThau(db, ma).map((t) => [t.id, `${t.thau} · ${t.dot} · còn ${tienGon(trangThaiTra(db, t, homNay()).con)}`])
       : loai === 'THU' && hm === 'Thu phát sinh'
@@ -2735,6 +2741,76 @@ function khoiNghiemThu(ct) {
     ${dk.coDo ? `<p class="${dk.du ? '' : 'muted'}">Đo sản xuất nội thất: ${dk.vDo.phanTram > 0 ? 'đã bắt đầu' : dk.du ? '<b>đủ điều kiện, hẹn xưởng đo</b>' : 'chờ xong ' + dk.thieu.map(esc).join(', ')}</p>` : ''}`;
 }
 
+// ---------- Marketing, lead ----------
+const dauKhach = (tab) => `<div class="loc doan khong-in">${[['khach', 'Sổ khách'], ['marketing', 'Marketing']]
+  .map(([h, t]) => `<a class="btn ${h === tab ? 'on' : ''}" href="#${h}">${t}</a>`).join('')}</div>`;
+let kyMkt = 'NAM';
+const KY_MKT = { THANG: 'Tháng này', QUY: '3 tháng', NAM: 'Năm nay', TAT: 'Tất cả' };
+
+// Tháng này so với mục tiêu Thầy đặt (lead, khách ký, tỉ lệ chốt, chi quảng cáo so với ngân sách).
+function khoiMucTieuThang(hn) {
+  const t = tienDoThang(db, hn);
+  const c = t.cd;
+  const thanh = (gt, mt) => `<div class="bar"><i style="width:${Math.min(100, mt ? Math.round((gt / mt) * 100) : 0)}%"></i></div>`;
+  const ten = { mktNganSach: 'Ngân sách quảng cáo/tháng', mktMucTieuLead: 'Mục tiêu lead mới/tháng', mktMucTieuKy: 'Mục tiêu khách ký/tháng', mktTyLe: 'Tỉ lệ chốt mong muốn (%)', mktTyLeTC: 'Tỉ lệ chốt HĐ thi công (%)', hhTK: 'Hoa hồng giới thiệu HĐ thiết kế (%)', hhTC: 'Hoa hồng giới thiệu HĐ thi công (%)' };
+  return `<h3>Tháng ${hn.slice(5, 7)} so với mục tiêu <span class="muted">(ngày ${t.ngay}/${t.soNgay})</span></h3>
+    <div class="card">
+      <div class="row"><span>Lead mới</span><b class="${t.lead < t.leadTheoNhip ? 'tre' : ''}">${t.lead} / ${c.mktMucTieuLead}</b></div>${thanh(t.lead, c.mktMucTieuLead)}
+      <div class="muted">Theo nhịp đến hôm nay cần khoảng ${t.leadTheoNhip} lead</div>
+      <div class="row"><span>Khách ký HĐ</span><b>${t.ky} / ${c.mktMucTieuKy}</b></div>${thanh(t.ky, c.mktMucTieuKy)}
+      <div class="row"><span>Tỉ lệ chốt</span><b>${t.tyLe === null ? '—' : t.tyLe + '%'} <span class="muted">/ ${c.mktTyLe}%</span></b></div>
+      <div class="row"><span>Tỉ lệ chốt thi công</span><b>${t.tyLeTC === null ? '—' : t.tyLeTC + '%'} <span class="muted">/ ${c.mktTyLeTC}%</span></b></div>
+      <div class="row"><span>Chi quảng cáo</span><b class="${t.chi > c.mktNganSach ? 'tre' : ''}">${tienGon(t.chi)} / ${tienGon(c.mktNganSach)}</b></div>${thanh(t.chi, c.mktNganSach)}
+      <div class="muted">${t.chi > t.chiTheoNhip * 1.2 ? '<span class="tre">Tiêu nhanh hơn nhịp tháng.</span> ' : ''}${t.chiMoiLead ? `${tienGon(t.chiMoiLead)}/lead · ` : ''}${t.chiMoiKy ? `${tienGon(t.chiMoiKy)}/khách ký · ` : ''}ngân sách ÷ mục tiêu = ${tienGon(Math.round(c.mktNganSach / Math.max(1, c.mktMucTieuLead)))}/lead</div>
+    </div>
+    <details class="cham-ds"><summary>Cài đặt mục tiêu, hoa hồng</summary>
+      ${Object.keys(MAC_DINH).map((k) => `<label class="f">${ten[k]}</label><input id="cd-${k}" inputmode="decimal" value="${esc((db.caiDat || {})[k] ?? '')}" placeholder="Mặc định ${k === 'mktNganSach' ? tienGon(MAC_DINH[k]) : MAC_DINH[k]}">`).join('')}
+      <p class="muted">Để trống là dùng mặc định Thầy chốt 13/11. Hoa hồng thực tế vẫn sửa tay trong hồ sơ từng khách.</p>
+      <div class="actions"><button id="luuMkt" class="btn-chinh">Lưu</button></div>
+    </details>`;
+}
+
+function manMarketing() {
+  datTab('khach', 'Marketing');
+  const hn = homNay();
+  const [tu, den] = khoangKy(kyMkt, hn);
+  const bc = baoCaoNguon(db, tu, den);
+  const t = bc.tong;
+  const gt = dsNguoiGioiThieu(db);
+  const pct = (x) => (x === null ? '—' : x + '%');
+  const thuTuTT = ['MOI', 'LIEN_HE', 'HEN_GAP', 'KHAO_SAT', 'BAO_GIA', 'KY', 'TAM_HOAN', 'MAT'];
+  $('#view').innerHTML = `${dauKhach('marketing')}
+    ${khoiMucTieuThang(hn)}
+    <h3>Theo kỳ</h3>
+    <div class="loc">${Object.entries(KY_MKT).map(([k, ten]) => `<button data-ky="${k}" class="${k === kyMkt ? 'on' : ''}">${ten}</button>`).join('')}</div>
+    <div class="so-lieu bon"><div><span>Khách mới</span><b>${t.moi}</b></div><div><span>Đã ký</span><b>${t.ky}</b><span>${pct(t.tyLe)}</span></div>
+      <div><span>Giá trị HĐ ký</span><b>${tienGon(t.giaTri)}</b></div><div><span>Chi quảng cáo</span><b class="tien-chi">${tienGon(t.chi)}</b>${t.chiMoiKhach ? `<span>${tienGon(t.chiMoiKhach)}/khách</span>` : ''}</div></div>
+    <div class="actions"><button id="ghiMkt">+ Ghi chi quảng cáo</button></div>
+    <h3>Theo nguồn khách</h3>
+    ${bc.ds.length ? bc.ds.map((r) => `<div class="card"><div class="row"><span class="name">${esc(r.nguon)}</span><span>${r.moi} khách · ký ${r.ky}${r.tyLe !== null ? ` (${r.tyLe}%)` : ''}</span></div>
+      <div class="muted">${r.giaTri ? 'HĐ ' + tienGon(r.giaTri) : 'Chưa có HĐ'}${r.chi ? ` · chi ${tienGon(r.chi)}${r.chiMoiKhach ? ` · ${tienGon(r.chiMoiKhach)}/khách` : ''}${r.chiMoiKy ? ` · ${tienGon(r.chiMoiKy)}/khách ký` : r.chi && !r.ky ? ' · <span class="tre">chưa ra khách ký</span>' : ''}` : ''}</div>
+      ${r.nguon === CHUA_GAN ? '<div class="muted">Khoản "CTY - Marketing" chưa ghi kênh ở ô Đối tượng. Sửa khoản đó trong Tiền → Thu chi.</div>' : ''}</div>`).join('') : '<p class="muted">Chưa có khách nào trong kỳ này.</p>'}
+    ${t.moi ? `<h3>Khách đang ở bước nào</h3><div class="card">${thuTuTT.filter((k) => bc.pheu[k]).map((k) => `<div class="row"><span>${TRANG_THAI[k]}</span><b>${bc.pheu[k]}</b></div>`).join('')}
+      ${Object.keys(bc.lyDoMat).length ? `<div class="muted">Lý do mất: ${Object.entries(bc.lyDoMat).sort((a, b) => b[1] - a[1]).map(([l, n]) => `${esc(l)} ${n}`).join(' · ')}</div>` : ''}</div>` : ''}
+    <h3>Người giới thiệu</h3>
+    ${gt.length ? gt.map((r) => `<div class="card"><div class="row"><span class="name">${esc(r.ten)}</span><span>${r.khach.length} khách · ký ${r.ky}</span></div>
+      <div class="muted">${r.sdt ? telLink(r.sdt) + ' · ' : ''}${[r.giaTri ? 'HĐ ' + tienGon(r.giaTri) : '', r.hoaHong ? `hoa hồng ${tienGon(r.hoaHong)}${r.daTra ? `, đã trả ${tienGon(r.daTra)}` : ''}` : ''].filter(Boolean).join(' · ')}</div>
+      ${r.duKien ? `<div class="muted">Hoa hồng dự kiến theo % mặc định (chưa ghi số): ${tienGon(r.duKien)}</div>` : ''}
+      ${r.chuaTra.length ? `<div class="tre">Chưa trả / chưa cảm ơn: ${r.chuaTra.map((k) => `<a href="#kh-${esc(k.ma)}">${esc(k.ten)}</a>`).join(', ')}</div>` : ''}
+      <div class="muted">${r.khach.map((k) => `<a href="#kh-${esc(k.ma)}">${esc(k.ten)}</a> (${TRANG_THAI[k.trangThai] || k.trangThai})`).join(', ')}</div></div>`).join('') : '<p class="muted">Chưa có khách nào ghi người giới thiệu.</p>'}
+    <p class="muted">Khách tính theo ngày khách liên hệ lần đầu. Chi quảng cáo lấy từ khoản "CTY - Marketing" ghi kênh ở ô Đối tượng.</p>`;
+  $('#view').querySelectorAll('[data-ky]').forEach((b) => { b.onclick = () => { kyMkt = b.dataset.ky; manMarketing(); }; });
+  $('#luuMkt').onclick = () => {
+    for (const k of Object.keys(MAC_DINH)) {
+      const v = $('#cd-' + k).value.trim();
+      const so = k === 'mktNganSach' ? docTien(v) : Number(v.replace(',', '.'));
+      datCaiDat(db, k, v === '' ? '' : String(Number.isFinite(so) ? so : MAC_DINH[k]));
+    }
+    luu(); bao('Đã lưu mục tiêu'); manMarketing();
+  };
+  $('#ghiMkt').onclick = () => moGhiKhoan({ loai: 'CHI', ma: CTY, hangMuc: HM_MKT });
+}
+
 function taoMau() {
   const hn = homNay();
   const kc = new Date(Date.parse(hn) - 40 * 86400000).toISOString().slice(0, 10);
@@ -2749,7 +2825,7 @@ function taoMau() {
   // Sổ khách mẫu: mỗi trạng thái một người để thấy app nhắc gì.
   const truoc = (n) => new Date(Date.parse(hn) - n * 86400000).toISOString().slice(0, 10);
   const k1 = taoKhach(db, { ten: 'Mẫu: Chị Lan Mỹ Đình', sdt: '0900000001', loai: 'NT', tomTat: 'Căn hộ 110m2, muốn làm nội thất trước Tết' }, 'THAY', hn);
-  const k2 = taoKhach(db, { ten: 'Mẫu: Anh Hùng Long Biên', sdt: '0900000002', nguon: 'Facebook / Zalo', loai: 'XM' }, 'DUC', truoc(12));
+  const k2 = taoKhach(db, { ten: 'Mẫu: Anh Hùng Long Biên', sdt: '0900000002', nguon: 'Facebook', loai: 'XM' }, 'DUC', truoc(12));
   doiTrangThai(db, k2, 'KHAO_SAT', 'DUC', truoc(9));
   themBaoGia(db, k2, { giaTri: 96000000, ghiChu: 'Nhà 4 tầng 320m2' }, 'THAY', truoc(7));
   daGoi(db, k2, false, 'Không nghe máy', 'THAY', truoc(5));

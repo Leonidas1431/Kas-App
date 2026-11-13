@@ -15,7 +15,10 @@ export const TRANG_THAI = {
   MAT: 'Mất khách',
 };
 export const DANG_THEO = ['MOI', 'LIEN_HE', 'HEN_GAP', 'KHAO_SAT', 'BAO_GIA'];
-export const NGUON = ['Người quen giới thiệu', 'Khách cũ giới thiệu', 'Khách cũ quay lại', 'Facebook / Zalo', 'Website', 'Đi ngang công trình', 'Khác'];
+// Kênh Thầy chốt 13/11: Facebook, TikTok, Google Ads, Website, SEO, AI SEO, Offline; cộng các nguồn giới thiệu và Sổ cái.
+// Khách cũ ghi "Facebook / Zalo" vẫn giữ nguyên, báo cáo hiện đúng tên đó.
+export const NGUON = ['Người quen giới thiệu', 'Khách cũ giới thiệu', 'Đối tác giới thiệu', 'Khách cũ quay lại', 'Facebook', 'TikTok', 'Google Ads', 'Website', 'SEO',
+  'AI SEO', 'Offline', 'Zalo', 'Google Maps', 'Đi ngang công trình', 'Khác'];
 export const LY_DO_MAT = ['Giá cao', 'Chọn đơn vị khác', 'Chưa có tiền / hoãn dự án', 'Ngoài phân khúc', 'Ở xa', 'Không liên lạc được', 'Khác'];
 export const NHU_CAU_LOAI = { TK: 'Chỉ thiết kế', XM: 'Xây mới', CT: 'Cải tạo', NTCT: 'Nội thất có cải tạo thô', NT: 'Nội thất riêng', CHI_TC: 'Chỉ thi công (đã có bản vẽ)' };
 // "Bảng yêu cầu thông tin" (bước A2 trong QUY TRÌNH TỔNG)
@@ -93,6 +96,7 @@ export function taoKhach(db, du, nguoi, homNay) {
     baoHanhDen: '',
     nguoiTao: nguoi,
     taoLuc: new Date().toISOString(),
+    ngayVao: du.ngayVao || homNay,
   };
   db.khach.push(kh);
   ghiKhach(db, kh, homNay);
