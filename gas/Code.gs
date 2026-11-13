@@ -17,24 +17,28 @@ const TAB = {
   KeHoach: ['ma', 'id', 'thuTu', 'nhom', 'hangMuc', 'dauViec', 'dvt', 'khoiLuong', 'soNgay', 'diSau', 'moc',
     'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc', 'batDauCoDinh'],
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
-  Anh: ['id', 'ma', 'viec', 'luc', 'tenFile', 'fileId', 'nguoi'],
+  Anh: ['id', 'ma', 'viec', 'luc', 'tenFile', 'fileId', 'nguoi', 'loai'],
   HopDong: ['ma', 'soHD', 'dang', 'nguyenTac', 'tenHD', 'maKhach', 'maCongTrinh', 'ngayKy', 'giaTri', 'dot', 'phuLuc', 'soLanSua',
-    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT'],
+    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT', 'chiDuKien'],
   PhuongAn: ['id', 'maCongTrinh', 'hangMuc', 'lan', 'viec', 'ngayGui', 'link', 'ghiChu', 'trangThai', 'ngayPhanHoi', 'yKien',
     'duyetQua', 'duyetLuc', 'phi', 'nguoiGui', 'capNhatLuc'],
   GSTG: ['id', 'maCongTrinh', 'lan', 'ten', 'viec', 'ngay', 'xong', 'ghiChu', 'nhacGiamSat', 'capNhatLuc'],
+  // Sổ thu chi (chi công trình, chi công ty, thu ngoài HĐ). Thu theo HĐ nằm trong HopDong.dot. Xoá = ghi ngày vào cột xoa.
+  ThuChi: ['id', 'ngay', 'ma', 'loai', 'hangMuc', 'thamChieu', 'doiTuong', 'soTien', 'noiDung', 'hinhThuc', 'soAnh', 'nguoi', 'xoa', 'taoLuc', 'capNhatLuc'],
+  // Đợt trả thầu. Giám sát chỉ thấy phần không có tiền và chỉ ghi được klXacNhan.
+  TraThau: ['id', 'maCongTrinh', 'thau', 'hangMuc', 'dot', 'soTien', 'dieuKien', 'viecMoc', 'hanTra', 'klXacNhan', 'ghiChu', 'xoa', 'taoLuc', 'capNhatLuc'],
   // Cài đặt chung của văn phòng (vd tài khoản nhận tiền in vào đề nghị thanh toán). Không để trong mã nguồn.
   CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
 const laKhach = (ma) => /^KH-/.test(String(ma));
-// Sổ khách (KH-) và hợp đồng (HD-) chỉ văn phòng thấy, kể cả nhật ký của chúng.
-const laRieng = (ma) => /^(KH|HD)-/.test(String(ma));
+// Sổ khách (KH-), hợp đồng (HD-), thu chi (TC-, TT-) và chi công ty (CTY) chỉ văn phòng thấy, kể cả nhật ký của chúng.
+const laRieng = (ma) => /^(KH|HD|TC|TT)-/.test(String(ma)) || String(ma) === 'CTY';
 
 // ---------- Cài đặt: chạy 1 lần trong trình soạn thảo Apps Script ----------
 function setup() {
@@ -156,11 +160,16 @@ const HANH_DONG = {
     const vp = laVanPhong(n);
     const hopDong = vp ? docBang('HopDong').map((h) => ({ ...h, giaTri: Number(h.giaTri) || 0, soLanSua: Number(h.soLanSua) || 0, soBuoiGSTG: Number(h.soBuoiGSTG) || 0,
       nguyenTac: h.nguyenTac === true, dot: h.dot || [], phuLuc: h.phuLuc || [], giaTriKT: Number(h.giaTriKT) || 0,
-      khauTru: h.khauTru || { han: '', tyLe: 0 }, truTK: h.truTK || { maHD: '', phan: [], soTien: 0 } })) : [];
+      chiDuKien: Number(h.chiDuKien) || 0, khauTru: h.khauTru || { han: '', tyLe: 0 }, truTK: h.truTK || { maHD: '', phan: [], soTien: 0 } })) : [];
     const caiDat = vp ? Object.fromEntries(docBang('CaiDat').map((r) => [r.khoa, String(r.giaTri)])) : {};
     const phuongAn = vp ? docBang('PhuongAn').map((p) => ({ ...p, lan: Number(p.lan) || 0 })) : [];
+    const thuChi = vp ? docBang('ThuChi').map((e) => ({ ...e, soTien: Number(e.soTien) || 0, soAnh: Number(e.soAnh) || 0 })) : [];
+    // Giám sát: chỉ đợt của công trình được giao, bỏ tiền và ghi chú nội bộ.
+    const traThau = docBang('TraThau').filter((t) => duocXem(n, t.maCongTrinh)).map((t) => (vp ? { ...t, soTien: Number(t.soTien) || 0 }
+      : { id: t.id, maCongTrinh: t.maCongTrinh, thau: t.thau, hangMuc: t.hangMuc, dot: t.dot, dieuKien: t.dieuKien, viecMoc: t.viecMoc, hanTra: t.hanTra, klXacNhan: t.klXacNhan, xoa: t.xoa }));
+    const chungTu = vp ? docBang('Anh').filter((a) => a.loai === 'CHUNG_TU').map((a) => ({ id: a.id, viec: a.viec, fileId: a.fileId, tenFile: a.tenFile })) : [];
     const gstg = docBang('GSTG').filter((g) => duocXem(n, g.maCongTrinh)).map((g) => ({ ...g, lan: Number(g.lan) || 0, nhacGiamSat: g.nhacGiamSat === true }));
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
   // Nhận hàng chờ từ máy, áp theo thứ tự. Mục đã nhận (theo idGui) thì bỏ qua.
@@ -189,13 +198,16 @@ const HANH_DONG = {
 
   // Ảnh đã nén trên máy, gửi base64. Lưu vào thư mục "Ảnh tiến độ" trong thư mục công trình.
   guiAnh: (n, data) => {
-    if (!duocXem(n, data.ma)) throw new Error('Không có quyền với công trình ' + data.ma);
+    const chungTu = data.loai === 'CHUNG_TU';
+    if (chungTu) canVanPhong(n);
+    else if (!duocXem(n, data.ma)) throw new Error('Không có quyền với công trình ' + data.ma);
     const daCo = docBang('Anh').find((r) => r.id === data.id);
     if (daCo) return { fileId: daCo.fileId };
-    const thuMuc = thuMucAnh(data.ma);
+    // Chứng từ (ảnh chuyển khoản, hoá đơn) để riêng ngoài thư mục công trình, vì thư mục công trình có thể đã chia sẻ cho giám sát.
+    const thuMuc = chungTu ? timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Chứng từ'), String(data.ma).replace(/[^\w-]/g, '')) : thuMucAnh(data.ma);
     const blob = Utilities.newBlob(Utilities.base64Decode(data.base64), 'image/jpeg', data.tenFile);
     const f = thuMuc.createFile(blob);
-    themDong('Anh', { id: data.id, ma: data.ma, viec: data.viec, luc: new Date().toISOString(), tenFile: data.tenFile, fileId: f.getId(), nguoi: n.email });
+    themDong('Anh', { id: data.id, ma: data.ma, viec: data.viec, luc: new Date().toISOString(), tenFile: data.tenFile, fileId: f.getId(), nguoi: n.email, loai: chungTu ? 'CHUNG_TU' : '' });
     return { fileId: f.getId() };
   },
 
@@ -316,6 +328,34 @@ function apDung(n, op) {
     if (!/^GS-/.test(String(g.id))) throw new Error('Mã buổi GSTG phải bắt đầu bằng GS-');
     g.capNhatLuc = op.luc;
     capNhatDong('GSTG', (r) => r.id === g.id, g);
+    return;
+  }
+  if (op.loai === 'TC') {
+    canVanPhong(n);
+    const e = Object.assign({}, op.e);
+    if (!/^TC-/.test(String(e.id))) throw new Error('Mã thu chi phải bắt đầu bằng TC-');
+    if (e.loai !== 'THU' && e.loai !== 'CHI') throw new Error('Thu hay chi?');
+    e.nguoi = e.nguoi || n.vaiTro;
+    e.capNhatLuc = op.luc;
+    capNhatDong('ThuChi', (r) => r.id === e.id, e);
+    return;
+  }
+  if (op.loai === 'TT') {
+    canVanPhong(n);
+    const t = Object.assign({}, op.t);
+    if (!/^TT-/.test(String(t.id))) throw new Error('Mã đợt trả thầu phải bắt đầu bằng TT-');
+    // Xác nhận khối lượng do giám sát ghi trên máy chủ: máy văn phòng gửi bản cũ không xoá mất.
+    const cu = docBang('TraThau').find((r) => r.id === t.id);
+    if (cu && cu.klXacNhan && !t.klXacNhan) t.klXacNhan = cu.klXacNhan;
+    t.capNhatLuc = op.luc;
+    capNhatDong('TraThau', (r) => r.id === t.id, t);
+    return;
+  }
+  if (op.loai === 'XAC_NHAN_KL') {
+    const t = docBang('TraThau').find((r) => r.id === op.id);
+    if (!t || !duocXem(n, t.maCongTrinh)) throw new Error('Không có quyền với đợt trả thầu này');
+    if (t.klXacNhan) return; // đã có người xác nhận trước
+    capNhatDong('TraThau', (r) => r.id === op.id, { klXacNhan: { ngay: op.ngay, nguoi: n.vaiTro, ghiChu: String(op.ghiChu || '').slice(0, 1000) }, capNhatLuc: op.luc }, true);
     return;
   }
   if (op.loai === 'CAI_DAT') {

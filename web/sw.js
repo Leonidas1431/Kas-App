@@ -1,7 +1,7 @@
 // Lưu sẵn vỏ app để mở được khi mất sóng. Dữ liệu đi qua hàng chờ trong store.js.
-const BAN = 'kas-v5';
+const BAN = 'kas-v6';
 const VO_APP = ['./', 'index.html', 'styles.css', 'icon.svg', 'manifest.webmanifest',
-  'js/app.js', 'js/store.js', 'js/schedule.js', 'js/api.js', 'js/anh.js', 'js/khach.js', 'js/hopdong.js', 'js/thietke.js', 'js/kehoach.js', 'data/thu-vien-v1.json'];
+  'js/app.js', 'js/store.js', 'js/schedule.js', 'js/api.js', 'js/anh.js', 'js/khach.js', 'js/hopdong.js', 'js/thietke.js', 'js/kehoach.js', 'js/thuchi.js', 'data/thu-vien-v1.json'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(BAN).then((c) => c.addAll(VO_APP)).then(() => self.skipWaiting()));
