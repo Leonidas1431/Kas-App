@@ -11,7 +11,7 @@ Thiết kế và quyết định: [doc phân tích nhu cầu & kiến trúc](htt
 | `web/` | App chạy trên trình duyệt (PWA), HTML/JS thuần, không cần build |
 | `web/js/schedule.js` | Bộ xếp lịch: lịch nghỉ, ngày lễ, ràng buộc trước–sau |
 | `web/js/store.js` | Dữ liệu + hàng chờ khi mất sóng |
-| `web/js/hopdong.js`, `web/js/thietke.js`, `web/js/kehoach.js` | Hợp đồng (số HĐ, đợt thu, phụ lục, khấu trừ phí TK) , tiến độ thiết kế (phương án gửi khách, lần sửa, giám sát tác giả) và sửa kế hoạch công trình |
+| `web/js/hopdong.js`, `web/js/thietke.js`, `web/js/kehoach.js` | Hợp đồng (số HĐ, đợt thu, phụ lục, khấu trừ phí TK), tiến độ thiết kế (phương án gửi khách, lần sửa, giám sát tác giả) và sửa kế hoạch công trình |
 | `web/js/khach.js` | Sổ khách: trạng thái, nhắc gọi lại, báo giá, người giới thiệu, chăm sóc sau bàn giao |
 | `web/data/thu-vien-v1.json` | Thư viện hạng mục (bản nháp v1, chờ Thầy và Đức duyệt) |
 | `gas/` | Máy chủ Apps Script: Sheets làm kho dữ liệu, ảnh vào Drive |
