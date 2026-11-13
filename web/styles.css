@@ -156,3 +156,10 @@ table.kh .kh-kl { min-width: 150px; }
 .loc-tc select, .loc-tc input { margin-top: 4px; }
 .grid-btn.hai { grid-template-columns: 1fr 1fr; }
 .grid-btn.hai button.on { background: var(--thanh); border-color: var(--thanh); }
+/* Nhắc ảnh 16h, nhà thầu */
+.canh-anh { border: 2px solid var(--tre, #c0392b); border-radius: 12px; padding: 10px 12px; margin: 0 0 14px; }
+.canh-anh b { display: block; color: var(--tre, #c0392b); margin-bottom: 8px; }
+.canh-anh label.btn { display: block; text-align: center; margin: 6px 0; }
+.sao { color: #b7791f; white-space: nowrap; }
+a.card { display: block; color: inherit; text-decoration: none; }
+a.btn { text-decoration: none; }

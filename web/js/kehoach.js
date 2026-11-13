@@ -99,4 +99,5 @@ export function chotKeHoachGoc(db, ct, nguoi, lyDo = '') {
 }
 
 // Danh sách nhà thầu đã dùng ở mọi công trình (gợi ý khi gõ).
-export const dsNhaThau = (db) => [...new Set((db.congTrinh || []).flatMap((c) => c.viec.map((v) => v.nhaThau)).filter(Boolean))].sort();
+// Gợi ý tên thầu: danh bạ nhà thầu + tên đã gõ trong kế hoạch các công trình.
+export const dsNhaThau = (db) => [...new Set([...(db.nhaThau || []).filter((t) => t.hoatDong !== false).map((t) => t.ten), ...(db.congTrinh || []).flatMap((c) => c.viec.map((v) => v.nhaThau))].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'vi'));

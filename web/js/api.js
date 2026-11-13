@@ -40,6 +40,14 @@ export async function xemChuNha(api, maLink) {
   return j.data;
 }
 
+// Thầu mở link riêng: lịch việc của mình ở các công trình (không cần khoá).
+export async function xemChoThau(api, maLink) {
+  const r = await fetch(`${apiUrl(api)}?thau=${encodeURIComponent(maLink)}`);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.loi);
+  return j.data;
+}
+
 // Chủ nhà trả lời phương án thiết kế trên link (không cần khoá).
 export async function chuNhaPhanHoi(api, data) {
   const r = await fetch(apiUrl(api), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'chuNhaPhanHoi', data }) });
@@ -88,6 +96,9 @@ export function dongBo(db, luu) {
         if (d.chungTu) db.chungTu = d.chungTu;
         if (d.phatSinh) db.phatSinh = d.phatSinh;
         if (d.mauVL) db.mauVL = d.mauVL;
+        if (d.nhaThau) db.nhaThau = d.nhaThau;
+        if (d.danhGia) db.danhGia = d.danhGia;
+        if (d.anh) db.anh = d.anh;
         db.toi = d.toi;
         luu();
       }

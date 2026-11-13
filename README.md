@@ -43,5 +43,6 @@ Máy chủ Google: xem [docs/CAI-DAT.md](docs/CAI-DAT.md).
 - [x] Thu chi (theo Sổ cái): ghi chi công trình / chi công ty / thu ngoài HĐ, gõ nhanh "12tr", ảnh chứng từ để riêng; đợt trả thầu, giám sát xác nhận khối lượng (không thấy tiền), đến hạn trả; chi dự kiến, lãi gộp, cảnh báo vượt chi
 - [x] Phát sinh 4 bước: giám sát báo (không thấy giá) → văn phòng báo giá → khách đồng ý trên link hoặc Zalo → giám sát thấy "Được làm"; thu phát sinh theo mã PS, cảnh báo phát sinh vượt ngưỡng % HĐ
 - [x] Duyệt mẫu vật liệu: tên mẫu, người bán, việc dùng mẫu, hạn chốt trước ngày làm, khách chốt hoặc đổi trên link
-- [ ] Link thầu, đánh giá thầu, nhắc ảnh 16h
+- [x] Nhà thầu: danh bạ (giám sát thấy tên, số; không thấy ghi chú nội bộ), việc theo công trình, ngày chậm do thầu, chấm 1–5 (chất lượng, tiến độ, phối hợp) khi thầu xong việc; link riêng cho thầu xem lịch việc của mình + mẫu đã chốt, không tiền, không việc thầu khác
+- [x] Nhắc ảnh 16h: sau 16h, công trình đang thi công chưa có ảnh hôm nay hiện đỏ đầu màn Hôm nay, bấm chụp luôn
 - [x] Sửa kế hoạch (bảng sửa nhanh trên máy tính, sửa từng việc trên điện thoại): số ngày, khối lượng, thầu, việc đi trước, thêm/xoá việc, khởi công, ngày nghỉ Tết, chốt lại kế hoạch gốc

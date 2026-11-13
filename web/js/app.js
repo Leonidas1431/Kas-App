@@ -24,7 +24,8 @@ import {
   TT_PS, QUA_PS, HAN_CHOT, NGUONG_MAC_DINH, psCuaCongTrinh, baoPhatSinh, baoGia, khachTraLoi, suaPS, xoaPS, daLamPS, daThuPS, tongPS, viecPSHomNay, tinBaoGia,
 } from './phatsinh.js';
 import { TT_MAU, NGAY_DAT_HANG, mauCuaCongTrinh, hanChotMacDinh, themMau, suaMau, xoaMau, khachChotMau, guiLaiMau, mauCanChot, tinGuiMau } from './mauvl.js';
-import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, maApi, chuNhaPhanHoi } from './api.js';
+import { LINH_VUC, TIEU_CHI, dsThau, timThauTheoTen, themThau, suaThau, viecCuaThau, danhGia, tongHopThau, canDanhGia, thieuAnh, ghiDaChupAnh, tinLinkThau } from './nhathau.js';
+import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPhanHoi } from './api.js';
 import { xepAnh, demCho, guiAnhCho } from './anh.js';
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -100,15 +101,19 @@ function route() {
   const ts = Object.fromEntries(thamSo.map((x) => x.split('=')));
   if (h.startsWith('k=')) return nhanLinhDangNhap(h.slice(2), ts.api);
   const chuNha = h.startsWith('chu-nha-');
-  $('#tabs').hidden = chuNha;
-  $('.topbar .role').hidden = chuNha;
-  $('#sync').hidden = chuNha;
+  const thau = h.startsWith('lich-thau-');
+  $('#tabs').hidden = chuNha || thau;
+  $('.topbar .role').hidden = chuNha || thau;
+  $('#sync').hidden = chuNha || thau;
   if (chuNha) return manChuNha(h.slice(8), ts.api);
+  if (thau) return manChoThau(h.slice(10), ts.api);
   if (!daKetNoi() && !daChonDemo()) return manKetNoi();
   if (h === 'ket-noi') return manKetNoi();
   if (h.startsWith('ct-')) return manCongTrinh(h.slice(3));
   if (h.startsWith('sua-kh-')) return laVanPhong() ? manSuaKeHoach(h.slice(7)) : manHomNay();
   if (h === 'cong-trinh') return manDanhSach();
+  if (h === 'nha-thau') return manNhaThau();
+  if (h.startsWith('nt-')) return manMotThau(h.slice(3));
   if (h === 'tao') return laVanPhong() ? manTao() : manHomNay();
   if (h === 'khach') return laVanPhong() ? manKhach() : manHomNay();
   if (h.startsWith('kh-')) return laVanPhong() ? manMotKhach(h.slice(3)) : manHomNay();
@@ -128,7 +133,7 @@ function manHomNay() {
   datTab('hom-nay', 'Hôm nay ' + ddmm(homNay()));
   const v = $('#view');
   const hn = homNay();
-  const khoiKhach = (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + thauHomNay(hn) + thietKeHomNay(hn);
+  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
@@ -145,6 +150,7 @@ function manHomNay() {
   ganNutTraThau(v);
   ganNutPS(v);
   ganNutMau(v);
+  ganNutAnh(v);
 }
 
 function theViec(ct, x, t, nhan) {
@@ -165,7 +171,7 @@ function moViec(maCt, id) {
   const lsu = db.lichSu.filter((e) => e.ma === maCt && e.viec === id).slice(-5).reverse();
   d.innerHTML = `<h2>${esc(x.hangMuc)}</h2>
     <p class="muted">${esc(x.nhom)}${x.dauViec ? ' · ' + esc(x.dauViec) : ''}<br>
-      Kế hoạch gốc ${ddmm(x.goc.batDau)}–${ddmm(x.goc.ketThuc)} · hiện tại ${ddmm(t.batDau)}–${ddmm(t.ketThuc)} · ${x.soNgay} ngày công${x.khoiLuong != null && x.khoiLuong !== '' ? ` · ${esc(x.khoiLuong)} ${esc(x.dvt || '')}` : ''}${x.nhaThau ? ` · thầu ${esc(x.nhaThau)}` : ''}</p>
+      Kế hoạch gốc ${ddmm(x.goc.batDau)}–${ddmm(x.goc.ketThuc)} · hiện tại ${ddmm(t.batDau)}–${ddmm(t.ketThuc)} · ${x.soNgay} ngày công${x.khoiLuong != null && x.khoiLuong !== '' ? ` · ${esc(x.khoiLuong)} ${esc(x.dvt || '')}` : ''}${x.nhaThau ? ` · thầu ${thauCuaViec(x.nhaThau)}` : ''}</p>
     ${mauCuaCongTrinh(db, maCt).filter((m) => m.viec === id).map((m) => `<p class="note">Mẫu ${esc(m.hangMuc)}: <b>${esc(m.tenMau)}</b> · ${m.trangThai === 'DUYET' ? 'khách đã chốt' : '<span class="tre">khách chưa chốt</span>'}${m.nguoiBan ? ' · người bán ' + esc(m.nguoiBan) : ''}</p>`).join('')}
     <label class="f">Tiến độ</label>
     <div class="grid-btn">${[0, 25, 50, 75, 100].map((p) => `<button data-pct="${p}" class="${x.phanTram === p ? 'on' : ''}">${p === 100 ? 'Xong' : p + '%'}</button>`).join('')}</div>
@@ -198,14 +204,7 @@ function moViec(maCt, id) {
   $('#anh', d).onchange = async (e) => {
     const files = [...e.target.files];
     if (!files.length) return;
-    if (!daKetNoi()) return bao(`${files.length} ảnh: bản thử chưa gửi lên Drive`);
-    try {
-      const n = await xepAnh(files, ct.ma, id);
-      bao(`Đã lưu ${n} ảnh trên máy, đang gửi lên Drive`);
-      chayDongBo();
-    } catch (err) {
-      bao('Không đọc được ảnh: ' + err.message);
-    }
+    await guiAnhHienTruong(files, ct.ma, id);
   };
   $('#zalo', d).onclick = () => chiaSe(`[${ct.ma}] ${x.hangMuc}\nLịch: ${ddmm(t.batDau)} – ${ddmm(t.ketThuc)}\nTiến độ: ${x.phanTram}%`);
   $('#cham', d).onclick = () => moBaoCham(ct, x);
@@ -279,11 +278,12 @@ function manDanhSach() {
   datTab('cong-trinh', 'Công trình');
   const hn = homNay();
   const v = $('#view');
+  const dau = dauCongTrinh('cong-trinh');
   const nutTao = laVanPhong() ? '<div class="actions"><a class="btn btn-chinh" href="#tao" style="text-align:center">+ Tạo công trình</a></div>' : '';
-  if (!db.congTrinh.length) { v.innerHTML = '<p class="muted">Chưa có công trình.</p>' + nutTao; return; }
+  if (!db.congTrinh.length) { v.innerHTML = dau + '<p class="muted">Chưa có công trình.</p>' + nutTao; return; }
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   const daXong = db.congTrinh.filter((ct) => congTrinhDaXong(db, ct.ma));
-  v.innerHTML = `<h2>Bảng tổng ${dangLam.length} công trình</h2>
+  v.innerHTML = `${dau}<h2>Bảng tổng ${dangLam.length} công trình</h2>
     <div class="wrap"><table>
       <tr><th>Công trình</th><th class="an-dt">Loại</th><th>Thực tế / KH</th><th>Việc trễ</th><th>Xong dự kiến</th></tr>
       ${dangLam.map((ct) => {
@@ -1968,6 +1968,7 @@ function moBaoPS(ct, viecId = '', moTa = '') {
     const ps = baoPhatSinh(db, ct, { moTa: mt, viTri: $('#vt', d).value.trim(), viec: $('#viec', d).value, ngay: homNay() }, vaiTro, laVanPhong());
     const files = [...$('#anh', d).files];
     d.close();
+    if (files.length) ghiDaChupAnh(db, ct.ma, homNay());
     if (files.length && daKetNoi()) { try { await xepAnh(files, ct.ma, ps.ma); } catch (err) { bao('Không đọc được ảnh: ' + err.message); } }
     luu(); bao(`Đã báo ${ps.ma}, chờ văn phòng báo giá`); route();
   };
@@ -2384,6 +2385,224 @@ function manXacNhan(id) {
 }
 
 // Bản chạy thử: tạo sẵn 1 công trình mẫu đang thi công dở để có cái mà xem.
+// ---------- Nhà thầu ----------
+const dauCongTrinh = (tab) => `<div class="loc doan khong-in">${[['cong-trinh', 'Công trình'], ['nha-thau', 'Nhà thầu']]
+  .map(([h, t]) => `<a class="btn ${h === tab ? 'on' : ''}" href="#${h}">${t}</a>`).join('')}</div>`;
+const diemSao = (x) => (x === null || x === undefined ? '<span class="muted">chưa đánh giá</span>' : `<b class="sao">★ ${String(x).replace('.', ',')}</b>`);
+const telLink = (sdt) => (sdt ? `<a href="tel:${esc(String(sdt).replace(/[^\d+]/g, ''))}">${esc(sdt)}</a>` : '');
+
+function manNhaThau() {
+  datTab('cong-trinh', 'Nhà thầu');
+  const vp = laVanPhong();
+  const ds = dsThau(db);
+  // Tên thầu đã gõ trong kế hoạch mà chưa có trong danh bạ: gợi ý thêm cho đủ.
+  const coTen = new Set((db.nhaThau || []).map((t) => t.ten.trim().toLowerCase()));
+  const chuaCo = [...new Set(db.congTrinh.flatMap((c) => c.viec.map((v) => String(v.nhaThau || '').trim())).filter((x) => x && !coTen.has(x.toLowerCase())))].sort((a, b) => a.localeCompare(b, 'vi'));
+  const nhom = [...new Set(ds.map((t) => t.linhVuc || 'Khác'))].sort((a, b) => LINH_VUC.indexOf(a) - LINH_VUC.indexOf(b));
+  $('#view').innerHTML = `${dauCongTrinh('nha-thau')}
+    ${vp ? '<div class="actions"><button id="themThau" class="btn-chinh">+ Thêm nhà thầu</button></div>' : ''}
+    ${!ds.length ? `<p class="muted">Chưa có nhà thầu trong danh bạ.${vp ? ' Bấm "Thêm nhà thầu", hoặc thêm nhanh từ tên đã ghi trong kế hoạch bên dưới.' : ''}</p>` : ''}
+    ${nhom.map((n) => `<h3>${esc(n)}</h3>${ds.filter((t) => (t.linhVuc || 'Khác') === n).map((t) => {
+      const th = tongHopThau(db, t);
+      return `<a class="card" href="#nt-${esc(t.id)}"><div class="row"><span class="name">${esc(t.ten)}</span>${diemSao(th.chung)}</div>
+        <div class="muted">${t.sdt ? esc(t.sdt) + ' · ' : ''}${th.soCongTrinh} công trình${th.soDanhGia ? ` · ${th.soDanhGia} đánh giá` : ''}${th.ngayCham ? ` · <span class="tre">chậm ${th.ngayCham} ngày</span>` : ''}</div></a>`;
+    }).join('')}`).join('')}
+    ${vp && chuaCo.length ? `<h3>Tên trong kế hoạch, chưa có trong danh bạ</h3>${chuaCo.map((ten) => `<div class="card"><div class="row"><span class="name">${esc(ten)}</span><button data-them="${esc(ten)}">Thêm</button></div></div>`).join('')}` : ''}`;
+  if ($('#themThau')) $('#themThau').onclick = () => moThau();
+  document.querySelectorAll('[data-them]').forEach((b) => { b.onclick = () => moThau(null, b.dataset.them); });
+}
+
+function moThau(t = null, tenGoiY = '') {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const v = t || { ten: tenGoiY, linhVuc: '', sdt: '', ghiChu: '' };
+  d.innerHTML = `<h2>${t ? 'Sửa nhà thầu' : 'Thêm nhà thầu'}</h2>
+    <label class="f">Tên (giống tên ghi ở cột Nhà thầu trong kế hoạch)</label><input id="ten" value="${esc(v.ten)}" placeholder="Vd: Điện nước Hùng">
+    <label class="f">Lĩnh vực</label><select id="lv">${LINH_VUC.map((x) => `<option ${x === v.linhVuc ? 'selected' : ''}>${x}</option>`).join('')}</select>
+    <label class="f">Số điện thoại / Zalo</label><input id="sdt" inputmode="tel" value="${esc(v.sdt)}">
+    <label class="f">Ghi chú nội bộ (giám sát không thấy)</label><textarea id="gc" placeholder="Vd: làm kỹ, hay chậm khi nhiều việc">${esc(v.ghiChu)}</textarea>
+    ${t ? `<label class="chk"><input type="checkbox" id="ngung" ${t.hoatDong === false ? 'checked' : ''}> Ngừng dùng (ẩn khỏi danh bạ, link thầu không mở được)</label>` : ''}
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const ten = $('#ten', d).value.trim();
+    if (!ten) return bao('Cần tên thầu');
+    const trung = timThauTheoTen(db, ten);
+    if (trung && trung !== t) return bao('Đã có thầu tên này');
+    const du = { ten, linhVuc: $('#lv', d).value, sdt: $('#sdt', d).value.trim(), ghiChu: $('#gc', d).value.trim() };
+    let x = t;
+    if (t) suaThau(db, t, { ...du, hoatDong: !$('#ngung', d).checked });
+    else x = themThau(db, du);
+    luu(); d.close(); bao('Đã lưu');
+    location.hash = 'nt-' + x.id;
+    route();
+  };
+}
+
+function linkThauCua(t) {
+  const kn = ketNoi();
+  return `${goc()}#lich-thau-${t.maLink}${kn ? '&api=' + maApi(kn.api) : ''}`;
+}
+
+function manMotThau(id) {
+  const t = (db.nhaThau || []).find((x) => x.id === id);
+  if (!t) return manNhaThau();
+  datTab('cong-trinh', t.ten);
+  const vp = laVanPhong();
+  const th = tongHopThau(db, t);
+  const theoCt = new Map();
+  for (const { ct, v } of viecCuaThau(db, t)) { if (!theoCt.has(ct.ma)) theoCt.set(ct.ma, { ct, vs: [] }); theoCt.get(ct.ma).vs.push(v); }
+  const dgCua = (ma) => th.ds.filter((d) => d.maCongTrinh === ma);
+  $('#view').innerHTML = `${dauCongTrinh('nha-thau')}
+    <h2>${esc(t.ten)}</h2>
+    <p class="muted">${esc(t.linhVuc || '')}${t.sdt ? ' · ' + telLink(t.sdt) : ''}${t.hoatDong === false ? ' · <span class="tre">đã ngừng dùng</span>' : ''}</p>
+    ${vp && t.ghiChu ? `<div class="note">${esc(t.ghiChu)}</div>` : ''}
+    <div class="card"><div class="row"><span class="name">Điểm chung</span>${diemSao(th.chung)}</div>
+      ${th.soDanhGia ? Object.entries(TIEU_CHI).map(([k, ten]) => `<div class="row"><span>${ten}</span>${diemSao(th.diem[k])}</div>`).join('') : ''}
+      <div class="muted">${th.soCongTrinh} công trình · ${th.soDanhGia} phiếu đánh giá · chậm do thầu: ${th.ngayCham ? `<b class="tre">${th.ngayCham} ngày</b>` : '0 ngày'}</div></div>
+    <div class="actions">
+      ${t.sdt ? `<a class="btn" href="tel:${esc(String(t.sdt).replace(/[^\d+]/g, ''))}" style="text-align:center">📞 Gọi</a>` : ''}
+      ${vp ? '<button id="suaThau">Sửa</button>' : ''}
+    </div>
+    ${vp && t.maLink ? `<div class="actions"><button id="guiLink" class="btn-chinh">Gửi thầu link xem lịch việc</button><a class="btn" href="#lich-thau-${esc(t.maLink)}${ketNoi() ? '&api=' + maApi(ketNoi().api) : ''}" style="text-align:center">Xem như thầu</a></div>
+      <p class="muted">Thầu mở link thấy việc của mình ở các công trình đang làm, ngày bắt đầu/xong theo lịch mới nhất và mẫu vật liệu đã chốt. Không thấy tiền, không thấy việc thầu khác.</p>` : ''}
+    <h3>Việc theo công trình</h3>
+    ${!theoCt.size ? '<p class="muted">Chưa có việc nào ghi tên thầu này trong kế hoạch.</p>' : ''}
+    ${[...theoCt.values()].map(({ ct, vs }) => {
+      const lich = lichHienTai(ct);
+      const xong = vs.every((v) => v.phanTram >= 100);
+      const dgs = dgCua(ct.ma);
+      const cuaToi = dgs.find((x) => x.nguoi === vaiTro);
+      return `<div class="card"><div class="row"><a class="name" href="#ct-${esc(ct.ma)}">${esc(ct.ma)} · ${esc(ct.ten)}</a>${xong ? '<span class="tag XONG">Xong</span>' : ''}</div>
+        ${vs.map((v) => { const l = lich.get(v.id); return `<div class="row"><span>${esc(v.hangMuc)}</span><span class="muted">${ddmm(l.batDau)}–${ddmm(l.ketThuc)} · ${v.phanTram}%</span></div>`; }).join('')}
+        ${dgs.map((x) => `<div class="muted">${esc(tenNguoi(x.nguoi))} ${ddmm(x.ngay)}: ${Object.keys(TIEU_CHI).map((k) => `${TIEU_CHI[k].split(',')[0]} ${x[k] || '–'}`).join(' · ')}${x.ghiChu ? ' · ' + esc(x.ghiChu) : ''}</div>`).join('')}
+        <div class="actions"><button data-dg="${esc(ct.ma)}" class="${xong && !cuaToi ? 'btn-chinh' : ''}">${cuaToi ? 'Sửa đánh giá' : 'Đánh giá'}</button></div></div>`;
+    }).join('')}`;
+  if ($('#suaThau')) $('#suaThau').onclick = () => moThau(t);
+  if ($('#guiLink')) $('#guiLink').onclick = () => chiaSe(tinLinkThau(t, linkThauCua(t)));
+  document.querySelectorAll('[data-dg]').forEach((b) => { b.onclick = () => moDanhGia(t, b.dataset.dg); });
+}
+
+function moDanhGia(t, maCt) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const cu = (db.danhGia || []).find((x) => x.maThau === t.id && x.maCongTrinh === maCt && x.nguoi === vaiTro) || {};
+  const chon = { chatLuong: cu.chatLuong || 0, tienDo: cu.tienDo || 0, phoiHop: cu.phoiHop || 0 };
+  d.innerHTML = `<h2>Đánh giá ${esc(t.ten)}</h2>
+    <p class="muted">Công trình ${esc(maCt)} · 1 = kém, 3 = đạt, 5 = rất tốt</p>
+    ${Object.entries(TIEU_CHI).map(([k, ten]) => `<label class="f">${ten}</label><div class="grid-btn">${[1, 2, 3, 4, 5].map((n) => `<button data-k="${k}" data-n="${n}" class="${chon[k] === n ? 'on' : ''}">${n}</button>`).join('')}</div>`).join('')}
+    <label class="f">Nhận xét</label><div class="mic"><textarea id="gc" placeholder="Vd: làm sạch, đúng hẹn; đi ống hơi ẩu ở WC2">${esc(cu.ghiChu || '')}</textarea><button id="noi">🎤</button></div>
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  d.showModal();
+  d.querySelectorAll('[data-k]').forEach((b) => {
+    b.onclick = () => {
+      chon[b.dataset.k] = +b.dataset.n;
+      d.querySelectorAll(`[data-k="${b.dataset.k}"]`).forEach((x) => x.classList.toggle('on', x === b));
+    };
+  });
+  $('#noi', d).onclick = () => noiThanhChu($('#gc', d));
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    if (!chon.chatLuong || !chon.tienDo || !chon.phoiHop) return bao('Chấm đủ 3 mục');
+    danhGia(db, t, { maCongTrinh: maCt, ngay: homNay(), ...chon, ghiChu: $('#gc', d).value.trim() }, vaiTro);
+    luu(); d.close(); bao('Đã lưu đánh giá'); route();
+  };
+}
+
+// Tên thầu trong việc: có trong danh bạ thì bấm vào xem, kèm số gọi.
+function thauCuaViec(ten) {
+  const t = timThauTheoTen(db, ten);
+  return t ? `<a href="#nt-${esc(t.id)}">${esc(t.ten)}</a>${t.sdt ? ' ' + telLink(t.sdt) : ''}` : esc(ten);
+}
+
+// Hôm nay: nhắc đánh giá thầu đã xong hết việc ở 1 công trình.
+function danhGiaHomNay() {
+  const ds = canDanhGia(db, vaiTro);
+  if (!ds.length) return '';
+  return `<h3>Đánh giá thầu</h3>${ds.slice(0, 5).map(({ t, ma }) => `<a class="card" href="#nt-${esc(t.id)}"><div class="row"><span class="name">${esc(t.ten)}</span><span class="tag SAP">${esc(ma)}</span></div>
+    <div class="muted">Đã xong hết việc ở công trình này, chấm điểm giúp (1 phút)</div></a>`).join('')}`;
+}
+
+// Hôm nay: sau 16h, công trình đang thi công chưa có ảnh hôm nay → báo đỏ, bấm chụp luôn.
+function anhHomNay(hn) {
+  const gio = new Date().getHours();
+  const ds = thieuAnh(db, hn, gio, (ma) => congTrinhDaXong(db, ma));
+  if (!ds.length) return '';
+  return `<div class="canh-anh"><b>📷 ${gio}h rồi, chưa có ảnh hôm nay</b>
+    ${ds.map((ct) => `<label class="btn btn-do">${esc(ct.ma)} · ${esc(ct.ten)}: chụp ngay<input type="file" accept="image/*" capture="environment" multiple hidden data-anh-ct="${esc(ct.ma)}"></label>`).join('')}
+    <p class="muted">Chụp tổng thể + chỗ đang làm. Ảnh tự vào thư mục Drive của công trình.</p></div>`;
+}
+
+function ganNutAnh(el) {
+  el.querySelectorAll('[data-anh-ct]').forEach((inp) => {
+    inp.onchange = async (e) => {
+      const files = [...e.target.files];
+      if (!files.length) return;
+      await guiAnhHienTruong(files, inp.dataset.anhCt, '');
+      route();
+    };
+  });
+}
+
+// Dùng chung: lưu ảnh hiện trường vào máy, đánh dấu đã có ảnh hôm nay, rồi gửi lên Drive.
+async function guiAnhHienTruong(files, ma, viec) {
+  ghiDaChupAnh(db, ma, homNay()); ghi(db);
+  if (!daKetNoi()) { bao(`${files.length} ảnh: bản thử chưa gửi lên Drive`); return; }
+  try {
+    const n = await xepAnh(files, ma, viec);
+    bao(`Đã lưu ${n} ảnh trên máy, đang gửi lên Drive`);
+    chayDongBo();
+  } catch (err) {
+    bao('Không đọc được ảnh: ' + err.message);
+  }
+}
+
+// ---------- Link thầu (không đăng nhập) ----------
+async function manChoThau(maLink, api) {
+  $('#title').textContent = 'Lịch việc KAS';
+  let du = null;
+  if (api) {
+    $('#view').innerHTML = '<p class="muted">Đang tải…</p>';
+    try { du = await xemChoThau(api, maLink); } catch { du = null; }
+  } else {
+    // Bản thử / văn phòng xem trước: dựng từ dữ liệu trên máy, giống máy chủ.
+    const t = (db.nhaThau || []).find((x) => x.maLink === maLink && x.hoatDong !== false);
+    if (t) {
+      const ten = t.ten.trim().toLowerCase();
+      du = { thau: { ten: t.ten, linhVuc: t.linhVuc }, congTrinh: db.congTrinh.map((c) => {
+        const ids = c.viec.filter((v) => String(v.nhaThau || '').trim().toLowerCase() === ten).map((v) => v.id);
+        if (!ids.length || c.viec.filter((v) => ids.includes(v.id)).every((v) => v.phanTram >= 100)) return null;
+        return { ma: c.ma, ten: c.ten, khoiCong: c.khoiCong, lich: c.lich,
+          viec: c.viec.map((v) => ({ ...v, cuaThau: ids.includes(v.id) })),
+          mau: (db.mauVL || []).filter((m) => !m.xoa && m.trangThai === 'DUYET' && m.maCongTrinh === c.ma && ids.includes(m.viec)) };
+      }).filter(Boolean) };
+    }
+  }
+  if (!du) { $('#view').innerHTML = '<p>Link không đúng hoặc đã hết hạn. Anh liên hệ KAS để nhận link mới.</p>'; return; }
+  const hn = homNay();
+  const sap = addDays(hn, 14);
+  $('#view').innerHTML = `<h2>${esc(du.thau.ten)}</h2><p class="muted">Lịch việc của anh ở các công trình KAS, cập nhật theo tiến độ mới nhất.</p>
+    ${!du.congTrinh.length ? '<p>Hiện chưa có việc nào đang chờ anh.</p>' : ''}
+    ${du.congTrinh.map((c) => {
+      const lich = xepLich(c.viec, c.khoiCong, c.lich);
+      const cua = c.viec.filter((v) => v.cuaThau).sort((a, b) => lich.get(a.id).batDau.localeCompare(lich.get(b.id).batDau));
+      const vs = cua.filter((v) => v.phanTram < 100);
+      const daXong = cua.length - vs.length;
+      return `<h3>${esc(c.ten)}</h3>${daXong ? `<p class="muted">Đã xong ${daXong} việc.</p>` : ''}${vs.map((v) => {
+        const l = lich.get(v.id);
+        const tt = l.batDau <= hn ? ['DANG', `Đang làm ${v.phanTram}%`] : l.batDau <= sap ? ['SAP', `Còn ${diffDays(hn, l.batDau)} ngày`] : ['', ''];
+        const ms = (c.mau || []).filter((m) => m.viec === v.id);
+        return `<div class="card"><div class="row"><span class="name">${esc(v.hangMuc)}</span>${tt[1] ? `<span class="tag ${tt[0]}">${tt[1]}</span>` : ''}</div>
+          <div>Bắt đầu <b>${fmtNgay(l.batDau)}</b> · xong <b>${fmtNgay(l.ketThuc)}</b> (${v.soNgay} ngày)</div>
+          ${v.dauViec ? `<div class="muted">${esc(v.dauViec)}</div>` : ''}
+          ${v.khoiLuong ? `<div class="muted">Khối lượng: ${esc(v.khoiLuong)} ${esc(v.dvt || '')}</div>` : ''}
+          ${ms.map((m) => `<div class="muted">Mẫu đã chốt: ${esc(m.hangMuc)} – ${esc(m.tenMau)}${m.link ? ` · <a href="${esc(m.link)}" target="_blank" rel="noopener">ảnh mẫu</a>` : ''}</div>`).join('')}</div>`;
+      }).join('')}`;
+    }).join('')}
+    <p class="muted">Lịch có thể đổi khi việc trước làm nhanh/chậm. Anh mở lại link này để xem bản mới nhất.</p>`;
+}
+
 function taoMau() {
   const hn = homNay();
   const kc = new Date(Date.parse(hn) - 40 * 86400000).toISOString().slice(0, 10);
@@ -2457,6 +2676,16 @@ function taoMau() {
   const m1 = themMau(db, ct, { hangMuc: 'Gạch ốp WC', tenMau: 'Mẫu: 30x60 trắng mờ', nguoiBan: 'Mẫu: Đại lý gạch Hà Đông', sdtNguoiBan: '0900000009', viec: vOp ? vOp.id : '' }, 'DUC', truoc(20));
   khachChotMau(db, m1, { dongY: true, qua: 'ZALO', ngay: truoc(18) }, 'DUC');
   themMau(db, ct, { hangMuc: 'Sàn gỗ', tenMau: 'Mẫu: SPC 6mm vân sồi', nguoiBan: 'Mẫu: Cửa hàng sàn Tâm', viec: vSan ? vSan.id : '', hanChot: truoc(-2) }, 'DUC', truoc(4));
+  // Danh bạ thầu mẫu: gắn tên thầu vào việc theo nhóm; thầu phá dỡ đã xong hết → app nhắc đánh giá; điện nước có 1 lần chậm do thầu.
+  const thauMau = [['Chuẩn bị', 'Mẫu: Thầu phá dỡ Lực', 'Thầu thô'], ['Xây trát', 'Mẫu: Thầu thô Hưng', 'Thầu thô'], ['Chống thấm', 'Mẫu: Thầu thô Hưng', 'Thầu thô'],
+    ['Điện nước', 'Mẫu: Thầu điện nước Tâm', 'Điện nước'], ['Lắp thiết bị', 'Mẫu: Thầu điện nước Tâm', 'Điện nước'], ['Ốp lát', 'Mẫu: Đội ốp lát Sơn', 'Ốp lát']];
+  for (const [nhom, ten, lv] of thauMau) {
+    if (!timThauTheoTen(db, ten)) themThau(db, { ten, linhVuc: lv, sdt: '09000000' + (10 + (db.nhaThau || []).length) });
+    ct.viec.filter((v) => v.nhom.startsWith(nhom)).forEach((v) => { v.nhaThau = ten; });
+  }
+  const vDien1 = ct.viec.find((v) => v.nhom.startsWith('Điện nước') && v.phanTram > 0);
+  if (vDien1) baoCham(db, ct, vDien1.id, { soNgay: 2, nguyenNhan: 'Thầu phụ', ghiChu: 'Thợ điện nước điều đi công trình khác 2 ngày' }, 'KHA');
+  danhGia(db, timThauTheoTen(db, 'Mẫu: Thầu thô Hưng'), { maCongTrinh: 'MAU-CU', ngay: truoc(90), chatLuong: 4, tienDo: 3, phoiHop: 4, ghiChu: 'Công trình trước: làm chắc, hơi chậm' }, 'THAY');
   luu();
 }
 
@@ -2478,4 +2707,3 @@ async function main() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 main();
-
