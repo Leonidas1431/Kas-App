@@ -327,3 +327,62 @@ test('thu chi: văn phòng ghi; giám sát chỉ thấy đợt trả thầu khô
   assert.deepEqual(m.post(m.khoaThay, 'keoVe').data.chungTu.map((a) => a.viec), ['TC-9']);
   assert.deepEqual(m.post(khoaKha, 'keoVe').data.chungTu, []);
 });
+
+test('phát sinh: giám sát báo không kèm giá, không thấy giá; chủ nhà đồng ý trên link; văn phòng gửi bản cũ không ghi đè', () => {
+  const m = khoiDong();
+  const ct = congTrinhMau('NT-A', '');
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  // Giám sát báo, cố gửi kèm giá và trạng thái: máy chủ bỏ qua
+  let r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'PS_BAO', ps: { id: 'PS-1', ma: 'PS01', maCongTrinh: 'NT-A', ngayBao: '2026-11-10', moTa: 'Thêm ổ cắm', giaBan: 1, trangThai: 'DUYET' } }),
+    op({ loai: 'PS_BAO', ps: { id: 'PS-2', ma: 'PS01', maCongTrinh: 'NT-A', ngayBao: '2026-11-10', moTa: 'Trùng số' } }),
+    op({ loai: 'PS', ps: { id: 'PS-1', trangThai: 'DUYET' } })] });
+  assert.deepEqual(r.data.map((x) => x.ok), [true, true, false]);
+  let ds = m.post(m.khoaThay, 'keoVe').data.phatSinh;
+  assert.deepEqual(ds.map((p) => [p.ma, p.trangThai, p.giaBan, p.nguoiBao]), [['PS01', 'CHO_BAO_GIA', 0, 'KHA'], ['PS02', 'CHO_BAO_GIA', 0, 'KHA']]);
+  // Chưa báo giá: chủ nhà chưa thấy
+  assert.equal(m.get({ xem: '0123456789' }).data.phatSinh.length, 0);
+  const ps = { ...ds[0], giaBan: 3500000, chiGoc: 2200000, ngayBaoGia: '2026-11-11', trangThai: 'CHO_KHACH' };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'PS', ps })] });
+  const g = m.get({ xem: '0123456789' }).data.phatSinh;
+  assert.equal(g.length, 1);
+  assert.equal(g[0].giaBan, 3500000);
+  assert.equal(g[0].chiGoc, undefined); // không lộ chi phí gốc
+  // Giám sát không thấy giá; chưa duyệt thì chưa báo làm xong được
+  const kv = m.post(khoaKha, 'keoVe').data.phatSinh;
+  assert.equal(kv[0].giaBan, undefined);
+  assert.equal(kv[0].chiGoc, undefined);
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'PS_XONG', id: 'PS-1', ngay: '2026-11-12' })] }).data[0].ok, false);
+  // Chủ nhà đồng ý trên link; gửi lại không đổi
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', loai: 'PS', id: 'PS-1', ketQua: 'DUYET' }).data.trangThai, 'DUYET');
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: 'sai', loai: 'PS', id: 'PS-1', ketQua: 'TU_CHOI' }).ok, false);
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', loai: 'PS', id: 'PS-1', ketQua: 'TU_CHOI' }).data.trangThai, 'DUYET');
+  // Văn phòng chưa kéo về, sửa nội dung với trạng thái cũ: giữ câu trả lời của chủ nhà
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'PS', ps: { ...ps, viTri: 'Bếp' } })] });
+  ds = m.post(m.khoaThay, 'keoVe').data.phatSinh;
+  assert.deepEqual([ds[0].trangThai, ds[0].quaKhach, ds[0].viTri], ['DUYET', 'LINK', 'Bếp']);
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'PS_XONG', id: 'PS-1', ngay: '2026-11-13' })] }).data[0].ok, true);
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.phatSinh[0].daLam, '2026-11-13');
+  // Phương án thiết kế không nhận "TU_CHOI"
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', id: 'PA-x', ketQua: 'TU_CHOI' }).ok, false);
+});
+
+test('mẫu vật liệu: văn phòng gửi, chủ nhà chốt hoặc đổi trên link, giám sát xem được nhưng không sửa', () => {
+  const m = khoiDong();
+  const ct = congTrinhMau('NT-A', '');
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const mau = { id: 'MAU-1', maCongTrinh: 'NT-A', hangMuc: 'Gạch ốp WC', tenMau: '30x60', nguoiBan: 'Đại lý A', sdtNguoiBan: '0912345678', link: '', viec: '', hanChot: '2026-11-20', ngayGui: '2026-11-13', trangThai: 'CHO_KHACH' };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'MAU', m: mau })] });
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'MAU', m: { ...mau, trangThai: 'DUYET' } })] }).data[0].ok, false);
+  assert.equal(m.post(khoaKha, 'keoVe').data.mauVL[0].sdtNguoiBan, '0912345678');
+  const g = m.get({ xem: '0123456789' }).data.mauVL;
+  assert.deepEqual([g.length, g[0].nguoiBan, g[0].sdtNguoiBan], [1, 'Đại lý A', undefined]);
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', loai: 'MAU', id: 'MAU-1', ketQua: 'SUA', yKien: 'sáng hơn' }).data.trangThai, 'DOI');
+  // Văn phòng gửi bản cũ cùng lần gửi: giữ câu trả lời; gửi mẫu khác (ngày gửi mới): về chờ khách
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'MAU', m: { ...mau, link: 'https://x' } })] });
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.mauVL[0].trangThai, 'DOI');
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'MAU', m: { ...mau, tenMau: '30x60 kem', ngayGui: '2026-11-14' } })] });
+  assert.equal(m.post(m.khoaThay, 'keoVe').data.mauVL[0].trangThai, 'CHO_KHACH');
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', loai: 'MAU', id: 'MAU-1', ketQua: 'DUYET' }).data.trangThai, 'DUYET');
+});

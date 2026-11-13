@@ -4,6 +4,7 @@
 import { addDays } from './schedule.js';
 import { day, taoMa } from './store.js';
 import { tinhDot, hdCuaCongTrinh } from './hopdong.js';
+import { tongPS, NGUONG_MAC_DINH } from './phatsinh.js';
 
 export const CTY = 'CTY';
 // Hạng mục giữ đúng tên trong Sổ cái (tab Danh mục). Thu HĐ thiết kế / thi công ghi ở màn Hợp đồng.
@@ -158,14 +159,18 @@ export function congNoThau(db, homNay) {
  * doanh thu = phải thu các HĐ không dừng (đã trừ khấu trừ phí TK, gồm phụ lục) + thu ngoài HĐ;
  * chi dự kiến = tổng "chi dự kiến" ghi ở các HĐ; chi thực tế = sổ chi của công trình.
  */
-export function laiGop(db, maCt, laiToiThieu = LAI_GOP_MAC_DINH) {
+export function laiGop(db, maCt, laiToiThieu = LAI_GOP_MAC_DINH, nguongPS = NGUONG_MAC_DINH) {
   const hds = hdCuaCongTrinh(db, maCt).filter((h) => h.trangThai !== 'DUNG');
   const so = soConLai(db).filter((e) => e.ma === maCt);
+  const ps = tongPS(db, maCt);
+  // Thu ngoài HĐ: tiền thu phát sinh đã nằm trong giá bán phát sinh, không cộng hai lần.
   const thuNgoai = so.filter((e) => e.loai === 'THU').reduce((s, e) => s + e.soTien, 0);
-  const doanhThu = hds.reduce((s, h) => s + tinhDot(h).phaiThu, 0) + thuNgoai;
+  const thuPS = so.filter((e) => e.loai === 'THU' && ps.ds.some((p) => p.id === e.thamChieu)).reduce((s, e) => s + e.soTien, 0);
+  const doanhThu = hds.reduce((s, h) => s + tinhDot(h).phaiThu, 0) + ps.giaBan + thuNgoai - thuPS;
   const daThu = thuHD(db, '', '', maCt) + thuNgoai;
   const chi = so.filter((e) => e.loai === 'CHI').reduce((s, e) => s + e.soTien, 0);
-  const chiDuKien = hds.reduce((s, h) => s + (Number(h.chiDuKien) || 0), 0);
+  const chiHD = hds.reduce((s, h) => s + (Number(h.chiDuKien) || 0), 0);
+  const chiDuKien = chiHD ? chiHD + ps.chiGoc : 0;
   const camKetThau = dsTraThau(db, maCt).reduce((s, t) => s + (Number(t.soTien) || 0), 0);
   const laiDuKien = chiDuKien ? doanhThu - chiDuKien : null;
   const pctDuKien = laiDuKien !== null && doanhThu ? Math.round((laiDuKien / doanhThu) * 1000) / 10 : null;
@@ -173,7 +178,8 @@ export function laiGop(db, maCt, laiToiThieu = LAI_GOP_MAC_DINH) {
   if (chiDuKien && chi > chiDuKien) canhBao.push('Vượt chi dự kiến');
   if (chiDuKien && camKetThau > chiDuKien) canhBao.push('Đợt trả thầu vượt chi dự kiến');
   if (pctDuKien !== null && laiToiThieu && pctDuKien < laiToiThieu) canhBao.push(`Lãi gộp dự kiến dưới ${laiToiThieu}%`);
-  return { doanhThu, daThu, chi, chiDuKien, camKetThau, laiDuKien, pctDuKien, laiThucTe: daThu - chi, canhBao };
+  if (ps.pct !== null && nguongPS && ps.pct > nguongPS) canhBao.push(`Phát sinh ${String(ps.pct).replace('.', ',')}% HĐ thi công, vượt ngưỡng ${nguongPS}%`);
+  return { doanhThu, daThu, chi, chiDuKien, camKetThau, laiDuKien, pctDuKien, laiThucTe: daThu - chi, canhBao, phatSinh: ps };
 }
 
 // Gợi ý đối tượng khi gõ: nhà thầu trong kế hoạch, đợt trả thầu, và người đã ghi trước đó.

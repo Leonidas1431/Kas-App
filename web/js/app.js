@@ -20,6 +20,10 @@ import {
   CTY, HM_CHI, HM_CTY, HM_THU, HINH_THUC, docTien, ghiKhoan, suaKhoan, xoaKhoan, soConLai, dsTraThau, daTra, goiYMaDot, themDotTra, suaDotTra, xoaDotTra,
   xacNhanKL, trangThaiTra, canXacNhanKL, tongThang, congNoThau, laiGop, dsDoiTuong,
 } from './thuchi.js';
+import {
+  TT_PS, QUA_PS, HAN_CHOT, NGUONG_MAC_DINH, psCuaCongTrinh, baoPhatSinh, baoGia, khachTraLoi, suaPS, xoaPS, daLamPS, daThuPS, tongPS, viecPSHomNay, tinBaoGia,
+} from './phatsinh.js';
+import { TT_MAU, NGAY_DAT_HANG, mauCuaCongTrinh, hanChotMacDinh, themMau, suaMau, xoaMau, khachChotMau, guiLaiMau, mauCanChot, tinGuiMau } from './mauvl.js';
 import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, maApi, chuNhaPhanHoi } from './api.js';
 import { xepAnh, demCho, guiAnhCho } from './anh.js';
 
@@ -111,6 +115,7 @@ function route() {
   if (h === 'hop-dong') return laVanPhong() ? manHopDong() : manHomNay();
   if (h === 'thu-chi') return laVanPhong() ? manThuChi(ts.ma !== undefined ? decodeURIComponent(ts.ma) : undefined) : manHomNay();
   if (h === 'tra-thau') return laVanPhong() ? manTraThau() : manHomNay();
+  if (h === 'phat-sinh') return laVanPhong() ? manPhatSinh() : manHomNay();
   if (h === 'tao-hd') return laVanPhong() ? manTaoHD() : manHomNay();
   if (h.startsWith('HD-')) return laVanPhong() ? manMotHD(h) : manHomNay();
   if (h.startsWith('xac-nhan-')) return laVanPhong() ? manXacNhan(h.slice(9)) : manHomNay();
@@ -123,7 +128,7 @@ function manHomNay() {
   datTab('hom-nay', 'Hôm nay ' + ddmm(homNay()));
   const v = $('#view');
   const hn = homNay();
-  const khoiKhach = (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) : '') + thauHomNay(hn) + thietKeHomNay(hn);
+  const khoiKhach = (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + thauHomNay(hn) + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
@@ -138,6 +143,8 @@ function manHomNay() {
   }).join('');
   v.querySelectorAll('[data-viec]').forEach((b) => { b.onclick = () => moViec(b.dataset.ct, b.dataset.viec); });
   ganNutTraThau(v);
+  ganNutPS(v);
+  ganNutMau(v);
 }
 
 function theViec(ct, x, t, nhan) {
@@ -159,6 +166,7 @@ function moViec(maCt, id) {
   d.innerHTML = `<h2>${esc(x.hangMuc)}</h2>
     <p class="muted">${esc(x.nhom)}${x.dauViec ? ' · ' + esc(x.dauViec) : ''}<br>
       Kế hoạch gốc ${ddmm(x.goc.batDau)}–${ddmm(x.goc.ketThuc)} · hiện tại ${ddmm(t.batDau)}–${ddmm(t.ketThuc)} · ${x.soNgay} ngày công${x.khoiLuong != null && x.khoiLuong !== '' ? ` · ${esc(x.khoiLuong)} ${esc(x.dvt || '')}` : ''}${x.nhaThau ? ` · thầu ${esc(x.nhaThau)}` : ''}</p>
+    ${mauCuaCongTrinh(db, maCt).filter((m) => m.viec === id).map((m) => `<p class="note">Mẫu ${esc(m.hangMuc)}: <b>${esc(m.tenMau)}</b> · ${m.trangThai === 'DUYET' ? 'khách đã chốt' : '<span class="tre">khách chưa chốt</span>'}${m.nguoiBan ? ' · người bán ' + esc(m.nguoiBan) : ''}</p>`).join('')}
     <label class="f">Tiến độ</label>
     <div class="grid-btn">${[0, 25, 50, 75, 100].map((p) => `<button data-pct="${p}" class="${x.phanTram === p ? 'on' : ''}">${p === 100 ? 'Xong' : p + '%'}</button>`).join('')}</div>
     <label class="f">Ghi chú / phát sinh (bấm micro trên bàn phím để nói)</label>
@@ -181,7 +189,7 @@ function moViec(maCt, id) {
   });
   $('#noi', d).onclick = () => noiThanhChu($('#ghiChu', d));
   $('#luuGhiChu', d).onclick = () => luuGhi(false);
-  $('#luuPhatSinh', d).onclick = () => luuGhi(true);
+  $('#luuPhatSinh', d).onclick = () => moBaoPS(ct, id, $('#ghiChu', d).value.trim());
   function luuGhi(ps) {
     const nd = $('#ghiChu', d).value.trim();
     if (!nd) return bao('Chưa có nội dung');
@@ -208,7 +216,7 @@ function moViec(maCt, id) {
 function moTa(e) {
   if (e.loai === 'TIEN_DO') return `tiến độ ${e.cu}% → ${e.moi}%`;
   if (e.loai === 'CHAM') return `chậm thêm ${e.moi - e.cu} ngày (${esc(e.nguyenNhan)})${e.ghiChu ? ': ' + esc(e.ghiChu) : ''}`;
-  if (e.loai === 'PHAT_SINH') return `phát sinh: ${esc(e.ghiChu)}`;
+  if (e.loai === 'PHAT_SINH') return `${/^Phát sinh PS/.test(e.tenViec || '') ? esc(e.tenViec) + ': ' : 'phát sinh: '}${esc(e.ghiChu)}`;
   if (e.loai === 'KH_TT') return `${esc(TRANG_THAI[e.cu] || e.cu)} → <b>${esc(TRANG_THAI[e.moi] || e.moi)}</b>${e.nguyenNhan ? ' (' + esc(e.nguyenNhan) + ')' : ''}${e.ghiChu ? ': ' + esc(e.ghiChu) : ''}`;
   if (e.loai === 'KH_GOI') return `đã gọi, ${e.moi === 'CO' ? 'có tiến triển' : 'chưa được'}${e.ghiChu ? ': ' + esc(e.ghiChu) : ''}`;
   if (e.loai === 'KH_CS') return `chăm sóc tháng ${esc(e.moi)}${e.ghiChu ? ': ' + esc(e.ghiChu) : ''}`;
@@ -334,6 +342,8 @@ function manCongTrinh(ma) {
     </div>
     ${laVanPhong() ? khoiHDCongTrinh(ct) : ''}
     ${khoiTienCongTrinh(ct)}
+    ${khoiPhatSinh(ct)}
+    ${khoiMauVL(ct)}
     ${khoiThietKe(ct)}`;
   $('#view').querySelectorAll('[data-viec]').forEach((r) => { r.onclick = () => moViec(r.dataset.ct, r.dataset.viec); });
   $('#view').querySelectorAll('[data-cong-khai]').forEach((c) => {
@@ -343,6 +353,10 @@ function manCongTrinh(ma) {
   if (b) b.onclick = () => chiaSe(`KAS gửi anh/chị link theo dõi tiến độ công trình ${ct.ten}:\n${linkChuNha}`);
   ganNutThietKe(ct);
   ganNutTienCongTrinh(ct);
+  ganNutPS($('#view'));
+  ganNutMau($('#view'));
+  $('#baoPS').onclick = () => moBaoPS(ct);
+  if ($('#themMau')) $('#themMau').onclick = () => moMau(ct);
 }
 
 // ---------- Sửa kế hoạch (văn phòng, tiện nhất trên máy tính) ----------
@@ -633,10 +647,13 @@ async function manChuNha(maLink, api) {
   let ct = db.congTrinh.find((c) => c.maLinkChuNha === maLink);
   let lichSu = db.lichSu;
   let phuongAn = ct ? paCuaCongTrinh(db, ct.ma) : [];
+  // Bản thử: chỉ phần chủ nhà được xem (đã báo giá), giống máy chủ.
+  let phatSinh = ct ? psCuaCongTrinh(db, ct.ma).filter((p) => p.trangThai !== 'CHO_BAO_GIA') : [];
+  let mauVL = ct ? mauCuaCongTrinh(db, ct.ma) : [];
   if (api) {
     // Máy chủ nhà: lấy thẳng từ máy chủ, chỉ phần chủ nhà được xem.
     $('#view').innerHTML = '<p class="muted">Đang tải…</p>';
-    try { ({ ct, lichSu, phuongAn = [] } = await xemChuNha(api, maLink)); } catch (e) { ct = null; }
+    try { ({ ct, lichSu, phuongAn = [], phatSinh = [], mauVL = [] } = await xemChuNha(api, maLink)); } catch (e) { ct = null; }
   }
   if (!ct) { $('#view').innerHTML = '<p>Link không đúng hoặc đã hết hạn. Anh/chị liên hệ KAS để nhận link mới.</p>'; return; }
   const hn = homNay();
@@ -663,7 +680,59 @@ async function manChuNha(maLink, api) {
       ${p.yKien ? `<p class="muted">Ý kiến: ${esc(p.yKien)}</p>` : ''}
       ${p.trangThai === 'CHO' ? `<div class="actions"><button data-pa-sua="${esc(p.id)}">Cần sửa</button><button data-pa-ok="${esc(p.id)}" class="btn-chinh">Đồng ý phương án này</button></div>` : ''}
     </div>`).join('')}` : ''}
+    ${phatSinh.length ? `<h3>Phát sinh</h3>${phatSinh.map((p) => `<div class="card">
+      <div class="row"><span class="name">${esc(p.ma)} · ${esc(p.moTa)}</span><span class="tag ${{ CHO_KHACH: 'SAP', DUYET: 'DANG', TU_CHOI: 'TRE' }[p.trangThai]}">${p.trangThai === 'CHO_KHACH' ? 'Chờ anh/chị duyệt' : p.trangThai === 'DUYET' ? 'Đã đồng ý' : 'Không làm'}</span></div>
+      <div class="muted">${p.viTri ? esc(p.viTri) + ' · ' : ''}Chi phí <b>${tien(p.giaBan)}</b> (chưa VAT) · KAS báo giá ${ddmm(p.ngayBaoGia)}${p.ngayKhach ? ` · anh/chị trả lời ${ddmm(p.ngayKhach)}` : ''}</div>
+      ${p.trangThai === 'CHO_KHACH' ? `<div class="actions"><button data-ps-khong="${esc(p.id)}">Không làm</button><button data-ps-ok="${esc(p.id)}" class="btn-chinh">Đồng ý làm</button></div>` : ''}
+    </div>`).join('')}<p class="muted">Phát sinh đồng ý sẽ thanh toán cùng đợt quyết toán.</p>` : ''}
+    ${mauVL.length ? `<h3>Mẫu vật liệu</h3>${mauVL.map((m) => `<div class="card">
+      <div class="row"><span class="name">${esc(m.hangMuc)}: ${esc(m.tenMau)}</span><span class="tag ${TAG_MAU[m.trangThai]}">${m.trangThai === 'CHO_KHACH' ? 'Chờ anh/chị chốt' : m.trangThai === 'DUYET' ? 'Đã chốt' : 'Đã yêu cầu đổi'}</span></div>
+      <div class="muted">${m.nguoiBan ? 'Người bán: ' + esc(m.nguoiBan) + ' · ' : ''}${m.link ? `<a href="${esc(m.link)}" target="_blank" rel="noopener">Xem ảnh mẫu</a> · ` : ''}${m.trangThai === 'CHO_KHACH' && m.hanChot ? `anh/chị chốt giúp trước <b>${ddmm(m.hanChot)}</b> để kịp đặt hàng` : m.ngayKhach ? `anh/chị trả lời ${ddmm(m.ngayKhach)}` : ''}</div>
+      ${m.trangThai === 'CHO_KHACH' ? `<div class="actions"><button data-mau-khac="${esc(m.id)}">Muốn đổi</button><button data-mau-ok="${esc(m.id)}" class="btn-chinh">Chốt mẫu này</button></div>` : ''}
+    </div>`).join('')}` : ''}
     <p class="muted">Cập nhật bởi KAS Houzing.</p>`;
+  // Chủ nhà chốt mẫu vật liệu.
+  const traLoiMau = async (id, dongY, yKien = '') => {
+    try {
+      if (api) await chuNhaPhanHoi(api, { maLink, id, loai: 'MAU', ketQua: dongY ? 'DUYET' : 'SUA', yKien });
+      else { const m = (db.mauVL || []).find((x) => x.id === id); khachChotMau(db, m, { dongY, qua: 'LINK', ngay: homNay(), yKien }, 'CHU_NHA'); luu(); }
+      bao(dongY ? 'Cảm ơn anh/chị, KAS sẽ đặt hàng mẫu này.' : 'KAS đã nhận, sẽ gửi mẫu khác.');
+      manChuNha(maLink, api);
+    } catch (e) { bao('Chưa gửi được: ' + e.message); }
+  };
+  $('#view').querySelectorAll('[data-mau-ok]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.chac !== '1') { b.dataset.chac = '1'; b.textContent = 'Bấm lần nữa để chốt'; return; }
+      b.disabled = true; traLoiMau(b.dataset.mauOk, true);
+    };
+  });
+  $('#view').querySelectorAll('[data-mau-khac]').forEach((b) => {
+    b.onclick = () => {
+      const d = $('#sheet');
+      d.innerHTML = `<h2>Anh/chị muốn đổi thế nào?</h2>
+        <div class="mic"><textarea id="yk" placeholder="Vd: màu sáng hơn, khổ nhỏ hơn"></textarea><button id="noi">🎤</button></div>
+        <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Gửi KAS</button></div>`;
+      d.showModal();
+      $('#noi', d).onclick = () => noiThanhChu($('#yk', d));
+      $('#huy', d).onclick = () => d.close();
+      $('#ok', d).onclick = () => { d.close(); traLoiMau(b.dataset.mauKhac, false, $('#yk', d).value.trim()); };
+    };
+  });
+  // Chủ nhà trả lời phát sinh.
+  const traLoiPS = async (id, dongY) => {
+    try {
+      if (api) await chuNhaPhanHoi(api, { maLink, id, loai: 'PS', ketQua: dongY ? 'DUYET' : 'TU_CHOI' });
+      else { const p = (db.phatSinh || []).find((x) => x.id === id); khachTraLoi(db, p, { dongY, qua: 'LINK', ngay: homNay() }, 'CHU_NHA'); luu(); }
+      bao(dongY ? 'Cảm ơn anh/chị. KAS sẽ triển khai phần phát sinh.' : 'KAS đã nhận, phần này sẽ không làm.');
+      manChuNha(maLink, api);
+    } catch (e) { bao('Chưa gửi được: ' + e.message); }
+  };
+  $('#view').querySelectorAll('[data-ps-ok], [data-ps-khong]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.chac !== '1') { b.dataset.chac = '1'; b.textContent = 'Bấm lần nữa để xác nhận'; return; }
+      b.disabled = true; traLoiPS(b.dataset.psOk || b.dataset.psKhong, !!b.dataset.psOk);
+    };
+  });
   // Chủ nhà trả lời phương án: có máy chủ thì gửi thẳng, bản thử thì ghi trên máy.
   const traLoi = async (id, ketQua, yKien) => {
     try {
@@ -1495,10 +1564,11 @@ function moDungHD(hd) {
 // ---------- Thu chi, trả thầu (văn phòng; giám sát chỉ xác nhận khối lượng) ----------
 let locThang = '';
 let locMaTC = '';
-const dauTien = (tab) => `<div class="loc doan khong-in">${[['hop-dong', 'Hợp đồng'], ['thu-chi', 'Thu chi'], ['tra-thau', 'Trả thầu']]
+const dauTien = (tab) => `<div class="loc doan khong-in">${[['hop-dong', 'Hợp đồng'], ['thu-chi', 'Thu chi'], ['tra-thau', 'Trả thầu'], ['phat-sinh', 'Phát sinh']]
   .map(([h, t]) => `<a class="btn ${h === tab ? 'on' : ''}" href="#${h}">${t}</a>`).join('')}</div>`;
 const tenMa = (ma) => (ma === CTY ? 'Chi chung công ty' : ma || 'Chưa gắn công trình');
 const laiToiThieu = () => Number((db.caiDat || {}).laiGopToiThieu) || 0;
+const nguongPS = () => { const x = (db.caiDat || {}).nguongPhatSinh; return x === undefined || x === '' ? NGUONG_MAC_DINH : Number(x) || 0; };
 
 // Thu theo HĐ trong tháng, để hiện chung danh sách (chỉ xem, sửa ở màn hợp đồng).
 function thuHDTrongThang(thang, ma) {
@@ -1532,7 +1602,7 @@ function manThuChi(ma) {
     .sort((a, b) => (b.ngay + b.taoLuc).localeCompare(a.ngay + a.taoLuc));
   let ngay = '';
   const dsHtml = ds.map((e) => `${e.ngay !== ngay ? `<p class="ngay-nhom">${fmtNgay((ngay = e.ngay))}</p>` : ''}${theKhoan(e)}`).join('');
-  const lg = locMaTC && locMaTC !== CTY ? laiGop(db, locMaTC, laiToiThieu()) : null;
+  const lg = locMaTC && locMaTC !== CTY ? laiGop(db, locMaTC, laiToiThieu(), nguongPS()) : null;
   $('#view').innerHTML = `${dauTien('thu-chi')}
     <div class="so-lieu"><div><span>Thu tháng ${locThang.slice(5)}</span><b class="tien-thu">${tienGon(t.thu)}</b></div><div><span>Chi tháng ${locThang.slice(5)}</span><b class="tien-chi">${tienGon(t.chi)}</b></div>
       <div><span>Chênh lệch</span><b>${t.chenh < 0 ? '−' : ''}${tienGon(Math.abs(t.chenh))}</b></div><div><span>Trong đó chi công ty</span><b>${tienGon(t.chiCty)}</b></div></div>
@@ -1546,16 +1616,22 @@ function manThuChi(ma) {
     ${lg ? khoiLaiGop(lg) : ''}
     ${dsHtml || '<p class="muted">Tháng này chưa ghi khoản nào.</p>'}
     <p class="muted">Thu theo hợp đồng ghi ở màn Hợp đồng (bấm vào để mở). Ở đây ghi chi và các khoản thu ngoài hợp đồng.</p>
-    <details class="cham-ds"><summary>Lãi gộp tối thiểu mong muốn</summary>
-      <p class="muted">Công trình có lãi gộp dự kiến thấp hơn mức này sẽ bị cảnh báo. Để 0 là không cảnh báo.</p>
-      <div class="kh-kl"><input id="laiMin" type="number" inputmode="decimal" value="${esc((db.caiDat || {}).laiGopToiThieu || '')}" placeholder="Vd: 20"><span class="o-dvt" style="align-self:center">%</span></div>
+    <details class="cham-ds"><summary>Ngưỡng cảnh báo: lãi gộp, phát sinh</summary>
+      <label class="f">Lãi gộp tối thiểu mong muốn (%)</label>
+      <input id="laiMin" type="number" inputmode="decimal" value="${esc((db.caiDat || {}).laiGopToiThieu || '')}" placeholder="Vd: 20 (để trống là không cảnh báo)">
+      <label class="f">Tổng phát sinh / HĐ thi công vượt (%) thì cảnh báo</label>
+      <input id="psMax" type="number" inputmode="decimal" value="${nguongPS()}">
       <div class="actions"><button id="luuLai">Lưu</button></div>
     </details>`;
   $('#thang').onchange = () => { locThang = $('#thang').value || hn.slice(0, 7); manThuChi(); };
   $('#locMa').onchange = () => { locMaTC = $('#locMa').value; manThuChi(); };
   $('#ghiChi').onclick = () => moGhiKhoan({ loai: 'CHI', ma: locMaTC });
   $('#ghiThu').onclick = () => moGhiKhoan({ loai: 'THU', ma: locMaTC === CTY ? '' : locMaTC });
-  $('#luuLai').onclick = () => { datCaiDat(db, 'laiGopToiThieu', String(Number($('#laiMin').value) || 0)); luu(); bao('Đã lưu'); manThuChi(); };
+  $('#luuLai').onclick = () => {
+    datCaiDat(db, 'laiGopToiThieu', String(Number($('#laiMin').value) || 0));
+    datCaiDat(db, 'nguongPhatSinh', String(Number($('#psMax').value) || 0));
+    luu(); bao('Đã lưu'); manThuChi();
+  };
   $('#view').querySelectorAll('[data-tc]').forEach((b) => { b.onclick = () => moGhiKhoan(null, (db.thuChi || []).find((e) => e.id === b.dataset.tc)); });
 }
 
@@ -1582,7 +1658,7 @@ function moGhiKhoan(du, cu) {
       <div><label class="f">Công trình</label><select id="ma"></select></div>
     </div>
     <label class="f">Hạng mục</label><select id="hm"></select>
-    <div id="dotBox"><label class="f">Trả đợt nào</label><select id="dot"></select></div>
+    <div id="dotBox"><label class="f" id="dotNhan">Trả đợt nào</label><select id="dot"></select></div>
     <label class="f">Đối tượng (thầu, nhà cung cấp, người nhận)</label><input id="dt" list="dsDt" value="${esc(e0.doiTuong)}"><datalist id="dsDt">${dsDoiTuong(db).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
     <label class="f">Số tiền</label><input id="st" inputmode="decimal" value="${e0.soTien ? esc(e0.soTien) : ''}" placeholder="Vd: 12tr, 500k, 12000000"><p id="stChu" class="muted"></p>
     <label class="f">Nội dung</label><div class="mic"><textarea id="nd" placeholder="Vd: Thầu điện nước đợt 1">${esc(e0.noiDung)}</textarea><button id="noi">🎤</button></div>
@@ -1608,11 +1684,17 @@ function moGhiKhoan(du, cu) {
     $('#hm', d).innerHTML = ds.map((h) => `<option ${h === hm ? 'selected' : ''}>${esc(h)}</option>`).join('');
     veDot();
   };
+  // Chi thầu phụ → chọn đợt trả thầu; Thu phát sinh → chọn phiếu phát sinh đã duyệt. Để tự trừ công nợ.
   const veDot = () => {
-    const ma = $('#ma', d).value;
-    const ds = loai === 'CHI' && $('#hm', d).value === 'Chi thầu phụ' ? dsTraThau(db, ma) : [];
+    const ma = $('#ma', d).value, hm = $('#hm', d).value;
+    const ds = loai === 'CHI' && hm === 'Chi thầu phụ'
+      ? dsTraThau(db, ma).map((t) => [t.id, `${t.thau} · ${t.dot} · còn ${tienGon(trangThaiTra(db, t, homNay()).con)}`])
+      : loai === 'THU' && hm === 'Thu phát sinh'
+        ? psCuaCongTrinh(db, ma).filter((p) => p.trangThai === 'DUYET').map((p) => [p.id, `${p.ma} · ${p.moTa} · còn ${tienGon((Number(p.giaBan) || 0) - daThuPS(db, p))}`])
+        : [];
     $('#dotBox', d).hidden = !ds.length;
-    $('#dot', d).innerHTML = `<option value="">Không theo đợt</option>${ds.map((t) => { const r = trangThaiTra(db, t, homNay()); return `<option value="${esc(t.id)}" ${t.id === e0.thamChieu ? 'selected' : ''}>${esc(t.thau)} · ${esc(t.dot)} · còn ${tienGon(r.con)}</option>`; }).join('')}`;
+    $('#dotNhan', d).textContent = loai === 'THU' ? 'Thu phát sinh nào' : 'Trả đợt nào';
+    $('#dot', d).innerHTML = `<option value="">${loai === 'THU' ? 'Không theo phiếu' : 'Không theo đợt'}</option>${ds.map(([id, ten]) => `<option value="${esc(id)}" ${id === e0.thamChieu ? 'selected' : ''}>${esc(ten)}</option>`).join('')}`;
   };
   const xemTien = () => { const n = docTien($('#st', d).value); $('#stChu', d).textContent = Number.isFinite(n) ? `= ${tien(n)}` : $('#st', d).value ? 'Chưa đọc được số tiền' : ''; };
   veLoai(true); xemTien();
@@ -1620,6 +1702,12 @@ function moGhiKhoan(du, cu) {
   $('#ma', d).onchange = veHM;
   $('#hm', d).onchange = veDot;
   $('#dot', d).onchange = () => {
+    const ps = (db.phatSinh || []).find((x) => x.id === $('#dot', d).value);
+    if (ps) {
+      if (!$('#st', d).value) { $('#st', d).value = String((Number(ps.giaBan) || 0) - daThuPS(db, ps)); xemTien(); }
+      if (!$('#nd', d).value) $('#nd', d).value = `${ps.ma} ${ps.moTa}`;
+      return;
+    }
     const t = dsTraThau(db).find((x) => x.id === $('#dot', d).value);
     if (!t) return;
     $('#dt', d).value = t.thau;
@@ -1792,7 +1880,7 @@ function khoiTienCongTrinh(ct) {
     if (!ds.length) return '';
     return `<h3>Khối lượng thầu</h3>${ds.map((t) => theDotTra(t, hn, false)).join('')}`;
   }
-  const lg = laiGop(db, ct.ma, laiToiThieu());
+  const lg = laiGop(db, ct.ma, laiToiThieu(), nguongPS());
   return `<h3>Thu chi</h3>${khoiLaiGop(lg)}
     ${ds.map((t) => theDotTra(t, hn, true)).join('')}
     <div class="actions"><button id="ctGhiChi">− Ghi chi</button><button id="ctThemTT">+ Đợt trả thầu</button><a class="btn" href="#thu-chi&ma=${esc(ct.ma)}" style="text-align:center">Sổ thu chi</a></div>`;
@@ -1814,6 +1902,283 @@ function thauHomNay(hn) {
       <div class="muted">${esc(t.hangMuc)}${t.dieuKien ? ' · ' + esc(t.dieuKien) : ''}</div></button>`).join('')}
     ${no.ds.map(({ t, con }) => `<button class="card" data-tra="${esc(t.id)}"><div class="row"><span class="name">Trả ${esc(t.thau)} · ${esc(t.dot)}</span><b>${tienGon(con)}</b></div>
       <div class="muted">${esc(t.maCongTrinh)} · đã xác nhận KL ${ddmm(t.klXacNhan.ngay)}</div></button>`).join('')}`;
+}
+
+// ---------- Phát sinh 4 bước ----------
+const TAG_PS = { CHO_BAO_GIA: 'SAP', CHO_KHACH: 'SAP', DUYET: 'DANG', TU_CHOI: 'TRE' };
+function thePS(p, hn) {
+  const vp = laVanPhong();
+  const ct = db.congTrinh.find((c) => c.ma === p.maCongTrinh);
+  const v = p.viec && ct ? ct.viec.find((x) => x.id === p.viec) : null;
+  const cho = p.trangThai === 'CHO_BAO_GIA' ? diffDays(p.ngayBao, hn) : p.trangThai === 'CHO_KHACH' ? diffDays(p.ngayBaoGia, hn) : 0;
+  const tre = (p.trangThai === 'CHO_BAO_GIA' || p.trangThai === 'CHO_KHACH') && cho >= HAN_CHOT;
+  const conThu = vp && p.trangThai === 'DUYET' ? (Number(p.giaBan) || 0) - daThuPS(db, p) : 0;
+  const nut = [];
+  if (vp && p.trangThai === 'CHO_BAO_GIA') nut.push(`<button data-ps-gia="${esc(p.id)}" class="btn-chinh">Báo giá</button>`);
+  if (vp && p.trangThai === 'CHO_KHACH') nut.push(`<button data-ps-gui="${esc(p.id)}">Gửi khách Zalo</button>`, `<button data-ps-kq="${esc(p.id)}" class="btn-chinh">Khách trả lời</button>`);
+  if (vp && conThu > 0) nut.push(`<button data-ps-thu="${esc(p.id)}">Ghi thu</button>`);
+  if (p.trangThai === 'DUYET' && !p.daLam) nut.push(`<button data-ps-xong="${esc(p.id)}">Đã làm xong</button>`);
+  if (vp) nut.push(`<button data-ps-sua="${esc(p.id)}">Sửa</button>`);
+  return `<div class="card">
+    <div class="row"><span class="name">${esc(p.ma)} · ${esc(p.moTa)}</span><span class="tag ${tre ? 'TRE' : TAG_PS[p.trangThai]}">${TT_PS[p.trangThai]}${tre ? ` ${cho} ngày` : ''}</span></div>
+    <div class="muted">${esc(p.maCongTrinh)}${p.viTri ? ' · ' + esc(p.viTri) : ''}${v ? ' · ' + esc(v.hangMuc) : ''} · ${esc(tenNguoi(p.nguoiBao))} báo ${ddmm(p.ngayBao)}${p.daLam ? ` · đã làm xong ${ddmm(p.daLam)}` : ''}</div>
+    ${vp && p.giaBan ? `<div>Giá bán ${tien(p.giaBan)} · chi gốc ${tien(p.chiGoc)}${p.trangThai === 'DUYET' ? ` · ${conThu > 0 ? `còn thu <b>${tien(conThu)}</b>` : 'đã thu đủ'}` : ''}</div>` : ''}
+    ${p.ngayKhach ? `<div class="muted">Khách ${p.trangThai === 'DUYET' ? 'đồng ý' : 'không làm'} ${ddmm(p.ngayKhach)} (${esc(QUA_PS[p.quaKhach] || p.quaKhach)})${p.yKien ? ': ' + esc(p.yKien) : ''}${vp && p.bangChung ? ` · <a href="${esc(p.bangChung)}" target="_blank" rel="noopener">bằng chứng</a>` : ''}</div>` : ''}
+    ${nut.length ? `<div class="actions">${nut.join('')}</div>` : ''}
+  </div>`;
+}
+
+function ganNutPS(el) {
+  const tim = (id) => (db.phatSinh || []).find((p) => p.id === id);
+  const ctCua = (p) => db.congTrinh.find((c) => c.ma === p.maCongTrinh);
+  el.querySelectorAll('[data-ps-gia]').forEach((b) => { b.onclick = () => moBaoGiaPS(tim(b.dataset.psGia)); });
+  el.querySelectorAll('[data-ps-sua]').forEach((b) => { b.onclick = () => moBaoGiaPS(tim(b.dataset.psSua), true); });
+  el.querySelectorAll('[data-ps-gui]').forEach((b) => { b.onclick = () => { const p = tim(b.dataset.psGui); chiaSe(tinBaoGia(p, linkChuNhaCua(ctCua(p)))); }; });
+  el.querySelectorAll('[data-ps-kq]').forEach((b) => { b.onclick = () => moKhachTraLoiPS(tim(b.dataset.psKq)); });
+  el.querySelectorAll('[data-ps-thu]').forEach((b) => {
+    b.onclick = () => { const p = tim(b.dataset.psThu); moGhiKhoan({ loai: 'THU', ma: p.maCongTrinh, hangMuc: 'Thu phát sinh', thamChieu: p.id, soTien: (Number(p.giaBan) || 0) - daThuPS(db, p), noiDung: `${p.ma} ${p.moTa}` }); };
+  });
+  el.querySelectorAll('[data-ps-xong]').forEach((b) => {
+    b.onclick = () => {
+      if (b.dataset.chac !== '1') { b.dataset.chac = '1'; b.textContent = 'Bấm lần nữa nếu đã làm xong'; return; }
+      daLamPS(db, tim(b.dataset.psXong), homNay(), vaiTro, laVanPhong()); luu(); bao('Đã báo làm xong phát sinh'); route();
+    };
+  });
+}
+
+// Bước 1: báo phát sinh (giám sát hoặc văn phòng). Không có ô giá: không báo giá với khách tại công trình.
+function moBaoPS(ct, viecId = '', moTa = '') {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  d.innerHTML = `<h2>Báo phát sinh</h2>
+    <p class="muted">Ghi rõ khách muốn thêm gì, ở đâu. Không báo giá với khách tại công trình, văn phòng sẽ báo giá trong 24–48 giờ.</p>
+    <label class="f">Phát sinh gì</label><div class="mic"><textarea id="mt" placeholder="Vd: thêm 2 ổ cắm + 1 đường nước máy lọc bếp">${esc(moTa)}</textarea><button id="noi">🎤</button></div>
+    <label class="f">Vị trí</label><input id="vt" placeholder="Vd: Bếp">
+    <label class="f">Liên quan việc</label><select id="viec"><option value="">Không chọn</option>${ct.viec.map((v) => `<option value="${esc(v.id)}" ${v.id === viecId ? 'selected' : ''}>${esc(v.hangMuc)}</option>`).join('')}</select>
+    <label class="btn" style="display:block;text-align:center;margin-top:12px">📷 Chụp ảnh hiện trạng<input id="anh" type="file" accept="image/*" capture="environment" multiple hidden></label>
+    <p id="soAnh" class="muted"></p>
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Gửi văn phòng</button></div>`;
+  $('#noi', d).onclick = () => noiThanhChu($('#mt', d));
+  $('#anh', d).onchange = () => { $('#soAnh', d).textContent = $('#anh', d).files.length ? `${$('#anh', d).files.length} ảnh` : ''; };
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = async () => {
+    const mt = $('#mt', d).value.trim();
+    if (!mt) return bao('Ghi nội dung phát sinh');
+    const ps = baoPhatSinh(db, ct, { moTa: mt, viTri: $('#vt', d).value.trim(), viec: $('#viec', d).value, ngay: homNay() }, vaiTro, laVanPhong());
+    const files = [...$('#anh', d).files];
+    d.close();
+    if (files.length && daKetNoi()) { try { await xepAnh(files, ct.ma, ps.ma); } catch (err) { bao('Không đọc được ảnh: ' + err.message); } }
+    luu(); bao(`Đã báo ${ps.ma}, chờ văn phòng báo giá`); route();
+  };
+}
+
+// Bước 2 (văn phòng): báo giá. Cũng dùng để sửa phiếu.
+function moBaoGiaPS(p, sua = false) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const ct = db.congTrinh.find((c) => c.ma === p.maCongTrinh);
+  d.innerHTML = `<h2>${sua ? 'Sửa' : 'Báo giá'} ${esc(p.ma)}</h2>
+    <label class="f">Nội dung</label><textarea id="mt">${esc(p.moTa)}</textarea>
+    <label class="f">Vị trí</label><input id="vt" value="${esc(p.viTri)}">
+    <div class="hai-cot">
+      <div><label class="f">Giá bán cho khách</label><input id="gb" inputmode="decimal" value="${p.giaBan || ''}" placeholder="Vd: 3,5tr"><p id="gbChu" class="muted"></p></div>
+      <div><label class="f">Chi phí gốc</label><input id="cg" inputmode="decimal" value="${p.chiGoc || ''}" placeholder="Vd: 2,2tr"><p id="cgChu" class="muted"></p></div>
+    </div>
+    <p id="lai" class="muted"></p>
+    <div class="actions">${sua ? '<button id="xoa" class="btn-do">Huỷ phiếu</button>' : ''}<button id="huy">Đóng</button><button id="ok" class="btn-chinh">${sua ? 'Lưu' : 'Lưu, chờ khách duyệt'}</button></div>
+    ${sua ? '' : '<p class="muted">Lưu xong bấm "Gửi khách Zalo": tin nhắn có link để khách bấm Đồng ý.</p>'}`;
+  const xem = () => {
+    const gb = docTien($('#gb', d).value), cg = docTien($('#cg', d).value);
+    $('#gbChu', d).textContent = Number.isFinite(gb) ? tien(gb) : '';
+    $('#cgChu', d).textContent = Number.isFinite(cg) ? tien(cg) : '';
+    $('#lai', d).textContent = gb > 0 && Number.isFinite(cg) ? `Lãi phát sinh ${tien(gb - cg)} (${Math.round(((gb - cg) / gb) * 100)}%)` : '';
+  };
+  xem();
+  $('#gb', d).oninput = xem; $('#cg', d).oninput = xem;
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const gb = docTien($('#gb', d).value), cg = docTien($('#cg', d).value) || 0;
+    const mt = $('#mt', d).value.trim();
+    if (!mt) return bao('Nội dung không được trống');
+    if (!sua || p.trangThai === 'CHO_BAO_GIA') {
+      if (!(gb > 0)) return bao('Nhập giá bán, vd 3,5tr');
+      suaPS(db, p, { moTa: mt, viTri: $('#vt', d).value.trim() });
+      baoGia(db, p, { giaBan: gb, chiGoc: cg, ngay: homNay() }, vaiTro);
+    } else suaPS(db, p, { moTa: mt, viTri: $('#vt', d).value.trim(), giaBan: Number.isFinite(gb) ? gb : p.giaBan, chiGoc: cg });
+    luu(); d.close(); bao('Đã lưu ' + p.ma); route();
+    void ct;
+  };
+  let bamXoa = false;
+  if (sua) $('#xoa', d).onclick = () => {
+    if (daThuPS(db, p) > 0) return bao('Phát sinh đã thu tiền, xoá khoản thu trước');
+    if (!bamXoa) { bamXoa = true; $('#xoa', d).textContent = 'Bấm lần nữa để huỷ'; return; }
+    xoaPS(db, p, vaiTro); luu(); d.close(); bao('Đã huỷ ' + p.ma); route();
+  };
+}
+
+// Bước 3 (văn phòng): khách trả lời qua Zalo hoặc gặp trực tiếp.
+function moKhachTraLoiPS(p) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  let dongY = true;
+  d.innerHTML = `<h2>Khách trả lời ${esc(p.ma)}</h2>
+    <p class="muted">${esc(p.moTa)} · ${tien(p.giaBan)}</p>
+    <div class="grid-btn hai"><button data-dy="1" class="on">Đồng ý làm</button><button data-dy="0">Không làm</button></div>
+    <div class="hai-cot">
+      <div><label class="f">Ngày</label><input id="ngay" type="date" value="${homNay()}"></div>
+      <div><label class="f">Qua</label><select id="qua"><option value="ZALO">Zalo</option><option value="GAP">Gặp trực tiếp</option></select></div>
+    </div>
+    <label class="f">Link ảnh chụp tin nhắn (bằng chứng)</label><input id="bc" placeholder="Dán link ảnh trên Drive">
+    <label class="f">Ý kiến khách</label><input id="yk">
+    <p class="muted">Đồng ý thì giám sát thấy "Được làm" ngay. Tiền phát sinh thu cùng đợt quyết toán.</p>
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  d.querySelectorAll('[data-dy]').forEach((b) => { b.onclick = () => { dongY = b.dataset.dy === '1'; d.querySelectorAll('[data-dy]').forEach((o) => o.classList.toggle('on', o === b)); }; });
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    khachTraLoi(db, p, { dongY, qua: $('#qua', d).value, ngay: $('#ngay', d).value || homNay(), bangChung: $('#bc', d).value.trim(), yKien: $('#yk', d).value.trim() }, vaiTro);
+    luu(); d.close(); bao(dongY ? `${p.ma}: được làm, đã báo giám sát` : `${p.ma}: không làm`); route();
+  };
+}
+
+function khoiPhatSinh(ct) {
+  const hn = homNay();
+  const ds = psCuaCongTrinh(db, ct.ma);
+  const t = laVanPhong() ? tongPS(db, ct.ma) : null;
+  return `<h3>Phát sinh</h3>
+    ${t && t.giaBan ? `<p class="muted">Đã duyệt ${tien(t.giaBan)}${t.pct !== null ? ` · ${String(t.pct).replace('.', ',')}% HĐ thi công` : ''}${t.conThu ? ` · còn thu ${tien(t.conThu)}` : ''}</p>` : ''}
+    ${ds.map((p) => thePS(p, hn)).join('') || '<p class="muted">Chưa có phát sinh.</p>'}
+    <div class="actions"><button id="baoPS">+ Báo phát sinh</button></div>`;
+}
+
+function manPhatSinh() {
+  datTab('hop-dong', 'Phát sinh');
+  const hn = homNay();
+  const ds = (db.phatSinh || []).filter((p) => !p.xoa && db.congTrinh.some((c) => c.ma === p.maCongTrinh));
+  const nhom = ['CHO_BAO_GIA', 'CHO_KHACH', 'DUYET', 'TU_CHOI'];
+  const conThu = ds.filter((p) => p.trangThai === 'DUYET').reduce((s, p) => s + Math.max(0, (Number(p.giaBan) || 0) - daThuPS(db, p)), 0);
+  $('#view').innerHTML = `${dauTien('phat-sinh')}
+    <div class="so-lieu"><div><span>Chờ báo giá</span><b>${ds.filter((p) => p.trangThai === 'CHO_BAO_GIA').length}</b></div><div><span>Chờ khách duyệt</span><b>${ds.filter((p) => p.trangThai === 'CHO_KHACH').length}</b></div>
+      <div><span>Phát sinh còn phải thu</span><b>${tienGon(conThu)}</b></div></div>
+    <p class="muted">Quy trình 4 bước: giám sát báo → văn phòng báo giá trong 24–48 giờ → khách đồng ý (trên link hoặc Zalo) → giám sát thấy "Được làm".</p>
+    ${nhom.map((k) => { const x = ds.filter((p) => p.trangThai === k); return x.length ? `<h3>${TT_PS[k]} (${x.length})</h3>${x.map((p) => thePS(p, hn)).join('')}` : ''; }).join('') || '<p class="muted">Chưa có phát sinh nào. Báo phát sinh ở trang công trình hoặc khi chạm vào 1 việc.</p>'}`;
+  ganNutPS($('#view'));
+}
+
+function phatSinhHomNay(hn) {
+  const { choBaoGia, choKhach, duocLam } = viecPSHomNay(db, hn, laVanPhong());
+  if (!choBaoGia.length && !choKhach.length && !duocLam.length) return '';
+  return `<h3>Phát sinh</h3>
+    ${choBaoGia.map(({ p }) => thePS(p, hn)).join('')}
+    ${choKhach.map(({ p }) => thePS(p, hn)).join('')}
+    ${duocLam.map((p) => thePS(p, hn)).join('')}`;
+}
+
+// ---------- Mẫu vật liệu ----------
+const HM_MAU = ['Gạch lát nền', 'Gạch ốp WC', 'Sàn gỗ', 'Sơn tường', 'Đá bếp, đá cầu thang', 'Thiết bị vệ sinh', 'Đèn', 'Cửa', 'Gỗ, laminate tủ', 'Rèm', 'Giấy dán tường'];
+const TAG_MAU = { CHO_KHACH: 'SAP', DUYET: 'DANG', DOI: 'TRE' };
+function theMau(m, hn) {
+  const vp = laVanPhong();
+  const ct = db.congTrinh.find((c) => c.ma === m.maCongTrinh);
+  const v = m.viec && ct ? ct.viec.find((x) => x.id === m.viec) : null;
+  const tre = m.trangThai !== 'DUYET' && m.hanChot && m.hanChot < hn;
+  const nut = [];
+  if (vp && m.trangThai === 'CHO_KHACH') nut.push(`<button data-mau-gui="${esc(m.id)}">Gửi khách Zalo</button>`, `<button data-mau-kq="${esc(m.id)}" class="btn-chinh">Khách trả lời</button>`);
+  if (vp && m.trangThai === 'DOI') nut.push(`<button data-mau-doi="${esc(m.id)}" class="btn-chinh">Gửi mẫu khác</button>`);
+  if (vp) nut.push(`<button data-mau-sua="${esc(m.id)}">Sửa</button>`);
+  return `<div class="card">
+    <div class="row"><span class="name">${esc(m.hangMuc)}: ${esc(m.tenMau)}</span><span class="tag ${tre ? 'TRE' : TAG_MAU[m.trangThai]}">${TT_MAU[m.trangThai]}${tre ? ', quá hạn' : ''}</span></div>
+    <div class="muted">${m.nguoiBan ? `Người bán: ${esc(m.nguoiBan)}${m.sdtNguoiBan ? ` · <a href="tel:${esc(m.sdtNguoiBan)}">${esc(m.sdtNguoiBan)}</a>` : ''}` : 'Chưa ghi người bán'}${m.link ? ` · <a href="${esc(m.link)}" target="_blank" rel="noopener">Ảnh mẫu</a>` : ''}</div>
+    <div class="muted">${v ? `Dùng cho: ${esc(v.hangMuc)} · ` : ''}${m.hanChot ? `chốt trước ${ddmm(m.hanChot)}` : ''}${m.ngayKhach ? ` · khách trả lời ${ddmm(m.ngayKhach)} (${esc(QUA_PS[m.quaKhach] || m.quaKhach)})` : ''}${m.yKien ? ': ' + esc(m.yKien) : ''}</div>
+    ${nut.length ? `<div class="actions">${nut.join('')}</div>` : ''}
+  </div>`;
+}
+
+function ganNutMau(el) {
+  const tim = (id) => (db.mauVL || []).find((m) => m.id === id);
+  const ctCua = (m) => db.congTrinh.find((c) => c.ma === m.maCongTrinh);
+  el.querySelectorAll('[data-mau-gui]').forEach((b) => { b.onclick = () => { const m = tim(b.dataset.mauGui); chiaSe(tinGuiMau(m, linkChuNhaCua(ctCua(m)))); }; });
+  el.querySelectorAll('[data-mau-kq]').forEach((b) => { b.onclick = () => moKhachChotMau(tim(b.dataset.mauKq)); });
+  el.querySelectorAll('[data-mau-sua]').forEach((b) => { const m = tim(b.dataset.mauSua); b.onclick = () => moMau(ctCua(m), m); });
+  el.querySelectorAll('[data-mau-doi]').forEach((b) => { const m = tim(b.dataset.mauDoi); b.onclick = () => moMau(ctCua(m), m, true); });
+}
+
+// Thêm mẫu, sửa mẫu, hoặc gửi mẫu khác khi khách muốn đổi.
+function moMau(ct, cu, guiLai = false) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const m0 = cu || { hangMuc: '', tenMau: '', nguoiBan: '', sdtNguoiBan: '', link: '', viec: '', hanChot: '' };
+  const nguoiBan = [...new Set((db.mauVL || []).map((m) => m.nguoiBan).filter(Boolean))].sort();
+  d.innerHTML = `<h2>${guiLai ? 'Gửi mẫu khác' : cu ? 'Sửa mẫu' : 'Thêm mẫu vật liệu'}</h2>
+    ${guiLai && cu.yKien ? `<p class="note">Khách muốn đổi: ${esc(cu.yKien)}</p>` : ''}
+    <label class="f">Hạng mục</label><input id="hm" list="dsHmMau" value="${esc(m0.hangMuc)}" placeholder="Vd: Gạch ốp WC"><datalist id="dsHmMau">${HM_MAU.map((h) => `<option value="${esc(h)}">`).join('')}</datalist>
+    <label class="f">Tên mẫu / mã</label><input id="ten" value="${esc(guiLai ? '' : m0.tenMau)}" placeholder="Vd: Viglacera 60x120 xám vân đá">
+    <div class="hai-cot">
+      <div><label class="f">Người bán</label><input id="nb" list="dsNb" value="${esc(m0.nguoiBan)}"><datalist id="dsNb">${nguoiBan.map((x) => `<option value="${esc(x)}">`).join('')}</datalist></div>
+      <div><label class="f">SĐT người bán</label><input id="sdt" type="tel" value="${esc(m0.sdtNguoiBan)}"></div>
+    </div>
+    <label class="f">Link ảnh mẫu / catalog</label><input id="link" value="${esc(guiLai ? '' : m0.link)}" placeholder="Dán link ảnh trên Drive hoặc web">
+    <label class="f">Dùng cho việc</label><select id="viec"><option value="">Không chọn</option>${ct.viec.map((v) => `<option value="${esc(v.id)}" ${v.id === m0.viec ? 'selected' : ''}>${esc(v.hangMuc)}</option>`).join('')}</select>
+    <label class="f">Khách chốt trước ngày</label><input id="han" type="date" value="${esc(m0.hanChot)}">
+    <p class="muted">Chọn việc thì app tự đặt hạn = ngày bắt đầu việc trừ ${NGAY_DAT_HANG} ngày đặt hàng (việc đã sát ngày thì cho khách 2 ngày).</p>
+    <div class="actions">${cu && !guiLai ? '<button id="xoa" class="btn-do">Xoá</button>' : ''}<button id="huy">Huỷ</button><button id="ok" class="btn-chinh">${guiLai ? 'Gửi lại khách' : 'Lưu'}</button></div>`;
+  $('#viec', d).onchange = () => { const h = hanChotMacDinh(ct, $('#viec', d).value, homNay()); if (h) $('#han', d).value = h; };
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const tt = { hangMuc: $('#hm', d).value.trim(), tenMau: $('#ten', d).value.trim(), nguoiBan: $('#nb', d).value.trim(), sdtNguoiBan: $('#sdt', d).value.trim(),
+      link: $('#link', d).value.trim(), viec: $('#viec', d).value, hanChot: $('#han', d).value };
+    if (!tt.hangMuc || !tt.tenMau) return bao('Cần hạng mục và tên mẫu');
+    if (!tt.nguoiBan) bao('Lưu ý: chưa ghi người bán');
+    if (guiLai) { suaMau(db, cu, { hangMuc: tt.hangMuc, viec: tt.viec, hanChot: tt.hanChot }); guiLaiMau(db, cu, tt, vaiTro, homNay()); }
+    else if (cu) suaMau(db, cu, tt);
+    else themMau(db, ct, tt, vaiTro, homNay());
+    luu(); d.close(); bao(guiLai ? 'Đã lưu, bấm Gửi khách Zalo' : 'Đã lưu mẫu'); route();
+  };
+  let bamXoa = false;
+  if (cu && !guiLai) $('#xoa', d).onclick = () => {
+    if (!bamXoa) { bamXoa = true; $('#xoa', d).textContent = 'Bấm lần nữa để xoá'; return; }
+    xoaMau(db, cu); luu(); d.close(); bao('Đã xoá mẫu'); route();
+  };
+}
+
+function moKhachChotMau(m) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  let dongY = true;
+  d.innerHTML = `<h2>Khách trả lời mẫu</h2>
+    <p class="muted">${esc(m.hangMuc)}: ${esc(m.tenMau)}</p>
+    <div class="grid-btn hai"><button data-dy="1" class="on">Chốt mẫu này</button><button data-dy="0">Muốn đổi</button></div>
+    <div class="hai-cot">
+      <div><label class="f">Ngày</label><input id="ngay" type="date" value="${homNay()}"></div>
+      <div><label class="f">Qua</label><select id="qua"><option value="ZALO">Zalo</option><option value="GAP">Gặp trực tiếp</option></select></div>
+    </div>
+    <label class="f">Ý kiến khách</label><input id="yk" placeholder="Vd: muốn màu sáng hơn">
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  d.querySelectorAll('[data-dy]').forEach((b) => { b.onclick = () => { dongY = b.dataset.dy === '1'; d.querySelectorAll('[data-dy]').forEach((o) => o.classList.toggle('on', o === b)); }; });
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    khachChotMau(db, m, { dongY, qua: $('#qua', d).value, ngay: $('#ngay', d).value || homNay(), yKien: $('#yk', d).value.trim() }, vaiTro);
+    luu(); d.close(); bao(dongY ? 'Đã chốt mẫu' : 'Ghi nhận khách muốn đổi'); route();
+  };
+}
+
+function khoiMauVL(ct) {
+  const hn = homNay();
+  const ds = mauCuaCongTrinh(db, ct.ma);
+  if (!ds.length && !laVanPhong()) return '';
+  return `<h3>Mẫu vật liệu</h3>
+    ${ds.map((m) => theMau(m, hn)).join('') || '<p class="muted">Chưa có mẫu nào. Kể cả công trình chỉ thi công vẫn cần khách duyệt mẫu thực tế.</p>'}
+    ${laVanPhong() ? '<div class="actions"><button id="themMau">+ Thêm mẫu vật liệu</button></div>' : ''}`;
+}
+
+function mauHomNay(hn) {
+  if (!laVanPhong()) return '';
+  const ds = mauCanChot(db, hn);
+  return ds.length ? `<h3>Mẫu vật liệu cần khách chốt</h3>${ds.map((m) => theMau(m, hn)).join('')}` : '';
 }
 
 function khoiHDCongTrinh(ct) {
@@ -2079,6 +2444,19 @@ function taoMau() {
   themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Thầu điện nước Tâm', hangMuc: 'Điện nước', dot: 'DN1', soTien: 12000000, dieuKien: 'Đi ống xong toàn nhà', viecMoc: vDien ? vDien.id : '', hanTra: truoc(-15) }, 'THAY');
   ghiKhoan(db, { ngay: truoc(3), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi vật tư', doiTuong: 'Mẫu: Cửa hàng VLXD', soTien: 8500000, noiDung: 'Xi măng, cát, gạch đợt 2' }, 'THAY');
   ghiKhoan(db, { ngay: truoc(1), ma: CTY, loai: 'CHI', hangMuc: 'CTY - Marketing', doiTuong: 'Facebook', soTien: 1500000, noiDung: 'Chạy quảng cáo tuần' }, 'THAY');
+  // Phát sinh mẫu: 1 đã duyệt trên link (được làm), 1 chờ khách, 1 giám sát mới báo 3 ngày chưa báo giá.
+  const ps1 = baoPhatSinh(db, ct, { moTa: 'Thêm 2 ổ cắm + 1 đường nước máy lọc bếp', viTri: 'Bếp', viec: vDien ? vDien.id : '', ngay: truoc(8) }, 'KHA', true);
+  baoGia(db, ps1, { giaBan: 3500000, chiGoc: 2200000, ngay: truoc(7) }, 'DUC');
+  khachTraLoi(db, ps1, { dongY: true, qua: 'LINK', ngay: truoc(1) }, 'CHU_NHA');
+  const ps2 = baoPhatSinh(db, ct, { moTa: 'Đổi gạch WC sang 60x120', viTri: 'WC tầng 2', ngay: truoc(5) }, 'KHA', true);
+  baoGia(db, ps2, { giaBan: 6800000, chiGoc: 5000000, ngay: truoc(4) }, 'DUC');
+  baoPhatSinh(db, ct, { moTa: 'Làm thêm kệ hộp kỹ thuật phòng khách', viTri: 'Phòng khách', ngay: truoc(3) }, 'KHA', true);
+  // Mẫu vật liệu: gạch WC đã chốt; sàn gỗ chờ khách, sắp tới hạn.
+  const vOp = ct.viec.find((v) => /Ốp lát WC/.test(v.hangMuc));
+  const vSan = ct.viec.find((v) => /sàn gỗ/i.test(v.hangMuc));
+  const m1 = themMau(db, ct, { hangMuc: 'Gạch ốp WC', tenMau: 'Mẫu: 30x60 trắng mờ', nguoiBan: 'Mẫu: Đại lý gạch Hà Đông', sdtNguoiBan: '0900000009', viec: vOp ? vOp.id : '' }, 'DUC', truoc(20));
+  khachChotMau(db, m1, { dongY: true, qua: 'ZALO', ngay: truoc(18) }, 'DUC');
+  themMau(db, ct, { hangMuc: 'Sàn gỗ', tenMau: 'Mẫu: SPC 6mm vân sồi', nguoiBan: 'Mẫu: Cửa hàng sàn Tâm', viec: vSan ? vSan.id : '', hanChot: truoc(-2) }, 'DUC', truoc(4));
   luu();
 }
 
