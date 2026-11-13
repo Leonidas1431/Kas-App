@@ -26,7 +26,7 @@ import {
 import { TT_MAU, NGAY_DAT_HANG, mauCuaCongTrinh, hanChotMacDinh, themMau, suaMau, xoaMau, khachChotMau, guiLaiMau, mauCanChot, tinGuiMau } from './mauvl.js';
 import { LINH_VUC, TIEU_CHI, dsThau, timThauTheoTen, themThau, suaThau, viecCuaThau, danhGia, tongHopThau, canDanhGia, thieuAnh, ghiDaChupAnh, tinLinkThau } from './nhathau.js';
 import { HAN_SUA_MAC_DINH, checklistMacDinh, canNghiemThu, ntCuaViec, nghiemThu, daSuaTonTai, doiHanSua, ketQuaViec, choNghiemThu, tonTaiMo, dieuKienDo, canDoNoiThat } from './nghiemthu.js';
-import { HM_MKT, KENH_MKT, CHUA_GAN, ngayVao, khoangKy, baoCaoNguon, dsNguoiGioiThieu } from './marketing.js';
+import { HM_MKT, KENH_MKT, CHUA_GAN, MAC_DINH, goiYHoaHong, tienDoThang, ngayVao, khoangKy, baoCaoNguon, dsNguoiGioiThieu } from './marketing.js';
 import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPhanHoi } from './api.js';
 import { xepAnh, demCho, guiAnhCho } from './anh.js';
 
@@ -1083,11 +1083,12 @@ function manMotKhach(ma) {
     </details>
 
     <details class="cham-ds"><summary>Người giới thiệu, hoa hồng</summary>
-      <label class="f">Nguồn</label><select id="hNguon">${NGUON.map((n) => `<option ${n === kh.nguon ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <label class="f">Nguồn</label><select id="hNguon">${(NGUON.includes(kh.nguon) ? NGUON : [kh.nguon, ...NGUON]).map((n) => `<option ${n === kh.nguon ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
       <label class="f">Ngày liên hệ lần đầu</label><input id="hNgay" type="date" value="${esc(ngayVao(kh))}">
       <label class="f">Người giới thiệu</label><input id="hTen" value="${esc(kh.nguoiGioiThieu)}">
       <input id="hSdt" type="tel" value="${esc(kh.sdtGioiThieu)}" placeholder="SĐT người giới thiệu" style="margin-top:6px">
       <label class="f">Hoa hồng (đồng)</label><input id="hTien" type="number" inputmode="numeric" value="${esc((kh.hoaHong && kh.hoaHong.soTien) || '')}">
+      ${(() => { const g = goiYHoaHong(db, kh); return g.chiTiet.length ? `<p class="muted">Gợi ý theo % mặc định: ${g.chiTiet.map((x) => `${x.pct}% HĐ ${x.dang === 'TK' ? 'thiết kế' : 'thi công'} ${tienGon(x.giaTri)}`).join(' + ')} = <b>${tien(g.soTien)}</b> <button id="hGoiY" data-tien="${g.soTien}" class="nho">Dùng số này</button></p>` : ''; })()}
       <label class="cham-dong"><input type="checkbox" id="hDaTra" ${kh.hoaHong && kh.hoaHong.daTra ? 'checked' : ''}> <span>Đã trả hoa hồng / đã cảm ơn</span></label>
       <div class="actions"><button id="luuH">Lưu</button></div>
     </details>
@@ -1138,6 +1139,7 @@ function manMotKhach(ma) {
     themBaoGia(db, kh, { giaTri: gia, link: $('#bgLink').value.trim(), ghiChu: $('#bgGc').value.trim() }, vaiTro, hn);
     bao('Đã lưu báo giá'); ve();
   };
+  if ($('#hGoiY')) $('#hGoiY').onclick = () => { $('#hTien').value = $('#hGoiY').dataset.tien; };
   $('#luuH').onclick = () => {
     suaKhach(db, kh, { nguon: $('#hNguon').value, ngayVao: $('#hNgay').value || ngayVao(kh), nguoiGioiThieu: $('#hTen').value.trim(), sdtGioiThieu: $('#hSdt').value.replace(/\s+/g, ''), hoaHong: { ...(kh.hoaHong || {}), soTien: Number($('#hTien').value) || 0, daTra: $('#hDaTra').checked } }, hn);
     bao('Đã lưu'); ve();
@@ -2745,6 +2747,29 @@ const dauKhach = (tab) => `<div class="loc doan khong-in">${[['khach', 'Sổ kh�
 let kyMkt = 'NAM';
 const KY_MKT = { THANG: 'Tháng này', QUY: '3 tháng', NAM: 'Năm nay', TAT: 'Tất cả' };
 
+// Tháng này so với mục tiêu Thầy đặt (lead, khách ký, tỉ lệ chốt, chi quảng cáo so với ngân sách).
+function khoiMucTieuThang(hn) {
+  const t = tienDoThang(db, hn);
+  const c = t.cd;
+  const thanh = (gt, mt) => `<div class="bar"><i style="width:${Math.min(100, mt ? Math.round((gt / mt) * 100) : 0)}%"></i></div>`;
+  const ten = { mktNganSach: 'Ngân sách quảng cáo/tháng', mktMucTieuLead: 'Mục tiêu lead mới/tháng', mktMucTieuKy: 'Mục tiêu khách ký/tháng', mktTyLe: 'Tỉ lệ chốt mong muốn (%)', mktTyLeTC: 'Tỉ lệ chốt HĐ thi công (%)', hhTK: 'Hoa hồng giới thiệu HĐ thiết kế (%)', hhTC: 'Hoa hồng giới thiệu HĐ thi công (%)' };
+  return `<h3>Tháng ${hn.slice(5, 7)} so với mục tiêu <span class="muted">(ngày ${t.ngay}/${t.soNgay})</span></h3>
+    <div class="card">
+      <div class="row"><span>Lead mới</span><b class="${t.lead < t.leadTheoNhip ? 'tre' : ''}">${t.lead} / ${c.mktMucTieuLead}</b></div>${thanh(t.lead, c.mktMucTieuLead)}
+      <div class="muted">Theo nhịp đến hôm nay cần khoảng ${t.leadTheoNhip} lead</div>
+      <div class="row"><span>Khách ký HĐ</span><b>${t.ky} / ${c.mktMucTieuKy}</b></div>${thanh(t.ky, c.mktMucTieuKy)}
+      <div class="row"><span>Tỉ lệ chốt</span><b>${t.tyLe === null ? '—' : t.tyLe + '%'} <span class="muted">/ ${c.mktTyLe}%</span></b></div>
+      <div class="row"><span>Tỉ lệ chốt thi công</span><b>${t.tyLeTC === null ? '—' : t.tyLeTC + '%'} <span class="muted">/ ${c.mktTyLeTC}%</span></b></div>
+      <div class="row"><span>Chi quảng cáo</span><b class="${t.chi > c.mktNganSach ? 'tre' : ''}">${tienGon(t.chi)} / ${tienGon(c.mktNganSach)}</b></div>${thanh(t.chi, c.mktNganSach)}
+      <div class="muted">${t.chi > t.chiTheoNhip * 1.2 ? '<span class="tre">Tiêu nhanh hơn nhịp tháng.</span> ' : ''}${t.chiMoiLead ? `${tienGon(t.chiMoiLead)}/lead · ` : ''}${t.chiMoiKy ? `${tienGon(t.chiMoiKy)}/khách ký · ` : ''}ngân sách ÷ mục tiêu = ${tienGon(Math.round(c.mktNganSach / Math.max(1, c.mktMucTieuLead)))}/lead</div>
+    </div>
+    <details class="cham-ds"><summary>Cài đặt mục tiêu, hoa hồng</summary>
+      ${Object.keys(MAC_DINH).map((k) => `<label class="f">${ten[k]}</label><input id="cd-${k}" inputmode="decimal" value="${esc((db.caiDat || {})[k] ?? '')}" placeholder="Mặc định ${k === 'mktNganSach' ? tienGon(MAC_DINH[k]) : MAC_DINH[k]}">`).join('')}
+      <p class="muted">Để trống là dùng mặc định Thầy chốt 13/11. Hoa hồng thực tế vẫn sửa tay trong hồ sơ từng khách.</p>
+      <div class="actions"><button id="luuMkt" class="btn-chinh">Lưu</button></div>
+    </details>`;
+}
+
 function manMarketing() {
   datTab('khach', 'Marketing');
   const hn = homNay();
@@ -2755,6 +2780,8 @@ function manMarketing() {
   const pct = (x) => (x === null ? '—' : x + '%');
   const thuTuTT = ['MOI', 'LIEN_HE', 'HEN_GAP', 'KHAO_SAT', 'BAO_GIA', 'KY', 'TAM_HOAN', 'MAT'];
   $('#view').innerHTML = `${dauKhach('marketing')}
+    ${khoiMucTieuThang(hn)}
+    <h3>Theo kỳ</h3>
     <div class="loc">${Object.entries(KY_MKT).map(([k, ten]) => `<button data-ky="${k}" class="${k === kyMkt ? 'on' : ''}">${ten}</button>`).join('')}</div>
     <div class="so-lieu bon"><div><span>Khách mới</span><b>${t.moi}</b></div><div><span>Đã ký</span><b>${t.ky}</b><span>${pct(t.tyLe)}</span></div>
       <div><span>Giá trị HĐ ký</span><b>${tienGon(t.giaTri)}</b></div><div><span>Chi quảng cáo</span><b class="tien-chi">${tienGon(t.chi)}</b>${t.chiMoiKhach ? `<span>${tienGon(t.chiMoiKhach)}/khách</span>` : ''}</div></div>
@@ -2768,10 +2795,19 @@ function manMarketing() {
     <h3>Người giới thiệu</h3>
     ${gt.length ? gt.map((r) => `<div class="card"><div class="row"><span class="name">${esc(r.ten)}</span><span>${r.khach.length} khách · ký ${r.ky}</span></div>
       <div class="muted">${r.sdt ? telLink(r.sdt) + ' · ' : ''}${[r.giaTri ? 'HĐ ' + tienGon(r.giaTri) : '', r.hoaHong ? `hoa hồng ${tienGon(r.hoaHong)}${r.daTra ? `, đã trả ${tienGon(r.daTra)}` : ''}` : ''].filter(Boolean).join(' · ')}</div>
+      ${r.duKien ? `<div class="muted">Hoa hồng dự kiến theo % mặc định (chưa ghi số): ${tienGon(r.duKien)}</div>` : ''}
       ${r.chuaTra.length ? `<div class="tre">Chưa trả / chưa cảm ơn: ${r.chuaTra.map((k) => `<a href="#kh-${esc(k.ma)}">${esc(k.ten)}</a>`).join(', ')}</div>` : ''}
       <div class="muted">${r.khach.map((k) => `<a href="#kh-${esc(k.ma)}">${esc(k.ten)}</a> (${TRANG_THAI[k.trangThai] || k.trangThai})`).join(', ')}</div></div>`).join('') : '<p class="muted">Chưa có khách nào ghi người giới thiệu.</p>'}
     <p class="muted">Khách tính theo ngày khách liên hệ lần đầu. Chi quảng cáo lấy từ khoản "CTY - Marketing" ghi kênh ở ô Đối tượng.</p>`;
   $('#view').querySelectorAll('[data-ky]').forEach((b) => { b.onclick = () => { kyMkt = b.dataset.ky; manMarketing(); }; });
+  $('#luuMkt').onclick = () => {
+    for (const k of Object.keys(MAC_DINH)) {
+      const v = $('#cd-' + k).value.trim();
+      const so = k === 'mktNganSach' ? docTien(v) : Number(v.replace(',', '.'));
+      datCaiDat(db, k, v === '' ? '' : String(Number.isFinite(so) ? so : MAC_DINH[k]));
+    }
+    luu(); bao('Đã lưu mục tiêu'); manMarketing();
+  };
   $('#ghiMkt').onclick = () => moGhiKhoan({ loai: 'CHI', ma: CTY, hangMuc: HM_MKT });
 }
 
@@ -2789,7 +2825,7 @@ function taoMau() {
   // Sổ khách mẫu: mỗi trạng thái một người để thấy app nhắc gì.
   const truoc = (n) => new Date(Date.parse(hn) - n * 86400000).toISOString().slice(0, 10);
   const k1 = taoKhach(db, { ten: 'Mẫu: Chị Lan Mỹ Đình', sdt: '0900000001', loai: 'NT', tomTat: 'Căn hộ 110m2, muốn làm nội thất trước Tết' }, 'THAY', hn);
-  const k2 = taoKhach(db, { ten: 'Mẫu: Anh Hùng Long Biên', sdt: '0900000002', nguon: 'Facebook / Zalo', loai: 'XM' }, 'DUC', truoc(12));
+  const k2 = taoKhach(db, { ten: 'Mẫu: Anh Hùng Long Biên', sdt: '0900000002', nguon: 'Facebook', loai: 'XM' }, 'DUC', truoc(12));
   doiTrangThai(db, k2, 'KHAO_SAT', 'DUC', truoc(9));
   themBaoGia(db, k2, { giaTri: 96000000, ghiChu: 'Nhà 4 tầng 320m2' }, 'THAY', truoc(7));
   daGoi(db, k2, false, 'Không nghe máy', 'THAY', truoc(5));
@@ -2834,7 +2870,7 @@ function taoMau() {
   themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Thầu thô Hưng', hangMuc: 'Xây trát', dot: 'XT1', soTien: 45000000, dieuKien: 'Xây xong tường, trát xong', viecMoc: vXay ? vXay.id : '', hanTra: truoc(-2) }, 'THAY');
   themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Thầu điện nước Tâm', hangMuc: 'Điện nước', dot: 'DN1', soTien: 12000000, dieuKien: 'Đi ống xong toàn nhà', viecMoc: vDien ? vDien.id : '', hanTra: truoc(-15) }, 'THAY');
   ghiKhoan(db, { ngay: truoc(3), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi vật tư', doiTuong: 'Mẫu: Cửa hàng VLXD', soTien: 8500000, noiDung: 'Xi măng, cát, gạch đợt 2' }, 'THAY');
-  ghiKhoan(db, { ngay: truoc(1), ma: CTY, loai: 'CHI', hangMuc: 'CTY - Marketing', doiTuong: 'Facebook / Zalo', soTien: 1500000, noiDung: 'Chạy quảng cáo tuần' }, 'THAY');
+  ghiKhoan(db, { ngay: truoc(1), ma: CTY, loai: 'CHI', hangMuc: 'CTY - Marketing', doiTuong: 'Facebook', soTien: 1500000, noiDung: 'Chạy quảng cáo tuần' }, 'THAY');
   // Phát sinh mẫu: 1 đã duyệt trên link (được làm), 1 chờ khách, 1 giám sát mới báo 3 ngày chưa báo giá.
   const ps1 = baoPhatSinh(db, ct, { moTa: 'Thêm 2 ổ cắm + 1 đường nước máy lọc bếp', viTri: 'Bếp', viec: vDien ? vDien.id : '', ngay: truoc(8) }, 'KHA', true);
   baoGia(db, ps1, { giaBan: 3500000, chiGoc: 2200000, ngay: truoc(7) }, 'DUC');

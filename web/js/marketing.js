@@ -8,6 +8,49 @@ export const HM_MKT = 'CTY - Marketing';
 export const KENH_MKT = NGUON.filter((n) => !/giới thiệu|quay lại|Đi ngang/i.test(n));
 export const CHUA_GAN = 'Chưa ghi kênh';
 
+// Thầy chốt 13/11: ngân sách quảng cáo 25–30tr/tháng; mục tiêu 5–10 khách ký/tháng, tỉ lệ chốt ~10% → 50–100 lead/tháng;
+// tỉ lệ chốt HĐ thi công ~5%; hoa hồng giới thiệu mặc định 5% HĐ thiết kế, 2% HĐ thi công. Đổi được trong Cài đặt marketing.
+export const MAC_DINH = { mktNganSach: 30000000, mktMucTieuLead: 50, mktMucTieuKy: 5, mktTyLe: 10, mktTyLeTC: 5, hhTK: 5, hhTC: 2 };
+export function caiDatMkt(caiDat = {}) {
+  const o = {};
+  for (const [k, v] of Object.entries(MAC_DINH)) { const x = caiDat[k]; o[k] = x === undefined || x === '' || !Number.isFinite(Number(x)) ? v : Number(x); }
+  return o;
+}
+
+/** Hoa hồng gợi ý: % HĐ thiết kế + % HĐ thi công (HĐ trọn gói tính theo % thi công). */
+export function goiYHoaHong(db, k, cd = caiDatMkt(db.caiDat)) {
+  const chiTiet = hdCuaKhach(db, k.ma).filter((h) => h.trangThai !== 'DUNG').map((h) => {
+    const giaTri = (Number(h.giaTri) || 0) + (h.phuLuc || []).reduce((a, p) => a + (Number(p.giaTri) || 0), 0);
+    const pct = h.dang === 'TK' ? cd.hhTK : cd.hhTC;
+    return { soHD: h.soHD || h.ma, dang: h.dang, giaTri, pct, tien: Math.round((giaTri * pct) / 100) };
+  });
+  return { soTien: chiTiet.reduce((s, x) => s + x.tien, 0), chiTiet };
+}
+
+/** Tháng này so với mục tiêu: lead, khách ký (theo ngày ký HĐ), chi quảng cáo so với ngân sách. */
+export function tienDoThang(db, homNay, cd = caiDatMkt(db.caiDat)) {
+  const tu = `${homNay.slice(0, 7)}-01`;
+  const lead = (db.khach || []).filter((k) => trongKy(ngayVao(k), tu, homNay)).length;
+  const hdThang = (db.hopDong || []).filter((h) => h.trangThai !== 'DUNG' && h.maKhach && trongKy(String(h.ngayKy || ''), tu, homNay));
+  const ky = new Set(hdThang.map((h) => h.maKhach)).size;
+  const kyTC = new Set(hdThang.filter((h) => h.dang !== 'TK').map((h) => h.maKhach)).size;
+  const chi = (db.thuChi || []).filter((e) => !e.xoa && e.loai === 'CHI' && e.hangMuc === HM_MKT && trongKy(e.ngay, tu, homNay)).reduce((s, e) => s + (Number(e.soTien) || 0), 0);
+  const [y, m] = homNay.split('-').map(Number);
+  const soNgay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const ngay = Number(homNay.slice(8, 10));
+  return {
+    lead, ky, kyTC, chi, ngay, soNgay,
+    tyLe: lead ? Math.round((ky / lead) * 100) : null,
+    tyLeTC: lead ? Math.round((kyTC / lead) * 100) : null,
+    chiMoiLead: lead && chi ? Math.round(chi / lead) : null,
+    chiMoiKy: ky && chi ? Math.round(chi / ky) : null,
+    // Chi tiêu theo nhịp: đến hôm nay lẽ ra tiêu khoảng ngân sách × ngày/số ngày.
+    chiTheoNhip: Math.round((cd.mktNganSach * ngay) / soNgay),
+    leadTheoNhip: Math.round((cd.mktMucTieuLead * ngay) / soNgay),
+    cd,
+  };
+}
+
 /** Ngày khách vào (ngày liên hệ đầu tiên). Khách cũ chưa có thì lấy ngày tạo. */
 export const ngayVao = (k) => k.ngayVao || String(k.taoLuc || '').slice(0, 10);
 
@@ -43,7 +86,9 @@ export function baoCaoNguon(db, tu, den) {
     if (daKy(db, k)) { r.ky++; r.giaTri += giaTriKy(db, k); }
     if (k.trangThai === 'MAT') r.mat++;
   }
-  for (const e of chi) lay(NGUON.includes(String(e.doiTuong || '').trim()) ? e.doiTuong.trim() : CHUA_GAN).chi += Number(e.soTien) || 0;
+  // Kênh hợp lệ: tên trong danh sách nguồn, hoặc tên nguồn khách cũ đang dùng (vd "Facebook / Zalo").
+  const kenh = new Set([...NGUON, ...(db.khach || []).map((k) => k.nguon)]);
+  for (const e of chi) lay(kenh.has(String(e.doiTuong || '').trim()) ? e.doiTuong.trim() : CHUA_GAN).chi += Number(e.soTien) || 0;
   const ds = [...theo.values()].map((r) => ({
     ...r,
     tyLe: r.moi ? Math.round((r.ky / r.moi) * 100) : null,
@@ -68,12 +113,14 @@ export function dsNguoiGioiThieu(db) {
     const ten = String(k.nguoiGioiThieu || '').trim();
     if (!ten) continue;
     const khoa = String(k.sdtGioiThieu || '').replace(/\D/g, '') || ten.toLowerCase();
-    if (!theo.has(khoa)) theo.set(khoa, { ten, sdt: k.sdtGioiThieu || '', khach: [], ky: 0, giaTri: 0, hoaHong: 0, daTra: 0, chuaTra: [] });
+    if (!theo.has(khoa)) theo.set(khoa, { ten, sdt: k.sdtGioiThieu || '', khach: [], ky: 0, giaTri: 0, hoaHong: 0, duKien: 0, daTra: 0, chuaTra: [] });
     const r = theo.get(khoa);
     r.khach.push(k);
     if (daKy(db, k)) { r.ky++; r.giaTri += giaTriKy(db, k); }
     const hh = Number((k.hoaHong || {}).soTien) || 0;
     r.hoaHong += hh;
+    // Đã ký mà chưa ghi số hoa hồng: tính dự kiến theo % mặc định.
+    if (!hh && daKy(db, k)) r.duKien += goiYHoaHong(db, k).soTien;
     if (k.hoaHong && k.hoaHong.daTra) r.daTra += hh;
     else if (daKy(db, k)) r.chuaTra.push(k);
   }
