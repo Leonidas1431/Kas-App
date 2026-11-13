@@ -70,7 +70,7 @@ export function xoaViec(db, ct, id, nguoi, lyDo = '') {
   nhatKy(db, ct, null, nguoi, `Xoá việc "${v.hangMuc}"${lyDo ? '. Lý do: ' + lyDo : ''}`);
 }
 
-export const TRUONG_CT = { ten: 'Tên', khoiCong: 'Khởi công', lich: 'Lịch làm việc', chuNha: 'Chủ nhà', thuMucDrive: 'Thư mục Drive' };
+export const TRUONG_CT = { ten: 'Tên', khoiCong: 'Khởi công', lich: 'Lịch làm việc', chuNha: 'Chủ nhà', thuMucDrive: 'Thư mục Drive', choDangAnh: 'Cho đăng ảnh' };
 
 export function suaCongTrinh(db, ct, thayDoi, nguoi) {
   const doi = Object.keys(thayDoi).filter((k) => k in TRUONG_CT && !giongNhau(ct[k], thayDoi[k]));

@@ -40,6 +40,11 @@ export function tenAnh(ma, viec, luc, stt) {
 
 // loai 'CHUNG_TU': ảnh chuyển khoản / hoá đơn, máy chủ cất riêng (chỉ văn phòng).
 export async function xepAnh(files, ma, viec, loai = '') {
+  return (await xepAnhLayMa(files, ma, viec, loai)).length;
+}
+
+// Như xepAnh nhưng trả mã từng ảnh (bài đăng cần mã ảnh để ghi vào bài trước khi ảnh gửi xong).
+export async function xepAnhLayMa(files, ma, viec, loai = '') {
   const luc = new Date();
   const ds = [];
   let stt = 1;
@@ -48,7 +53,18 @@ export async function xepAnh(files, ma, viec, loai = '') {
     ds.push({ id: crypto.randomUUID(), ma, viec, tenFile: tenAnh(ma, viec, luc, stt++), base64, ...(loai ? { loai } : {}) });
   }
   await giaoDich('readwrite', (s) => ds.forEach((a) => s.put(a)));
-  return ds.length;
+  return ds.map((a) => a.id);
+}
+
+// Ảnh đã dựng sẵn (ảnh bìa): xếp hàng gửi như ảnh chụp.
+export async function xepAnhSan(a) {
+  await giaoDich('readwrite', (s) => s.put(a));
+  return a.id;
+}
+
+// Ảnh còn nằm chờ trên máy (chưa gửi lên Drive): lấy base64 để xem, dựng ảnh bìa.
+export function anhCho(id) {
+  return giaoDich('readonly', (s) => s.get(id)).catch(() => undefined);
 }
 
 export function demCho() {

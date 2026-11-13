@@ -9,14 +9,14 @@ function giaLapO(x) {
 }
 
 function taoMoiTruong() {
-  const files = {}; const props = {}; const logs = [];
+  const files = {}; const props = {}; const logs = []; const goiRa = []; const traLoi = { fn: () => null };
   let idSo = 0;
   const taoFolder = (ten) => {
     const f = { id: 'F' + 'x'.repeat(26) + ++idSo, ten, con: [], files: [],
       getId() { return this.id; },
       getFoldersByName(t) { const ds = this.con.filter((c) => c.ten === t); let i = 0; return { hasNext: () => i < ds.length, next: () => ds[i++] }; },
       createFolder(t) { const c = taoFolder(t); this.con.push(c); return c; },
-      createFile(blob) { const id = 'FILE' + 'y'.repeat(26) + ++idSo; this.files.push({ id, ten: blob.ten, bytes: blob.bytes }); return { getId: () => id }; } };
+      createFile(blob) { const id = 'FILE' + 'y'.repeat(26) + ++idSo; const f = { id, ten: blob.ten, bytes: blob.bytes }; this.files.push(f); files[id] = f; return { getId: () => id }; } };
     files[f.id] = f; return f;
   };
   const root = taoFolder('root');
@@ -42,9 +42,16 @@ function taoMoiTruong() {
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] ?? null, setProperty: (k, v) => { props[k] = v; } }) },
     SpreadsheetApp: { create: () => ss, openById: (id) => (id === 'SS1' ? ss : null) },
     Session: { getEffectiveUser: () => ({ getEmail: () => 'thay@example.com' }) },
-    Utilities: { getUuid: () => crypto.randomUUID(), formatDate: (d) => d.toISOString().slice(0, 10),
-      base64Decode: (s) => Buffer.from(s, 'base64'), newBlob: (bytes, type, ten) => ({ bytes, type, ten }) },
-    DriveApp: { getRootFolder: () => root, getFolderById: (id) => { if (!files[id]) throw new Error('No folder ' + id); return files[id]; } },
+    Utilities: { getUuid: () => crypto.randomUUID(), formatDate: (d, tz, f) => (f && f.includes('HH') ? d.toISOString().slice(0, 16).replace('T', ' ') : d.toISOString().slice(0, 10)),
+      base64Decode: (s) => Buffer.from(s, 'base64'), base64Encode: (b) => Buffer.from(b).toString('base64'), newBlob: (bytes, type, ten) => ({ bytes, type, ten }), sleep: () => {} },
+    DriveApp: { getRootFolder: () => root, getFolderById: (id) => { if (!files[id]) throw new Error('No folder ' + id); return files[id]; },
+      getFileById: (id) => { const f = files[id]; if (!f) throw new Error('No file ' + id);
+        const blob = () => ({ ten: f.ten, getBytes: () => f.bytes, getContentType: () => 'image/jpeg', setName(t) { this.ten = t; return this; } });
+        return { getBlob: blob, getThumbnail: blob }; } },
+    // Gọi ra ngoài (Claude API, Meta, WordPress): test đặt hàm traLoi(url, opt) → { ma, body }.
+    UrlFetchApp: { fetch: (url, opt = {}) => { goiRa.push({ url, opt }); const r = traLoi.fn(url, opt) || { ma: 200, body: {} };
+      return { getResponseCode: () => r.ma, getContentText: () => (typeof r.body === 'string' ? r.body : JSON.stringify(r.body)) }; } },
+    ScriptApp: { getProjectTriggers: () => [], deleteTrigger() {}, newTrigger: () => ({ timeBased: () => ({ everyMinutes: () => ({ create() {} }) }) }) },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     ContentService: { MimeType: { JSON: 'json' }, createTextOutput: (s) => ({ s, setMimeType() { return this; } }) },
   };
@@ -52,6 +59,6 @@ function taoMoiTruong() {
   vm.runInContext(fs.readFileSync(__dirname + '/../gas/Code.gs', 'utf8'), ctx);
   const post = (khoa, action, data) => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringify({ khoa, action, data }) } }).s);
   const get = (q) => JSON.parse(ctx.doGet({ parameter: q }).s);
-  return { ctx, logs, ss, root, files, taoFolder, post, get };
+  return { ctx, logs, ss, root, files, taoFolder, post, get, props, goiRa, traLoi };
 }
 module.exports = { taoMoiTruong };
