@@ -99,6 +99,7 @@ export function dongBo(db, luu) {
         if (d.nhaThau) db.nhaThau = d.nhaThau;
         if (d.danhGia) db.danhGia = d.danhGia;
         if (d.anh) db.anh = d.anh;
+        if (d.nghiemThu) db.nghiemThu = d.nghiemThu;
         db.toi = d.toi;
         luu();
       }

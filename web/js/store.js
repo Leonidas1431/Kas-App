@@ -10,7 +10,7 @@ export const VAI_TRO = { THAY: 'Thầy', DUC: 'Đức', KHA: 'Giám sát', TAM: 
 // Văn phòng: toàn quyền, thấy tiền và sổ khách. Giám sát, quyền tạm: chỉ công trình được giao.
 export const VAN_PHONG = ['THAY', 'DUC'];
 
-export const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [], khach: [], hopDong: [], phuongAn: [], gstg: [], caiDat: {}, thuChi: [], traThau: [], chungTu: [], phatSinh: [], mauVL: [], nhaThau: [], danhGia: [], anh: [] });
+export const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [], khach: [], hopDong: [], phuongAn: [], gstg: [], caiDat: {}, thuChi: [], traThau: [], chungTu: [], phatSinh: [], mauVL: [], nhaThau: [], danhGia: [], anh: [], nghiemThu: [] });
 
 export function doc() {
   try { return { ...rong(), ...JSON.parse(localStorage.getItem(KEY)) }; } catch { return rong(); }

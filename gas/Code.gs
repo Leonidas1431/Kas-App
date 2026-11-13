@@ -38,11 +38,13 @@ const TAB = {
   NhaThau: ['id', 'ten', 'linhVuc', 'sdt', 'ghiChu', 'maLink', 'hoatDong', 'taoLuc', 'capNhatLuc'],
   // Đánh giá thầu sau mỗi công trình, điểm 1–5. Mỗi người 1 phiếu cho 1 thầu ở 1 công trình.
   DanhGia: ['id', 'maThau', 'maCongTrinh', 'ngay', 'chatLuong', 'tienDo', 'phoiHop', 'ghiChu', 'nguoi', 'capNhatLuc'],
+  // Phiếu nghiệm thu từng việc: checklist, tồn tại cần sửa (hạn, ngày sửa). Không có tiền: giám sát ghi được.
+  NghiemThu: ['id', 'maCongTrinh', 'viec', 'ngay', 'nguoi', 'checklist', 'tonTai', 'ghiChu', 'soAnh', 'xoa', 'capNhatLuc'],
   CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -269,7 +271,9 @@ const HANH_DONG = {
     const danhGia = docBang('DanhGia').filter((d) => duocXem(n, d.maCongTrinh))
       .map((d) => ({ ...d, chatLuong: Number(d.chatLuong) || 0, tienDo: Number(d.tienDo) || 0, phoiHop: Number(d.phoiHop) || 0 }));
     const anh = demAnh(n);
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
+    const nghiemThu = docBang('NghiemThu').filter((x) => duocXem(n, x.maCongTrinh))
+      .map((x) => ({ ...x, checklist: x.checklist || [], tonTai: x.tonTai || [], soAnh: Number(x.soAnh) || 0 }));
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
   // Nhận hàng chờ từ máy, áp theo thứ tự. Mục đã nhận (theo idGui) thì bỏ qua.
@@ -529,6 +533,19 @@ function apDung(n, op) {
     if (cu && cu.nguoi !== n.vaiTro) throw new Error('Chỉ người đánh giá được sửa phiếu này');
     capNhatDong('DanhGia', (r) => r.id === d.id, { id: d.id, maThau: d.maThau, maCongTrinh: d.maCongTrinh, ngay: d.ngay, chatLuong: diem(d.chatLuong),
       tienDo: diem(d.tienDo), phoiHop: diem(d.phoiHop), ghiChu: String(d.ghiChu || '').slice(0, 1000), nguoi: n.vaiTro, capNhatLuc: op.luc });
+    return;
+  }
+  if (op.loai === 'NGHIEM_THU') {
+    const x = Object.assign({}, op.n);
+    if (!duocXem(n, x.maCongTrinh)) throw new Error('Không có quyền với công trình ' + x.maCongTrinh);
+    if (!/^NTH-/.test(String(x.id))) throw new Error('Mã nghiệm thu phải bắt đầu bằng NTH-');
+    const cu = docBang('NghiemThu').find((r) => r.id === x.id);
+    // Hai máy cùng sửa: tồn tại đã đánh dấu sửa xong ở máy khác thì giữ.
+    const daSua = {};
+    ((cu && cu.tonTai) || []).forEach((t) => { if (t.daSua) daSua[t.id] = t; });
+    const tonTai = (x.tonTai || []).map((t) => (daSua[t.id] && !t.daSua ? Object.assign({}, t, { daSua: daSua[t.id].daSua, nguoiSua: daSua[t.id].nguoiSua }) : t));
+    capNhatDong('NghiemThu', (r) => r.id === x.id, { id: x.id, maCongTrinh: x.maCongTrinh, viec: x.viec, ngay: x.ngay, nguoi: cu ? cu.nguoi : n.vaiTro,
+      checklist: x.checklist || [], tonTai, ghiChu: String(x.ghiChu || '').slice(0, 2000), soAnh: Number(x.soAnh) || 0, xoa: x.xoa || '', capNhatLuc: op.luc });
     return;
   }
   if (op.loai === 'CAI_DAT') {
