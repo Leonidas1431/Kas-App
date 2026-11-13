@@ -386,3 +386,65 @@ test('mẫu vật liệu: văn phòng gửi, chủ nhà chốt hoặc đổi tr�
   assert.equal(m.post(m.khoaThay, 'keoVe').data.mauVL[0].trangThai, 'CHO_KHACH');
   assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', loai: 'MAU', id: 'MAU-1', ketQua: 'DUYET' }).data.trangThai, 'DUYET');
 });
+
+test('nhà thầu: văn phòng ghi danh bạ; giám sát thấy tên, số nhưng không thấy link, ghi chú; đánh giá theo công trình; link thầu không có tiền, không việc thầu khác', () => {
+  const m = khoiDong();
+  const ct = congTrinhMau('NT-A');
+  const dn = ct.viec.filter((v) => v.nhom.startsWith('Điện nước'));
+  dn.forEach((v) => { v.nhaThau = 'Điện nước Tâm'; });
+  ct.viec.find((v) => v.nhom.startsWith('Xây')).nhaThau = 'Thô Hưng';
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct }), op({ loai: 'TAO_CT', ct: { ...congTrinhMau('NT-B'), maLinkChuNha: '999' } })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const t = { id: 'NT-1', ten: 'Điện nước Tâm', linhVuc: 'Điện nước', sdt: '0912000111', ghiChu: 'hay chậm', maLink: 'linkthau1', hoatDong: true };
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'NT', t })] }).data[0].ok, false);
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'NT', t })] });
+  // Văn phòng gửi lại với link khác: giữ link đã gửi thầu
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'NT', t: { ...t, maLink: 'khac', sdt: '0912000222' } })] });
+  const vp = m.post(m.khoaThay, 'keoVe').data;
+  assert.deepEqual([vp.nhaThau.length, vp.nhaThau[0].maLink, vp.nhaThau[0].sdt], [1, 'linkthau1', '0912000222']);
+  const kha = m.post(khoaKha, 'keoVe').data;
+  assert.deepEqual([kha.nhaThau[0].sdt, 'maLink' in kha.nhaThau[0], 'ghiChu' in kha.nhaThau[0]], ['0912000222', false, false]);
+  // Đánh giá: Kha chấm công trình được giao, không chấm được công trình khác; máy chủ ghi người chấm
+  const dg = { id: 'DG-1', maThau: 'NT-1', maCongTrinh: 'NT-A', ngay: '2026-12-01', chatLuong: 9, tienDo: 3, phoiHop: 4, nguoi: 'THAY' };
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'DG', d: { ...dg, maCongTrinh: 'NT-B', id: 'DG-2' } })] }).data[0].ok, false);
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'DG', d: dg })] }).data[0].ok, true);
+  const p = m.post(m.khoaThay, 'keoVe').data.danhGia[0];
+  assert.deepEqual([p.nguoi, p.chatLuong], ['KHA', 5]);
+  assert.equal(m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'DG', d: dg })] }).data[0].ok, false); // phiếu của người khác
+  // Mẫu đã chốt cho việc của thầu thì thầu thấy; mẫu chưa chốt thì không
+  m.post(m.khoaThay, 'dayLen', { ops: [
+    op({ loai: 'MAU', m: { id: 'MAU-1', maCongTrinh: 'NT-A', hangMuc: 'Ổ cắm', tenMau: 'Panasonic trắng', nguoiBan: 'A', sdtNguoiBan: '0900', viec: dn[0].id, trangThai: 'DUYET', ngayGui: '2026-11-10' } }),
+    op({ loai: 'MAU', m: { id: 'MAU-2', maCongTrinh: 'NT-A', hangMuc: 'Đèn', tenMau: 'X', viec: dn[0].id, trangThai: 'CHO_KHACH', ngayGui: '2026-11-10' } }),
+  ] });
+  const g = m.get({ thau: 'linkthau1' });
+  assert.equal(g.ok, true);
+  assert.equal(g.data.thau.ten, 'Điện nước Tâm');
+  assert.equal('sdt' in g.data.thau, false);
+  assert.equal(g.data.congTrinh.length, 1); // NT-B không có việc của Tâm
+  const c = g.data.congTrinh[0];
+  assert.equal(c.viec.length, ct.viec.length); // đủ việc để tự xếp lịch
+  assert.equal(c.viec.filter((v) => v.cuaThau).length, dn.length);
+  assert.ok(c.viec.every((v) => !('nhaThau' in v)));
+  assert.ok(c.viec.filter((v) => !v.cuaThau).every((v) => !('hangMuc' in v)));
+  assert.deepEqual(c.mau.map((x) => [x.tenMau, x.sdtNguoiBan]), [['Panasonic trắng', undefined]]);
+  assert.equal('chuNha' in c || 'maLinkChuNha' in c, false);
+  assert.equal(m.get({ thau: 'sai' }).ok, false);
+  // Ngừng dùng thì link không mở
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'NT', t: { ...t, hoatDong: false } })] });
+  assert.equal(m.get({ thau: 'linkthau1' }).ok, false);
+});
+
+test('đếm ảnh hiện trường theo ngày cho nhắc 16h: không tính chứng từ, giám sát chỉ thấy công trình được giao', () => {
+  const m = khoiDong();
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') }), op({ loai: 'TAO_CT', ct: { ...congTrinhMau('NT-B'), maLinkChuNha: '999' } })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  const b64 = Buffer.from('jpg').toString('base64');
+  m.post(khoaKha, 'guiAnh', { id: 'a1', ma: 'NT-A', viec: 'XT01', tenFile: '1.jpg', base64: b64 });
+  m.post(khoaKha, 'guiAnh', { id: 'a2', ma: 'NT-A', viec: '', tenFile: '2.jpg', base64: b64 });
+  m.post(m.khoaThay, 'guiAnh', { id: 'a3', ma: 'NT-B', viec: '', tenFile: '3.jpg', base64: b64 });
+  m.post(m.khoaThay, 'guiAnh', { id: 'a4', ma: 'TC-1', viec: '', tenFile: '4.jpg', base64: b64, loai: 'CHUNG_TU' });
+  const hn = new Date().toISOString().slice(0, 10);
+  const vp = m.post(m.khoaThay, 'keoVe').data.anh;
+  assert.deepEqual(vp.map((a) => [a.ma, a.ngay, a.so]).sort(), [['NT-A', hn, 2], ['NT-B', hn, 1]]);
+  assert.deepEqual(m.post(khoaKha, 'keoVe').data.anh.map((a) => a.ma), ['NT-A']);
+});
