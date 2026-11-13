@@ -171,3 +171,4 @@ a.btn { text-decoration: none; }
 .nthu-nut button { min-height: 38px; padding: 6px 10px; font-size: 14px; }
 .nthu-nut button.on { background: var(--thanh); color: #fff; border-color: var(--thanh); }
 .nthu-nut button.on.loi { background: var(--tre); border-color: var(--tre); }
+.so-lieu.bon { grid-template-columns: repeat(2, 1fr); }
