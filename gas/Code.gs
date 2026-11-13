@@ -19,10 +19,12 @@ const TAB = {
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
   Anh: ['id', 'ma', 'viec', 'luc', 'tenFile', 'fileId', 'nguoi'],
   HopDong: ['ma', 'soHD', 'dang', 'nguyenTac', 'tenHD', 'maKhach', 'maCongTrinh', 'ngayKy', 'giaTri', 'dot', 'phuLuc', 'soLanSua',
-    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc'],
+    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT'],
   PhuongAn: ['id', 'maCongTrinh', 'hangMuc', 'lan', 'viec', 'ngayGui', 'link', 'ghiChu', 'trangThai', 'ngayPhanHoi', 'yKien',
     'duyetQua', 'duyetLuc', 'phi', 'nguoiGui', 'capNhatLuc'],
   GSTG: ['id', 'maCongTrinh', 'lan', 'ten', 'viec', 'ngay', 'xong', 'ghiChu', 'nhacGiamSat', 'capNhatLuc'],
+  // Cài đặt chung của văn phòng (vd tài khoản nhận tiền in vào đề nghị thanh toán). Không để trong mã nguồn.
+  CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
 };
 // Cột lưu dạng JSON trong 1 ô
@@ -153,10 +155,12 @@ const HANH_DONG = {
     const khach = laVanPhong(n) ? docBang('Khach').map((k) => ({ ...k, soLanNhac: Number(k.soLanNhac) || 0, baoGia: k.baoGia || [], chamSoc: k.chamSoc || [] })) : [];
     const vp = laVanPhong(n);
     const hopDong = vp ? docBang('HopDong').map((h) => ({ ...h, giaTri: Number(h.giaTri) || 0, soLanSua: Number(h.soLanSua) || 0, soBuoiGSTG: Number(h.soBuoiGSTG) || 0,
-      nguyenTac: h.nguyenTac === true, dot: h.dot || [], phuLuc: h.phuLuc || [], khauTru: h.khauTru || { han: '', soTien: 0 }, truTK: h.truTK || { maHD: '', soTien: 0 } })) : [];
+      nguyenTac: h.nguyenTac === true, dot: h.dot || [], phuLuc: h.phuLuc || [], giaTriKT: Number(h.giaTriKT) || 0,
+      khauTru: h.khauTru || { han: '', tyLe: 0 }, truTK: h.truTK || { maHD: '', phan: [], soTien: 0 } })) : [];
+    const caiDat = vp ? Object.fromEntries(docBang('CaiDat').map((r) => [r.khoa, String(r.giaTri)])) : {};
     const phuongAn = vp ? docBang('PhuongAn').map((p) => ({ ...p, lan: Number(p.lan) || 0 })) : [];
     const gstg = docBang('GSTG').filter((g) => duocXem(n, g.maCongTrinh)).map((g) => ({ ...g, lan: Number(g.lan) || 0, nhacGiamSat: g.nhacGiamSat === true }));
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
   // Nhận hàng chờ từ máy, áp theo thứ tự. Mục đã nhận (theo idGui) thì bỏ qua.
@@ -292,6 +296,12 @@ function apDung(n, op) {
     if (!/^GS-/.test(String(g.id))) throw new Error('Mã buổi GSTG phải bắt đầu bằng GS-');
     g.capNhatLuc = op.luc;
     capNhatDong('GSTG', (r) => r.id === g.id, g);
+    return;
+  }
+  if (op.loai === 'CAI_DAT') {
+    canVanPhong(n);
+    if (!/^[a-zA-Z]{1,40}$/.test(String(op.khoa))) throw new Error('Tên cài đặt không hợp lệ');
+    capNhatDong('CaiDat', (r) => r.khoa === op.khoa, { khoa: op.khoa, giaTri: String(op.giaTri || '').slice(0, 2000), capNhatLuc: op.luc });
     return;
   }
   if (op.loai === 'CONG_KHAI') {

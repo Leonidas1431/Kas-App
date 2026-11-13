@@ -10,6 +10,12 @@ export const SO_LAN_SUA = 2;
 export const PHI_SUA = 0.05;
 // Nhắc trước hạn khấu trừ phí thiết kế bao nhiêu ngày (cơ hội chốt thi công).
 export const NHAC_KHAU_TRU = 30;
+// HĐ thiết kế: phạm vi kiến trúc, nội thất hoặc cả hai (trọn gói thiết kế, tách giá trị từng phần).
+export const PHAM_VI_TK = { KT: 'Kiến trúc', NT: 'Nội thất', KTNT: 'Kiến trúc + nội thất' };
+// Thầy chốt 13/11: ký thi công thì khấu trừ 50% phần thiết kế tương ứng.
+// Thi công xây dựng → phần kiến trúc; thi công nội thất → phần nội thất; trọn gói → cả hai.
+export const TY_LE_KHAU_TRU = 50;
+const PHAN_TRU = { XD: ['KT'], NT: ['NT'], TG: ['KT', 'NT'] };
 
 const boDau = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
 const NAM = new Set(['anh', 'chu', 'ong', 'bac', 'a', 'mr']);
@@ -69,8 +75,10 @@ export function taoHopDong(db, du, nguoi) {
     phuLuc: [],
     soLanSua: du.soLanSua ?? (du.dang === 'TK' || du.dang === 'TG' ? SO_LAN_SUA : 0),
     soBuoiGSTG: Number(du.soBuoiGSTG) || 0,
-    khauTru: { han: du.hanKhauTru || '', soTien: Number(du.khauTru) || 0 },
-    truTK: { maHD: '', soTien: 0 },
+    phamVi: du.dang === 'TK' ? du.phamVi || 'KTNT' : '',
+    giaTriKT: du.dang === 'TK' ? Number(du.giaTriKT) || 0 : 0,
+    khauTru: { han: du.hanKhauTru || '', tyLe: du.tyLeKhauTru ?? (du.dang === 'TK' ? TY_LE_KHAU_TRU : 0) },
+    truTK: { maHD: '', phan: [], soTien: 0 },
     linkFile: du.linkFile || '',
     trangThai: 'HIEU_LUC',
     lyDo: '',
@@ -181,18 +189,47 @@ export function phiSua(hd) {
   return Math.round(goc * PHI_SUA);
 }
 
-// HĐ thi công ký sau HĐ thiết kế, còn trong hạn khấu trừ: trừ phí TK vào đợt cuối HĐ thi công.
-export function hdThietKeDuocTru(db, hdTC) {
-  return (db.hopDong || []).find((h) => h.dang === 'TK' && h !== hdTC && h.khauTru && h.khauTru.soTien > 0
-    && ((hdTC.maKhach && h.maKhach === hdTC.maKhach) || (hdTC.maCongTrinh && h.maCongTrinh === hdTC.maCongTrinh))
-    && (!h.khauTru.han || hdTC.ngayKy <= h.khauTru.han)
-    && !(db.hopDong || []).some((x) => x !== hdTC && x.truTK && x.truTK.maHD === h.ma)) || null;
+// Giá trị từng phần của HĐ thiết kế. Trọn gói thiết kế: phần KT nhập tay, phần NT = phần còn lại.
+export function giaTriPhan(tk, phan) {
+  const g = Number(tk.giaTri) || 0;
+  if (tk.phamVi === 'KT') return phan === 'KT' ? g : 0;
+  if (tk.phamVi === 'NT') return phan === 'NT' ? g : 0;
+  const kt = Math.min(Number(tk.giaTriKT) || 0, g);
+  return phan === 'KT' ? kt : g - kt;
 }
 
-export function apKhauTru(db, hdTC, hdTK, nguoi) {
-  hdTC.truTK = { maHD: hdTK.ma, soTien: Number(hdTK.khauTru.soTien) || 0 };
+// Phần của HĐ thiết kế đã trừ vào HĐ thi công nào đó.
+const phanDaTru = (db, tk, tru) => (db.hopDong || []).filter((x) => x !== tru && x.truTK && x.truTK.maHD === tk.ma).flatMap((x) => x.truTK.phan || []);
+
+/**
+ * HĐ thi công ký sau HĐ thiết kế, còn trong hạn khấu trừ: trừ 50% phần thiết kế tương ứng vào đợt cuối HĐ thi công.
+ * Trả về { hd, phan, soTien } hoặc null.
+ */
+export function hdThietKeDuocTru(db, hdTC) {
+  const can = PHAN_TRU[hdTC.dang] || [];
+  for (const tk of db.hopDong || []) {
+    if (tk.dang !== 'TK' || tk === hdTC || tk.trangThai === 'DUNG') continue;
+    if (!((hdTC.maKhach && tk.maKhach === hdTC.maKhach) || (hdTC.maCongTrinh && tk.maCongTrinh === hdTC.maCongTrinh))) continue;
+    const tyLe = Number(tk.khauTru && tk.khauTru.tyLe) || 0;
+    if (!tyLe || (tk.khauTru.han && hdTC.ngayKy > tk.khauTru.han)) continue;
+    const daTru = phanDaTru(db, tk, hdTC);
+    const phan = can.filter((p) => !daTru.includes(p) && giaTriPhan(tk, p) > 0);
+    if (!phan.length) continue;
+    return { hd: tk, phan, soTien: Math.round((phan.reduce((s, p) => s + giaTriPhan(tk, p), 0) * tyLe) / 100) };
+  }
+  return null;
+}
+
+export function apKhauTru(db, hdTC, ung, nguoi) {
+  hdTC.truTK = { maHD: ung.hd.ma, phan: ung.phan, soTien: ung.soTien };
   ghiHD(db, hdTC);
-  nhatKy(db, hdTC, nguoi, `Khấu trừ phí thiết kế ${hdTK.soHD}: ${hdTC.truTK.soTien.toLocaleString('vi-VN')} đ vào đợt cuối`);
+  nhatKy(db, hdTC, nguoi, `Khấu trừ phí thiết kế ${ung.phan.map((p) => PHAM_VI_TK[p].toLowerCase()).join(' + ')} (${ung.hd.soHD}): ${ung.soTien.toLocaleString('vi-VN')} đ vào đợt cuối`);
+}
+
+// Phần thiết kế còn chờ khấu trừ (để nhắc trước hạn).
+export function phanChoTru(db, tk) {
+  const daTru = phanDaTru(db, tk, null);
+  return ['KT', 'NT'].filter((p) => giaTriPhan(tk, p) > 0 && !daTru.includes(p));
 }
 
 export function doiTrangThaiHD(db, hd, tt, { lyDo = '', ngay }, nguoi) {
@@ -235,10 +272,10 @@ export function viecHopDongHomNay(db, homNay) {
         : d.daThu > 0 ? 'Khách mới chuyển một phần' : '';
       if (lyDo) thu.push({ hd, d, lyDo });
     });
-    if (hd.dang === 'TK' && hd.khauTru && hd.khauTru.han && hd.khauTru.soTien > 0) {
+    if (hd.dang === 'TK' && hd.khauTru && hd.khauTru.han && Number(hd.khauTru.tyLe) > 0) {
       const conNgay = diffDays(homNay, hd.khauTru.han);
-      const daKyTC = (db.hopDong || []).some((x) => x.truTK && x.truTK.maHD === hd.ma);
-      if (!daKyTC && conNgay >= 0 && conNgay <= NHAC_KHAU_TRU) khauTru.push({ hd, conNgay });
+      const phan = phanChoTru(db, hd);
+      if (phan.length && conNgay >= 0 && conNgay <= NHAC_KHAU_TRU) khauTru.push({ hd, conNgay, phan });
     }
   }
   return { thu, khauTru, dung };

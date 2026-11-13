@@ -42,8 +42,10 @@ export function guiPhuongAn(db, ct, { hangMuc, viec, link, ghiChu }, nguoi, homN
 export const tenLan = (lan) => (lan ? `sửa lần ${lan}` : 'phương án đầu');
 export const soNgayCho = (pa, homNay) => diffDays(pa.ngayGui, pa.ngayPhanHoi || homNay);
 
-// Khách sửa vượt số lần trong HĐ: lần sửa tiếp theo cần Thầy chọn thu phí hay không.
-export const vuotSoLan = (db, pa) => pa.trangThai === 'SUA' && pa.lan + 1 > soLanSuaChoPhep(db, pa.maCongTrinh);
+// Số lần sửa trong HĐ chỉ tính theo phương án 3D (Thầy chốt 13/11).
+export const HM_DEM_SUA = 'Phương án 3D';
+// Khách sửa 3D vượt số lần trong HĐ: lần sửa tiếp theo cần Thầy chọn thu phí hay không.
+export const vuotSoLan = (db, pa) => pa.hangMuc === HM_DEM_SUA && pa.trangThai === 'SUA' && pa.lan + 1 > soLanSuaChoPhep(db, pa.maCongTrinh);
 
 // Ghi phản hồi của khách. Trả về số ngày chờ để màn hình gợi ý lùi lịch (nguyên nhân Chủ nhà).
 export function phanHoi(db, ct, pa, { ketQua, yKien, qua, ngay }, nguoi) {

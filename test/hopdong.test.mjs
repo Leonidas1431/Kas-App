@@ -53,16 +53,31 @@ test('phụ lục cộng vào các đợt chưa thu; phí sửa 5% không tính 
   assert.equal(phiSua(hd), 4.5e6);
 });
 
-test('khấu trừ phí thiết kế vào đợt cuối HĐ thi công, nhắc khi sắp hết hạn', () => {
+test('khấu trừ 50% phần thiết kế tương ứng vào đợt cuối HĐ thi công: XD trừ phần KT, NT trừ phần NT', () => {
   const db = rong();
-  const tk = taoHopDong(db, { dang: 'TK', tenKhach: 'Anh Nam', maKhach: 'KH-2611-NAM', ngayKy: '2026-10-01', giaTri: 60e6, hanKhauTru: '2026-12-01', khauTru: 60e6 }, 'THAY');
-  assert.equal(viecHopDongHomNay(db, HN).khauTru.length, 1);
-  const tc = taoHopDong(db, { dang: 'XD', tenKhach: 'Anh Nam', maKhach: 'KH-2611-NAM', ngayKy: HN, giaTri: 2e9 }, 'THAY');
-  assert.equal(hdThietKeDuocTru(db, tc), tk);
-  apKhauTru(db, tc, tk, 'THAY');
-  assert.deepEqual(tinhDot(tc).dot.map((d) => d.phaiThu), [1e9, 6e8, 4e8 - 60e6]);
+  const tk = taoHopDong(db, { dang: 'TK', tenKhach: 'Anh Nam', maKhach: 'KH-2611-NAM', ngayKy: '2026-10-01', giaTri: 100e6, phamVi: 'KTNT', giaTriKT: 60e6, hanKhauTru: '2026-12-01' }, 'THAY');
+  assert.equal(tk.khauTru.tyLe, 50);
+  assert.deepEqual(viecHopDongHomNay(db, HN).khauTru.map((x) => x.phan), [['KT', 'NT']]);
+  const xd = taoHopDong(db, { dang: 'XD', tenKhach: 'Anh Nam', maKhach: 'KH-2611-NAM', ngayKy: HN, giaTri: 2e9 }, 'THAY');
+  const u1 = hdThietKeDuocTru(db, xd);
+  assert.equal(u1.hd, tk);
+  assert.deepEqual(u1.phan, ['KT']);
+  assert.equal(u1.soTien, 30e6);
+  apKhauTru(db, xd, u1, 'THAY');
+  assert.deepEqual(tinhDot(xd).dot.map((d) => d.phaiThu), [1e9, 6e8, 4e8 - 30e6]);
+  assert.deepEqual(viecHopDongHomNay(db, HN).khauTru.map((x) => x.phan), [['NT']]); // còn chờ phần nội thất
+  const nt = taoHopDong(db, { dang: 'NT', maKhach: 'KH-2611-NAM', ngayKy: HN, giaTri: 5e8 }, 'THAY');
+  const u2 = hdThietKeDuocTru(db, nt);
+  assert.deepEqual([u2.phan, u2.soTien], [['NT'], 20e6]);
+  apKhauTru(db, nt, u2, 'THAY');
   assert.equal(viecHopDongHomNay(db, HN).khauTru.length, 0);
-  assert.equal(hdThietKeDuocTru(db, taoHopDong(db, { dang: 'NT', maKhach: 'KH-2611-NAM', ngayKy: HN, giaTri: 1e8 }, 'THAY')), null); // đã trừ 1 lần
+  assert.equal(hdThietKeDuocTru(db, taoHopDong(db, { dang: 'NT', maKhach: 'KH-2611-NAM', ngayKy: HN, giaTri: 1e8 }, 'THAY')), null); // mỗi phần trừ 1 lần
+  // Quá hạn khấu trừ thì không trừ; HĐ thiết kế chỉ nội thất không trừ cho HĐ xây dựng
+  const tk2 = taoHopDong(db, { dang: 'TK', maKhach: 'KH-B', ngayKy: '2026-01-01', giaTri: 50e6, phamVi: 'NT', hanKhauTru: '2026-06-01' }, 'THAY');
+  assert.equal(hdThietKeDuocTru(db, { dang: 'NT', maKhach: 'KH-B', ngayKy: HN }), null);
+  tk2.khauTru.han = '';
+  assert.equal(hdThietKeDuocTru(db, { dang: 'XD', maKhach: 'KH-B', ngayKy: HN }), null);
+  assert.equal(hdThietKeDuocTru(db, { dang: 'NT', maKhach: 'KH-B', ngayKy: HN }).soTien, 25e6);
 });
 
 test('nhắc thu: đợt 1 sau ký, đợt gắn mốc khi mốc xong; HĐ dừng nhắc tới khi hoàn thành', () => {
@@ -91,6 +106,10 @@ test('phương án: đếm lần sửa, vượt HĐ thì chọn thu phí 5% (th�
   const db = rong();
   const ct = taoCongTrinh(db, thuVien, { ma: 'TK-LAN-2611', ten: 'Căn hộ chị Lan', loai: 'TK', khoiCong: '2026-11-02', lich });
   const hd = taoHopDong(db, { dang: 'TK', maCongTrinh: ct.ma, tenKhach: 'Chị Lan', ngayKy: '2026-11-01', giaTri: 80e6 }, 'THAY');
+  // Hạng mục khác 3D không tính vào số lần sửa HĐ
+  let mb = guiPhuongAn(db, ct, { hangMuc: 'Mặt bằng công năng' }, 'DUC', '2026-11-03');
+  for (let i = 0; i < 3; i++) { phanHoi(db, ct, mb, { ketQua: 'SUA', ngay: '2026-11-04' }, 'THAY'); assert.equal(vuotSoLan(db, mb), false); mb = guiPhuongAn(db, ct, { hangMuc: 'Mặt bằng công năng' }, 'DUC', '2026-11-04'); }
+  phanHoi(db, ct, mb, { ketQua: 'DUYET', ngay: '2026-11-04' }, 'THAY');
   let pa = guiPhuongAn(db, ct, { hangMuc: 'Phương án 3D', viec: 'TK03' }, 'DUC', '2026-11-05');
   assert.equal(pa.lan, 0);
   assert.deepEqual(viecThietKeHomNay(db, '2026-11-07').choLau, []);

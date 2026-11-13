@@ -212,6 +212,12 @@ test('hợp đồng: văn phòng ghi, giám sát không thấy tiền và nhật
   assert.equal(kvKha.lichSu.some((e) => e.ma === 'HD-abc'), false);
   assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...hd, ma: 'HD-x' } })] }).data[0].ok, false);
   assert.equal(m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...hd, ma: 'NT-A' } })] }).data[0].ok, false);
+  // Cài đặt tài khoản nhận tiền: văn phòng ghi và đọc, giám sát không thấy, ghi lại không tạo dòng mới
+  const tk = 'Số TK: 0123\nNgân hàng X';
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'taiKhoan', giaTri: 'cũ' }), op({ loai: 'CAI_DAT', khoa: 'taiKhoan', giaTri: tk })] });
+  assert.deepEqual(m.post(m.khoaThay, 'keoVe').data.caiDat, { taiKhoan: tk });
+  assert.deepEqual(m.post(khoaKha, 'keoVe').data.caiDat, {});
+  assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'taiKhoan', giaTri: 'x' })] }).data[0].ok, false);
 });
 
 test('chủ nhà duyệt phương án trên link; văn phòng gửi bản cũ không ghi đè câu trả lời', () => {
