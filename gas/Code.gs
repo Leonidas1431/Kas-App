@@ -1308,8 +1308,34 @@ function lamMoiMaIG(epBuoc) {
 function kiemTraIG() {
   const { ig, goi } = igKetNoi();
   const me = laMaIGLogin(bi('IG_TOKEN')) ? goi('/me?fields=user_id,username,account_type', null, true) : goi('/' + ig + '?fields=username', null, true);
-  Logger.log('Instagram OK: @' + (me.username || '?') + ', loại ' + (me.account_type || 'nối qua Fanpage') + ', IG_USER_ID ' + ig);
+  Logger.log('Instagram OK: @' + (me.username || '?') + ', loại ' + (me.account_type || (bi('IG_TOKEN') ? 'Unified login' : 'nối qua Fanpage')) + ', IG_USER_ID ' + ig);
   return me;
+}
+
+// Làm mới FB_PAGE_TOKEN khi Meta báo mã hết hiệu lực (đổi mật khẩu, Meta đặt lại phiên...).
+// Thầy dán 2 thuộc tính: FB_APP_SECRET (Khoá bí mật của app Meta, dán 1 lần) và FB_USER_TOKEN_TAM (mã người dùng
+// lấy ở Graph API Explorer), rồi chạy hàm này. Máy chủ đổi sang mã dài hạn, lấy mã Trang (không hết hạn),
+// lưu vào FB_PAGE_TOKEN và xoá FB_USER_TOKEN_TAM. Không ghi mã ra nhật ký.
+function doiMaFacebook() {
+  const props = PropertiesService.getScriptProperties();
+  const tam = bi('FB_USER_TOKEN_TAM'), bm = bi('FB_APP_SECRET'), app = bi('FB_APP_ID') || '4120096391458758', page = bi('FB_PAGE_ID');
+  if (!tam || !bm || !page) throw new Error('Thiếu FB_USER_TOKEN_TAM, FB_APP_SECRET hoặc FB_PAGE_ID');
+  const lay = (url) => {
+    const r = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    let j = {};
+    try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+    if (r.getResponseCode() !== 200 || j.error) throw new Error('Meta: ' + ((j.error && j.error.message) || r.getResponseCode()));
+    return j;
+  };
+  const dai = lay(GRAPH + '/oauth/access_token?grant_type=fb_exchange_token&client_id=' + encodeURIComponent(app) +
+    '&client_secret=' + encodeURIComponent(bm) + '&fb_exchange_token=' + encodeURIComponent(tam)).access_token;
+  if (!dai) throw new Error('Meta không trả mã dài hạn');
+  const trang = lay(GRAPH + '/' + page + '?fields=access_token,name&access_token=' + encodeURIComponent(dai));
+  if (!trang.access_token) throw new Error('Tài khoản này không quản lý Trang ' + page + ' hoặc thiếu quyền pages_manage_posts');
+  props.setProperty('FB_PAGE_TOKEN', trang.access_token);
+  props.deleteProperty('FB_USER_TOKEN_TAM');
+  Logger.log('Đã thay FB_PAGE_TOKEN cho Trang "' + (trang.name || page) + '"');
+  return trang.name || page;
 }
 
 // Bài website: dòng "## " thành tiêu đề mục, dòng "- " thành gạch đầu dòng, còn lại là đoạn văn.

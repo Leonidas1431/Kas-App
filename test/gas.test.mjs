@@ -687,6 +687,20 @@ test('Instagram mã Unified login: gọi graph.facebook.com v26, lấy ID từ a
   assert.ok(!m.goiRa.some((g) => g.url.includes('refresh_access_token')));
 });
 
+test('doiMaFacebook: đổi mã người dùng tạm sang mã Trang, lưu FB_PAGE_TOKEN, xoá mã tạm, không ghi mã ra nhật ký', () => {
+  const m = khoiDong();
+  Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'cu', FB_APP_SECRET: 'bimat', FB_USER_TOKEN_TAM: 'ngan' });
+  m.traLoi.fn = (url) => {
+    if (url.includes('/oauth/access_token') && url.includes('fb_exchange_token=ngan') && url.includes('client_secret=bimat')) return { ma: 200, body: { access_token: 'dai' } };
+    if (url.includes('/PAGE?fields=access_token,name&access_token=dai')) return { ma: 200, body: { access_token: 'trangmoi', name: 'KAS Houzing' } };
+    return { ma: 400, body: { error: { message: 'sai' } } };
+  };
+  assert.equal(m.ctx.doiMaFacebook(), 'KAS Houzing');
+  assert.equal(m.props.FB_PAGE_TOKEN, 'trangmoi');
+  assert.equal(m.props.FB_USER_TOKEN_TAM, undefined);
+  assert.ok(m.logs.every((l) => !/trangmoi|dai|ngan|bimat/.test(String(l))));
+});
+
 test('hẹn giờ: chỉ đăng bài đã duyệt và đã đến giờ; ảnh chọn bài không lấy chứng từ', () => {
   const m = khoiDong();
   Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'tok' });
