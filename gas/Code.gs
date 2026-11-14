@@ -598,8 +598,12 @@ const GIA_AI = { 'claude-opus-5-5': [4, 20], 'claude-sonnet-5-5': [2, 10] };
 // Thầy chọn Sonnet 5.5 ngày 13/11/2026 (rẻ bằng nửa Opus). Đổi được trong Cài đặt đăng bài.
 const MODEL_MAC_DINH = 'claude-sonnet-5-5';
 const GRAPH = 'https://graph.facebook.com/v25.0';
-// Instagram đăng nhập bằng chính tài khoản Instagram (không cần nối Fanpage), tra tài liệu Meta 14/11/2026.
+// Instagram không cần nối Fanpage, tra tài liệu Meta 14/11/2026. Có 2 loại mã:
+//  - Mã "Instagram login" (bắt đầu bằng IG): gọi graph.instagram.com. App Meta mới không tạo được loại này nữa.
+//  - Mã "Unified login" (app KAS App đang dùng): gọi graph.facebook.com kèm ID tài khoản Instagram.
 const GRAPH_IG = 'https://graph.instagram.com/v26.0';
+const GRAPH_IG_FB = 'https://graph.facebook.com/v26.0';
+const laMaIGLogin = (ma) => /^IG/.test(String(ma || ''));
 // Máy gửi lên không được tự đặt các trường này.
 const TRUONG_MAY_CHU = ['trangThai', 'ketQua', 'nguoiDuyet', 'duyetLuc', 'lanViet', 'canva'];
 const TRUONG_NOI_DUNG = ['baiViet', 'dsAnh', 'anhBia'];
@@ -1217,8 +1221,8 @@ function dangFacebook(b, blobs) {
 }
 
 // Instagram có 2 cách nối, máy chủ tự chọn:
-//  1. IG_TOKEN (mã "Instagram API with Instagram login"): đăng thẳng bằng tài khoản Instagram, KHÔNG cần nối Fanpage.
-//     Dùng khi Fanpage vướng Business cũ. Mã sống 60 ngày, máy chủ tự gia hạn mỗi 7 ngày (lamMoiMaIG).
+//  1. IG_TOKEN: đăng thẳng bằng tài khoản Instagram, KHÔNG cần nối Fanpage (dùng khi Fanpage vướng Business cũ).
+//     Mã "Instagram login" sống 60 ngày, máy chủ tự gia hạn mỗi 7 ngày (lamMoiMaIG). Mã "Unified login" hết hạn theo cấu hình.
 //  2. IG_USER_ID + FB_PAGE_TOKEN có quyền Instagram: Instagram đã nối với Fanpage.
 // Gọi Instagram theo cách đang dùng. Trả { goi, ig }.
 function igKetNoi() {
@@ -1229,7 +1233,7 @@ function igKetNoi() {
     return { ig, goi: goiGraph };
   }
   const goi = (duongDan, tham, get) => {
-    const url = GRAPH_IG + duongDan;
+    const url = (laMaIGLogin(ma) ? GRAPH_IG : GRAPH_IG_FB) + duongDan;
     const r = get
       ? UrlFetchApp.fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(ma), { muteHttpExceptions: true })
       : UrlFetchApp.fetch(url, { method: 'post', muteHttpExceptions: true, payload: Object.assign({ access_token: ma }, tham) });
@@ -1240,7 +1244,9 @@ function igKetNoi() {
   };
   let ig = bi('IG_USER_ID');
   if (!ig) {
-    ig = String(goi('/me?fields=user_id', null, true).user_id || '');
+    ig = laMaIGLogin(ma)
+      ? String(goi('/me?fields=user_id', null, true).user_id || '')
+      : String(((goi('/me/assigned_instagram_accounts?fields=id,username', null, true).data || [])[0] || {}).id || '');
     if (!ig) throw new Error('Không lấy được ID tài khoản Instagram từ IG_TOKEN');
     PropertiesService.getScriptProperties().setProperty('IG_USER_ID', ig);
   }
@@ -1278,7 +1284,7 @@ function dangInstagram(b, blobs, anhFB) {
 // Không ghi giá trị mã ra nhật ký.
 function lamMoiMaIG(epBuoc) {
   const ma = bi('IG_TOKEN');
-  if (!ma) return '';
+  if (!ma || !laMaIGLogin(ma)) return ''; // mã Unified login không gia hạn kiểu này
   const props = PropertiesService.getScriptProperties();
   const truoc = Number(bi('IG_TOKEN_GIA_HAN') || 0);
   if (!epBuoc && truoc && Date.now() - truoc < 7 * 864e5) return '';
@@ -1301,7 +1307,7 @@ function lamMoiMaIG(epBuoc) {
 // Chạy 1 lần trong trình soạn thảo sau khi dán IG_TOKEN: ghi tên tài khoản, loại tài khoản, tự điền IG_USER_ID. Không ghi mã.
 function kiemTraIG() {
   const { ig, goi } = igKetNoi();
-  const me = bi('IG_TOKEN') ? goi('/me?fields=user_id,username,account_type', null, true) : goi('/' + ig + '?fields=username', null, true);
+  const me = laMaIGLogin(bi('IG_TOKEN')) ? goi('/me?fields=user_id,username,account_type', null, true) : goi('/' + ig + '?fields=username', null, true);
   Logger.log('Instagram OK: @' + (me.username || '?') + ', loại ' + (me.account_type || 'nối qua Fanpage') + ', IG_USER_ID ' + ig);
   return me;
 }

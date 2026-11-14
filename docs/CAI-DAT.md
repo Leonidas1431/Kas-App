@@ -81,16 +81,17 @@ Phần lấy mã Facebook/Instagram em chưa chạy thử với trang thật, l�
 
 ### Nối Instagram không qua Fanpage (khi Fanpage vướng Business cũ)
 
-Meta có cách "Instagram API with Instagram login": app đăng thẳng bằng tài khoản Instagram, **không cần nối Fanpage** ([tài liệu Meta](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login)).
+App Meta "KAS App" dùng cách "Instagram API with Unified login": đăng thẳng bằng tài khoản Instagram, **không cần nối Fanpage** ([tài liệu Meta](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-unified-login)). App Meta mới không dùng được cách "Instagram login" cũ nữa.
 
 1. Instagram chuyển sang tài khoản chuyên nghiệp (Doanh nghiệp) như trên.
-2. developers.facebook.com → ứng dụng "KAS App" → **Instagram → API setup with Instagram business login** → thêm tài khoản Instagram KAS → **Generate token** (đăng nhập Instagram, cho phép).
-3. Thầy tự chép mã, dán vào Thuộc tính tập lệnh tên `IG_TOKEN`.
-4. Trong trình soạn thảo chọn hàm `kiemTraIG` → Chạy. Nhật ký hiện tên tài khoản Instagram là xong, máy chủ tự điền `IG_USER_ID`.
+2. developers.facebook.com → "KAS App" → Trường hợp sử dụng → Instagram → *API setup with Unified login* → mục **2. Tạo mã truy cập** → *Thêm tài khoản*, mời Instagram KAS làm **Người thử nghiệm Instagram**.
+3. Trong app Instagram chấp nhận lời mời (Cài đặt → Quyền đối với trang web → Ứng dụng và trang web → Lời mời thử nghiệm). Tên mục có thể khác chút.
+4. Quay lại trang Meta → **Tạo mã**. Mã chỉ hiện 1 lần: Thầy tự chép, dán vào Thuộc tính tập lệnh tên `IG_TOKEN`.
+5. Trong trình soạn thảo chọn hàm `kiemTraIG` → Chạy. Nhật ký hiện tên tài khoản Instagram là xong, máy chủ tự điền `IG_USER_ID`.
 
-Mã sống 60 ngày. Hẹn giờ đăng bài tự gia hạn mỗi 7 ngày (hàm `lamMoiMaIG`), không cần làm gì thêm. Nếu máy chủ tắt quá 60 ngày thì lấy lại mã ở bước 2.
+Máy chủ tự nhận loại mã: mã bắt đầu bằng `IG` (Instagram login) gọi graph.instagram.com và tự gia hạn 7 ngày/lần; mã khác (Unified login) gọi graph.facebook.com, hết hạn theo cấu hình. Khi Instagram báo lỗi mã thì tạo lại mã ở bước 4.
 
-Ảnh lên Instagram vẫn lấy từ ảnh đã tải lên Fanpage, nên bài Instagram cần `FB_PAGE_TOKEN` còn chạy.
+Ảnh lên Instagram vẫn lấy từ ảnh đã tải lên Fanpage (dạng ẩn), nên `FB_PAGE_TOKEN` phải còn chạy.
 
 ### Gemini làm ảnh bìa
 
