@@ -93,6 +93,15 @@ Máy chủ tự nhận loại mã: mã bắt đầu bằng `IG` (Instagram login
 
 Ảnh lên Instagram vẫn lấy từ ảnh đã tải lên Fanpage (dạng ẩn), nên `FB_PAGE_TOKEN` phải còn chạy.
 
+### Khi Meta báo "Error validating access token" (mã Facebook hết hiệu lực)
+
+Mã Trang mất hiệu lực khi đổi mật khẩu Facebook hoặc Meta đặt lại phiên đăng nhập. Facebook và cả Instagram (mượn chỗ lưu ảnh của Trang) đều dừng. Cách lấy lại:
+
+1. Lần đầu: developers.facebook.com → "KAS App" → Cài đặt ứng dụng → Thông tin cơ bản → **Khoá bí mật** → Hiển thị. Thầy tự chép, dán vào Thuộc tính tập lệnh tên `FB_APP_SECRET`.
+2. developers.facebook.com/tools/explorer → chọn ứng dụng "KAS App", Người dùng → thêm quyền `pages_manage_posts`, `pages_read_engagement`, `pages_show_list` → **Generate Access Token** → cho phép, chọn Trang KAS Houzing.
+3. Thầy tự chép mã, dán vào Thuộc tính tập lệnh tên `FB_USER_TOKEN_TAM`.
+4. Trình soạn thảo → chọn hàm `doiMaFacebook` → Chạy. Nhật ký báo "Đã thay FB_PAGE_TOKEN" là xong; máy chủ tự xoá mã tạm.
+
 ### Gemini làm ảnh bìa
 
 | Thuộc tính | Lấy ở đâu |
