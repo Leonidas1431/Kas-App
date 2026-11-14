@@ -629,7 +629,7 @@ test('đăng bài: Facebook nhiều ảnh, Instagram dùng ảnh đã lên Faceb
 
 test('Instagram nối bằng IG_TOKEN (không cần Fanpage): gọi graph.instagram.com, tự điền IG_USER_ID, gia hạn mã mỗi 7 ngày', () => {
   const m = khoiDong();
-  Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'tok', IG_TOKEN: 'igtok' });
+  Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'tok', IG_TOKEN: 'IGtok' });
   ['a1'].forEach((id) => m.post(m.khoaThay, 'guiAnh', { id, ma: 'BD-1', viec: 'BAI', tenFile: id + '.jpg', base64: 'eA==', loai: 'BAI_DANG' }));
   const bai = baiMau({ kenh: ['FB', 'IG'], dsAnh: ['a1'], baiViet: { fb: 'FB chữ', ig: 'IG chữ' } });
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: bai })] });
@@ -643,14 +643,14 @@ test('Instagram nối bằng IG_TOKEN (không cần Fanpage): gọi graph.instag
     if (url.includes('fields=status_code')) return { ma: 200, body: { status_code: 'FINISHED' } };
     if (url.endsWith('graph.instagram.com/v26.0/1789/media_publish')) return { ma: 200, body: { id: 'IGM9' } };
     if (url.includes('fields=permalink')) return { ma: 200, body: { permalink: 'https://instagram.com/p/y' } };
-    if (url.includes('refresh_access_token')) return { ma: 200, body: { access_token: 'igtok2', expires_in: 5184000 } };
+    if (url.includes('refresh_access_token')) return { ma: 200, body: { access_token: 'IGtok2', expires_in: 5184000 } };
     return null;
   };
   const r = m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
   assert.equal(r.data.ketQua.IG.id, 'IGM9', JSON.stringify(r.data.ketQua));
   assert.equal(m.props.IG_USER_ID, '1789');
   const media = m.goiRa.find((g) => g.url.endsWith('/1789/media'));
-  assert.equal(media.opt.payload.access_token, 'igtok');
+  assert.equal(media.opt.payload.access_token, 'IGtok');
   assert.equal(media.opt.payload.image_url, 'https://cdn.fb/P1.jpg');
   assert.equal(media.opt.payload.caption, 'IG chữ');
   assert.ok(!m.goiRa.some((g) => g.url.includes('graph.facebook.com') && g.url.includes('1789')));
@@ -659,8 +659,32 @@ test('Instagram nối bằng IG_TOKEN (không cần Fanpage): gọi graph.instag
   assert.ok(!m.goiRa.some((g) => g.url.includes('refresh_access_token')));
   m.props.IG_TOKEN_GIA_HAN = String(Date.now() - 8 * 864e5);
   m.ctx.lamMoiMaIG();
-  assert.equal(m.props.IG_TOKEN, 'igtok2');
-  assert.ok(m.logs.every((l) => !String(l).includes('igtok')));
+  assert.equal(m.props.IG_TOKEN, 'IGtok2');
+  assert.ok(m.logs.every((l) => !String(l).includes('IGtok')));
+});
+
+test('Instagram mã Unified login: gọi graph.facebook.com v26, lấy ID từ assigned_instagram_accounts, không gia hạn', () => {
+  const m = khoiDong();
+  Object.assign(m.props, { FB_PAGE_ID: 'PAGE', FB_PAGE_TOKEN: 'tok', IG_TOKEN: 'EAAuni' });
+  m.post(m.khoaThay, 'guiAnh', { id: 'a1', ma: 'BD-1', viec: 'BAI', tenFile: 'a1.jpg', base64: 'eA==', loai: 'BAI_DANG' });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: baiMau({ kenh: ['IG'], dsAnh: ['a1'], baiViet: { ig: 'IG chữ' } }) })] });
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  m.traLoi.fn = (url) => {
+    if (url.endsWith('/PAGE/photos')) return { ma: 200, body: { id: 'P1' } };
+    if (url.includes('fields=images')) return { ma: 200, body: { images: [{ source: 'https://cdn.fb/P1.jpg' }] } };
+    if (url.startsWith('https://graph.facebook.com/v26.0/me/assigned_instagram_accounts')) return { ma: 200, body: { data: [{ id: '1784', username: 'kashouzing' }] } };
+    if (url === 'https://graph.facebook.com/v26.0/1784/media') return { ma: 200, body: { id: 'C1' } };
+    if (url.includes('fields=status_code')) return { ma: 200, body: { status_code: 'FINISHED' } };
+    if (url === 'https://graph.facebook.com/v26.0/1784/media_publish') return { ma: 200, body: { id: 'IGM5' } };
+    return null;
+  };
+  const r = m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
+  assert.equal(r.data.ketQua.IG.id, 'IGM5', JSON.stringify(r.data.ketQua));
+  assert.equal(m.props.IG_USER_ID, '1784');
+  assert.ok(!m.goiRa.some((g) => g.url.includes('graph.instagram.com')));
+  m.props.IG_TOKEN_GIA_HAN = String(Date.now() - 30 * 864e5);
+  m.ctx.lamMoiMaIG();
+  assert.ok(!m.goiRa.some((g) => g.url.includes('refresh_access_token')));
 });
 
 test('hẹn giờ: chỉ đăng bài đã duyệt và đã đến giờ; ảnh chọn bài không lấy chứng từ', () => {
