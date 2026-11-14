@@ -68,7 +68,8 @@ Không có khoá nào thì app vẫn chạy bình thường, chỉ nút AI viế
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys → Create Key. Nạp tiền trước (Billing). Nên đặt hạn mức chi tháng trong Limits | AI tìm chủ đề, viết bài |
 | `FB_PAGE_ID` | Trang Facebook → Giới thiệu → Minh bạch trang → ID trang | Đăng Facebook |
 | `FB_PAGE_TOKEN` | Mã truy cập của Trang (Page access token), cần quyền `pages_manage_posts`, `pages_read_engagement`, và cho Instagram thêm `instagram_basic`, `instagram_content_publish`. Lấy qua ứng dụng Meta (developers.facebook.com) hoặc người dùng hệ thống trong Meta Business | Đăng Facebook, Instagram |
-| `IG_USER_ID` | ID tài khoản Instagram chuyên nghiệp đã nối với Trang (gọi `/{FB_PAGE_ID}?fields=instagram_business_account` bằng mã trên) | Đăng Instagram |
+| `IG_TOKEN` | **Cách nên dùng.** Mã Instagram lấy theo cách "Instagram API with Instagram login", không cần nối Fanpage. Xem mục *Nối Instagram không qua Fanpage* bên dưới | Đăng Instagram |
+| `IG_USER_ID` | Có `IG_TOKEN` thì máy chủ tự điền. Chỉ cần tự điền khi Instagram nối với Fanpage (gọi `/{FB_PAGE_ID}?fields=instagram_business_account`) | Đăng Instagram |
 | `WP_URL` | `https://www.noithatkas.com` | Đăng website |
 | `WP_USER` | Tên đăng nhập WordPress của người đăng | Đăng website |
 | `WP_APP_PASSWORD` | WordPress → Người dùng → Hồ sơ → **Mật khẩu ứng dụng** → đặt tên "KAS App" → Thêm. Không dùng mật khẩu đăng nhập | Đăng website |
@@ -76,7 +77,20 @@ Không có khoá nào thì app vẫn chạy bình thường, chỉ nút AI viế
 
 Phần lấy mã Facebook/Instagram em chưa chạy thử với trang thật, lúc Thầy làm em hướng dẫn từng bước theo màn hình Thầy thấy.
 
-**Instagram phải là tài khoản chuyên nghiệp và nối với Fanpage** thì mới tự đăng được. Trong app Instagram: Trang cá nhân → menu ☰ → Cài đặt → *Loại tài khoản và công cụ* → *Chuyển sang tài khoản chuyên nghiệp* → chọn *Doanh nghiệp*. Sau đó nối với Fanpage KAS trong Meta Business Suite (Cài đặt → Tài khoản Instagram). Tên mục có thể khác chút tuỳ bản app. Chưa chuyển thì bỏ tick Instagram ở bài, các kênh khác vẫn đăng bình thường.
+**Instagram phải là tài khoản chuyên nghiệp** thì mới tự đăng được. Trong app Instagram: Trang cá nhân → menu ☰ → Cài đặt → *Loại tài khoản và công cụ* → *Chuyển sang tài khoản chuyên nghiệp* → chọn *Doanh nghiệp*. Tên mục có thể khác chút tuỳ bản app. Chưa chuyển thì bỏ tick Instagram ở bài, các kênh khác vẫn đăng bình thường.
+
+### Nối Instagram không qua Fanpage (khi Fanpage vướng Business cũ)
+
+Meta có cách "Instagram API with Instagram login": app đăng thẳng bằng tài khoản Instagram, **không cần nối Fanpage** ([tài liệu Meta](https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login)).
+
+1. Instagram chuyển sang tài khoản chuyên nghiệp (Doanh nghiệp) như trên.
+2. developers.facebook.com → ứng dụng "KAS App" → **Instagram → API setup with Instagram business login** → thêm tài khoản Instagram KAS → **Generate token** (đăng nhập Instagram, cho phép).
+3. Thầy tự chép mã, dán vào Thuộc tính tập lệnh tên `IG_TOKEN`.
+4. Trong trình soạn thảo chọn hàm `kiemTraIG` → Chạy. Nhật ký hiện tên tài khoản Instagram là xong, máy chủ tự điền `IG_USER_ID`.
+
+Mã sống 60 ngày. Hẹn giờ đăng bài tự gia hạn mỗi 7 ngày (hàm `lamMoiMaIG`), không cần làm gì thêm. Nếu máy chủ tắt quá 60 ngày thì lấy lại mã ở bước 2.
+
+Ảnh lên Instagram vẫn lấy từ ảnh đã tải lên Fanpage, nên bài Instagram cần `FB_PAGE_TOKEN` còn chạy.
 
 ### Gemini làm ảnh bìa
 

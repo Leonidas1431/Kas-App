@@ -587,7 +587,7 @@ function apDung(n, op) {
 
 // ---------- Đăng bài: AI viết, Thầy duyệt, máy chủ đăng ----------
 // Khoá bí mật để trong Cài đặt dự án → Thuộc tính tập lệnh (Script properties), KHÔNG để trong mã hay bảng CaiDat:
-//   ANTHROPIC_API_KEY · FB_PAGE_ID, FB_PAGE_TOKEN · IG_USER_ID · WP_URL, WP_USER, WP_APP_PASSWORD
+//   ANTHROPIC_API_KEY · FB_PAGE_ID, FB_PAGE_TOKEN · IG_TOKEN (hoặc IG_USER_ID nếu Instagram nối Fanpage) · WP_URL, WP_USER, WP_APP_PASSWORD
 //   GEMINI_API_KEY · CANVA_CLIENT_ID, CANVA_CLIENT_SECRET (máy chủ tự lưu CANVA_REFRESH khi Thầy bấm Nối Canva) · PT_FOLDER_ID (nếu thư viện phong thủy để chỗ khác)
 // Không bài nào lên mạng khi Thầy chưa bấm Duyệt (máy chủ tự kiểm, kể cả bài hẹn giờ).
 const KENH_BD = ['FB', 'IG', 'TT', 'WEB'];
@@ -598,6 +598,8 @@ const GIA_AI = { 'claude-opus-5-5': [4, 20], 'claude-sonnet-5-5': [2, 10] };
 // Thầy chọn Sonnet 5.5 ngày 13/11/2026 (rẻ bằng nửa Opus). Đổi được trong Cài đặt đăng bài.
 const MODEL_MAC_DINH = 'claude-sonnet-5-5';
 const GRAPH = 'https://graph.facebook.com/v25.0';
+// Instagram đăng nhập bằng chính tài khoản Instagram (không cần nối Fanpage), tra tài liệu Meta 14/11/2026.
+const GRAPH_IG = 'https://graph.instagram.com/v26.0';
 // Máy gửi lên không được tự đặt các trường này.
 const TRUONG_MAY_CHU = ['trangThai', 'ketQua', 'nguoiDuyet', 'duyetLuc', 'lanViet', 'canva'];
 const TRUONG_NOI_DUNG = ['baiViet', 'dsAnh', 'anhBia'];
@@ -1214,10 +1216,40 @@ function dangFacebook(b, blobs) {
   return { id: p.id, anh, link: 'https://www.facebook.com/' + p.id, luc: new Date().toISOString() };
 }
 
+// Instagram có 2 cách nối, máy chủ tự chọn:
+//  1. IG_TOKEN (mã "Instagram API with Instagram login"): đăng thẳng bằng tài khoản Instagram, KHÔNG cần nối Fanpage.
+//     Dùng khi Fanpage vướng Business cũ. Mã sống 60 ngày, máy chủ tự gia hạn mỗi 7 ngày (lamMoiMaIG).
+//  2. IG_USER_ID + FB_PAGE_TOKEN có quyền Instagram: Instagram đã nối với Fanpage.
+// Gọi Instagram theo cách đang dùng. Trả { goi, ig }.
+function igKetNoi() {
+  const ma = bi('IG_TOKEN');
+  if (!ma) {
+    const ig = bi('IG_USER_ID');
+    if (!ig) throw new Error('Chưa nối Instagram (thiếu IG_TOKEN hoặc IG_USER_ID)');
+    return { ig, goi: goiGraph };
+  }
+  const goi = (duongDan, tham, get) => {
+    const url = GRAPH_IG + duongDan;
+    const r = get
+      ? UrlFetchApp.fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(ma), { muteHttpExceptions: true })
+      : UrlFetchApp.fetch(url, { method: 'post', muteHttpExceptions: true, payload: Object.assign({ access_token: ma }, tham) });
+    let j = {};
+    try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+    if (r.getResponseCode() !== 200 || j.error) throw new Error('Instagram: ' + ((j.error && j.error.message) || r.getResponseCode()));
+    return j;
+  };
+  let ig = bi('IG_USER_ID');
+  if (!ig) {
+    ig = String(goi('/me?fields=user_id', null, true).user_id || '');
+    if (!ig) throw new Error('Không lấy được ID tài khoản Instagram từ IG_TOKEN');
+    PropertiesService.getScriptProperties().setProperty('IG_USER_ID', ig);
+  }
+  return { ig, goi };
+}
+
 // Instagram cần ảnh JPEG ở địa chỉ công khai: lấy chính ảnh đã tải lên Facebook. Chưa thử với tài khoản thật.
 function dangInstagram(b, blobs, anhFB) {
-  const ig = bi('IG_USER_ID');
-  if (!ig) throw new Error('Chưa có IG_USER_ID');
+  const { ig, goi } = igKetNoi();
   const page = bi('FB_PAGE_ID');
   const ids = anhFB && anhFB.length ? anhFB : blobs.map((bl) => goiGraph('/' + page + '/photos', { source: bl, published: 'false' }).id);
   if (!ids.length) throw new Error('Instagram cần ít nhất 1 ảnh');
@@ -1225,21 +1257,53 @@ function dangInstagram(b, blobs, anhFB) {
   if (!urls.length) throw new Error('Không lấy được địa chỉ ảnh từ Facebook');
   const caption = b.baiViet.ig || b.baiViet.fb;
   let container;
-  if (urls.length === 1) container = goiGraph('/' + ig + '/media', { image_url: urls[0], caption }).id;
+  if (urls.length === 1) container = goi('/' + ig + '/media', { image_url: urls[0], caption }).id;
   else {
-    const con = urls.slice(0, 20).map((u) => goiGraph('/' + ig + '/media', { image_url: u, is_carousel_item: 'true' }).id);
-    container = goiGraph('/' + ig + '/media', { media_type: 'CAROUSEL', children: con.join(','), caption }).id;
+    const con = urls.slice(0, 10).map((u) => goi('/' + ig + '/media', { image_url: u, is_carousel_item: 'true' }).id);
+    container = goi('/' + ig + '/media', { media_type: 'CAROUSEL', children: con.join(','), caption }).id;
   }
   for (let i = 0; i < 10; i++) {
-    const st = goiGraph('/' + container + '?fields=status_code', null, true).status_code;
+    const st = goi('/' + container + '?fields=status_code', null, true).status_code;
     if (st === 'FINISHED') break;
     if (st === 'ERROR' || st === 'EXPIRED') throw new Error('Instagram không nhận ảnh (' + st + ')');
     Utilities.sleep(3000);
   }
-  const m = goiGraph('/' + ig + '/media_publish', { creation_id: container });
+  const m = goi('/' + ig + '/media_publish', { creation_id: container });
   let link = '';
-  try { link = goiGraph('/' + m.id + '?fields=permalink', null, true).permalink || ''; } catch (e) { /* không bắt buộc */ }
+  try { link = goi('/' + m.id + '?fields=permalink', null, true).permalink || ''; } catch (e) { /* không bắt buộc */ }
   return { id: m.id, link, luc: new Date().toISOString() };
+}
+
+// Gia hạn IG_TOKEN thêm 60 ngày. Meta chỉ cho gia hạn mã đã quá 24 giờ và còn hạn. Hẹn giờ đăng bài gọi mỗi 7 ngày.
+// Không ghi giá trị mã ra nhật ký.
+function lamMoiMaIG(epBuoc) {
+  const ma = bi('IG_TOKEN');
+  if (!ma) return '';
+  const props = PropertiesService.getScriptProperties();
+  const truoc = Number(bi('IG_TOKEN_GIA_HAN') || 0);
+  if (!epBuoc && truoc && Date.now() - truoc < 7 * 864e5) return '';
+  if (!truoc && !epBuoc) { props.setProperty('IG_TOKEN_GIA_HAN', String(Date.now())); return ''; } // mã mới dán: chờ qua 24 giờ
+  const r = UrlFetchApp.fetch('https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=' + encodeURIComponent(ma), { muteHttpExceptions: true });
+  let j = {};
+  try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+  if (r.getResponseCode() !== 200 || !j.access_token) {
+    const loi = 'Gia hạn mã Instagram lỗi: ' + ((j.error && j.error.message) || r.getResponseCode());
+    Logger.log(loi);
+    return loi;
+  }
+  props.setProperty('IG_TOKEN', j.access_token);
+  props.setProperty('IG_TOKEN_GIA_HAN', String(Date.now()));
+  const het = new Date(Date.now() + Number(j.expires_in || 0) * 1000);
+  Logger.log('Đã gia hạn mã Instagram, hết hạn khoảng ' + Utilities.formatDate(het, 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd'));
+  return 'OK';
+}
+
+// Chạy 1 lần trong trình soạn thảo sau khi dán IG_TOKEN: ghi tên tài khoản, loại tài khoản, tự điền IG_USER_ID. Không ghi mã.
+function kiemTraIG() {
+  const { ig, goi } = igKetNoi();
+  const me = bi('IG_TOKEN') ? goi('/me?fields=user_id,username,account_type', null, true) : goi('/' + ig + '?fields=username', null, true);
+  Logger.log('Instagram OK: @' + (me.username || '?') + ', loại ' + (me.account_type || 'nối qua Fanpage') + ', IG_USER_ID ' + ig);
+  return me;
 }
 
 // Bài website: dòng "## " thành tiêu đề mục, dòng "- " thành gạch đầu dòng, còn lại là đoạn văn.
@@ -1313,6 +1377,7 @@ function dangMotBai(b) {
 function dangBaiHenGio() {
   const bay = Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd HH:mm');
   const gioMD = caiDatMay().bdGio || '19:30';
+  try { lamMoiMaIG(); } catch (e) { Logger.log('Gia hạn mã Instagram lỗi: ' + e.message); }
   docBang('BaiDang').filter((b) => !b.xoa && b.trangThai === 'DUYET' && b.ngayDang && (b.ngayDang + ' ' + (b.gioDang || gioMD)) <= bay).forEach((b) => {
     const kq = b.ketQua || {};
     if (['FB', 'IG', 'WEB'].some((k) => (kq[k] || {}).lan >= 3)) return;
