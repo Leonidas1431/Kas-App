@@ -874,3 +874,75 @@ test('Canva: chỉ Thầy nối; PKCE + state; lưu refresh token mới mỗi l�
   assert.equal(m.post(m.khoaThay, 'keoVe').data.baiDang[0].canva.id, 'D1');
   assert.equal(m.post(khoaKha, 'canvaMo', { id: 'BD-1' }).ok, false);
 });
+
+test('Website: chuyên mục, thẻ theo bài; ảnh đại diện riêng cho web; lỗi WordPress không nhận mật khẩu báo rõ cách sửa', () => {
+  const m = khoiDong();
+  Object.assign(m.props, { WP_URL: 'https://noithatkas.com', WP_USER: 'thay', WP_APP_PASSWORD: 'abcd efgh' });
+  ['a1', 'w1'].forEach((id) => m.post(m.khoaThay, 'guiAnh', { id, ma: 'BD-1', viec: 'BAI', tenFile: id + '.jpg', base64: 'eA==', loai: 'BAI_DANG' }));
+  const web = { tieuDe: 'T', moTa: 'M', noiDung: 'Đoạn', tuKhoa: ['nội thất', 'chung cư'] };
+  const bai = baiMau({ kenh: ['WEB'], dsAnh: ['a1'], anhBiaWeb: 'w1', webChuyenMuc: 4683, webThe: ['Indochine', 'nội thất'], baiViet: { web } });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: bai })] });
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  m.traLoi.fn = (url) => (url.includes('/wp-json/') ? { ma: 401, body: { code: 'rest_cannot_create', message: 'Bạn không được phép tạo bài viết bằng tài khoản này.' } } : null);
+  let r = m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
+  assert.match(r.data.ketQua.WEB.loi, /Authorization/);
+  let media = 0;
+  m.traLoi.fn = (url, opt) => {
+    if (url.includes('/tags?per_page=100&search=Indochine')) return { ma: 200, body: [{ id: 5, name: 'indochine' }] };
+    if (url.includes('/tags?per_page=100&search=')) return { ma: 200, body: [{ id: 6, name: 'nội thất đẹp' }] };
+    if (url.endsWith('/wp-json/wp/v2/tags')) return { ma: 201, body: { id: 7, name: JSON.parse(opt.payload).name } };
+    if (url.includes('/wp/v2/media')) return { ma: 201, body: { id: 70 + ++media, source_url: 'https://noithatkas.com/' + media + '.jpg' } };
+    if (url.endsWith('/wp/v2/posts')) return { ma: 201, body: { id: 99, link: 'https://noithatkas.com/?p=99' } };
+    return null;
+  };
+  r = m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
+  assert.equal(r.data.ketQua.WEB.id, 99, r.data.ketQua.WEB.loi);
+  const post = JSON.parse(m.goiRa.find((g) => g.url.endsWith('/wp/v2/posts')).opt.payload);
+  assert.deepEqual(post.categories, [4683]);
+  assert.deepEqual(post.tags, [5, 7]); // thẻ có sẵn dùng lại, thẻ mới thì tạo
+  assert.equal(post.featured_media, 71);
+  assert.equal(media, 2); // ảnh đại diện web + 1 ảnh bài
+  assert.match(m.goiRa.find((g) => g.url.includes('/wp/v2/media')).opt.headers.Authorization, /^Basic /);
+});
+
+test('Website: chưa chọn thẻ thì lấy từ khóa AI; chuyên mục lấy cài đặt; đọc chuyên mục, thẻ từ WordPress; Thầy kiểm tra mật khẩu ứng dụng', () => {
+  const m = khoiDong();
+  Object.assign(m.props, { WP_URL: 'https://noithatkas.com/', WP_USER: 'thay', WP_APP_PASSWORD: 'abcd' });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'bdWebChuyenMuc', giaTri: '12' })] });
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: baiMau({ kenh: ['WEB'], baiViet: { web: { tieuDe: 'T', moTa: '', noiDung: 'x', tuKhoa: ['a'] } } }) })] });
+  m.post(m.khoaThay, 'duyetBai', { id: 'BD-1' });
+  m.traLoi.fn = (url, opt) => {
+    if (url.includes('/categories')) { assert.equal((opt.headers || {}).Authorization, undefined); return { ma: 200, body: [{ id: 4683, name: 'Chia sẻ', count: 3 }] }; }
+    if (url.includes('/tags?per_page=100&orderby')) return { ma: 200, body: [{ id: 5, name: 'nội thất', count: 9 }] };
+    if (url.includes('/tags?')) return { ma: 200, body: [{ id: 8, name: 'A' }] };
+    if (url.includes('/users/me')) return { ma: 200, body: { name: 'Thầy', roles: ['administrator'], capabilities: { publish_posts: true, upload_files: true, manage_categories: true } } };
+    if (url.endsWith('/wp/v2/posts')) return { ma: 201, body: { id: 1 } };
+    return null;
+  };
+  m.post(m.khoaThay, 'dangBai', { id: 'BD-1' });
+  const post = JSON.parse(m.goiRa.find((g) => g.url.endsWith('/wp/v2/posts')).opt.payload);
+  assert.deepEqual([post.categories, post.tags], [[12], [8]]);
+  const dm = m.post(m.khoaThay, 'wpDanhMuc').data;
+  assert.deepEqual(dm.chuyenMuc, [{ id: 4683, ten: 'Chia sẻ', so: 3 }]);
+  assert.equal(dm.the[0].ten, 'nội thất');
+  const kt = m.post(m.khoaThay, 'kiemTraWP').data;
+  assert.deepEqual([kt.ten, kt.dangDuoc], ['Thầy', true]);
+});
+
+test('Ảnh website khổ ngang: Gemini xin 16:9, Canva tạo thiết kế 1200×675, lấy về thành ảnh đại diện web, không đụng ảnh bìa Facebook', () => {
+  const m = khoiDong();
+  baiCoAnh(m, { kenh: ['FB', 'WEB'], anhBia: 'h1' });
+  m.props.GEMINI_API_KEY = 'g';
+  const tl = [];
+  m.traLoi.fn = (url, opt) => {
+    if (!url.includes('generativelanguage')) return null;
+    const b = JSON.parse(opt.payload); tl.push(b.response_format.aspect_ratio);
+    assert.match(b.input[0].text, /landscape 16:9/);
+    return { ma: 200, body: { steps: [{ type: 'model_output', content: [{ type: 'image', mime_type: 'image/jpeg', data: 'QUJD' }] }] } };
+  };
+  const r = m.post(m.khoaThay, 'geminiBia', { id: 'BD-1', dich: 'WEB' });
+  assert.equal(r.ok, true, r.loi);
+  assert.deepEqual(tl, ['16:9']);
+  assert.equal(r.data.bai.anhBiaWeb, r.data.anhId);
+  assert.equal(r.data.bai.anhBia, 'h1');
+});
