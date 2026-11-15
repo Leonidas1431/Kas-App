@@ -805,6 +805,9 @@ test('Gemini làm bìa: cần khoá; gửi ảnh thật + giữ nguyên công tr
   assert.equal(d.anh === undefined || !d.anh.some((a) => a.id === r.data.anhId), true); // ảnh bài đăng không lẫn vào ảnh công trình
   m.traLoi.fn = (url) => (url.includes('generativelanguage') ? { ma: 200, body: { steps: [{ type: 'model_output', content: [{ type: 'text', text: 'Không sửa được ảnh này' }] }] } } : null);
   assert.match(m.post(m.khoaThay, 'geminiBia', { id: 'BD-1' }).loi, /Không sửa được ảnh này/);
+  // Khoá chưa bật thanh toán: báo rõ cách xử lý.
+  m.traLoi.fn = (url) => (url.includes('generativelanguage') ? { ma: 429, body: { error: { message: 'Rate limit exceeded for model gemini-3.1-flash-image (limit: 0 requests per day on Free Tier).' } } } : null);
+  assert.match(m.post(m.khoaThay, 'geminiBia', { id: 'BD-1' }).loi, /chưa bật thanh toán/);
 });
 
 test('Canva: chỉ Thầy nối; PKCE + state; lưu refresh token mới mỗi lần; đưa ảnh sang Canva, lấy ảnh đã sửa về làm bìa', () => {
@@ -858,6 +861,14 @@ test('Canva: chỉ Thầy nối; PKCE + state; lưu refresh token mới mỗi l�
   assert.equal(r.data.bai.anhBia, r.data.anhId);
   assert.equal(Buffer.from(r.data.base64, 'base64').toString(), 'canva-jpg');
   assert.equal(JSON.parse(m.goiRa.find((g) => g.url.endsWith('/exports')).opt.payload).format.type, 'jpg');
+  // Ghi lại ảnh lấy từ Canva để app báo "đã thay ảnh bìa".
+  assert.equal(r.data.bai.canva.anhId, r.data.anhId);
+  assert.ok(r.data.bai.canva.layLuc);
+  // Máy gửi ảnh đã cắt khổ 1080×1350: tải đúng ảnh đó lên Canva.
+  const anhCat = Buffer.from('x'.repeat(200)).toString('base64');
+  assert.equal(m.post(m.khoaThay, 'canvaMo', { id: 'BD-1', base64: anhCat }).ok, true);
+  const up2 = m.goiRa.filter((g) => g.url.endsWith('/asset-uploads')).at(-1);
+  assert.equal(Buffer.from(up2.opt.payload).toString(), 'x'.repeat(200));
   // Máy gửi lên không tự đặt được trường canva.
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BD', b: { ...r.data.bai, canva: { id: 'GIA' } } })] });
   assert.equal(m.post(m.khoaThay, 'keoVe').data.baiDang[0].canva.id, 'D1');

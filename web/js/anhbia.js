@@ -101,3 +101,11 @@ export function taiAnh(base64, loai = 'image/jpeg') {
     im.src = `data:${loai};base64,${base64}`;
   });
 }
+
+/** Cắt ảnh phủ kín khổ bìa 1080×1350 (giữ giữa), không thêm chữ. Dùng trước khi đưa sang Canva để ảnh tràn khung. */
+export function catKho(canvas, img) {
+  const { w, h } = KHO;
+  canvas.width = w; canvas.height = h;
+  phuKin(canvas.getContext('2d'), img, 0, 0, w, h);
+  return canvas;
+}

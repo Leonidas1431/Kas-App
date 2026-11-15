@@ -108,24 +108,29 @@ Mã Trang mất hiệu lực khi đổi mật khẩu Facebook hoặc Meta đặt
 | --- | --- |
 | `GEMINI_API_KEY` | aistudio.google.com → Get API key → Create API key. Phải bật thanh toán (Billing) cho dự án của khoá: ảnh của Gemini không có gói miễn phí |
 
+Nếu app báo **"Gemini chưa bật thanh toán"** (Google báo lỗi 429, "limit: 0 ... Free Tier"): vào aistudio.google.com → mục Billing / API keys → bấm thiết lập thanh toán cho dự án của khoá, thêm thẻ. Nên đặt ngân sách cảnh báo (vd 100.000đ/tháng) trong Google Cloud Billing → Budgets & alerts. Tên mục có thể khác chút.
+
 - Gói Gemini Pro Thầy đang dùng là gói cá nhân trong app Gemini. Trang giới thiệu gói của Google không ghi có tiền dùng API, nên tiền API tính riêng: khoảng 0,067 USD/ảnh (Gemini 3.1 Flash Image) hoặc 0,134 USD/ảnh (Gemini 3 Pro Image, chữ trên ảnh đẹp hơn). Chọn trong Cài đặt đăng bài.
 - Ảnh Gemini làm có dấu SynthID ẩn của Google (không thấy bằng mắt).
 - Hai kiểu: *Giữ ảnh thật, chỉ chỉnh sáng* (để chữ thêm sau bằng Canva hoặc mẫu trong app), hoặc *In chữ trên bìa lên ảnh*. Lời nhắn cho Gemini cấm thêm, bớt, đổi đồ đạc, vật liệu của công trình, nhưng Thầy vẫn soi lại ảnh trước khi duyệt: ảnh dự án phải đúng công trình thật.
 
-### Canva (gói Teams)
+### Canva (gói Pro/Teams, không tốn thêm tiền)
 
-Em nối theo tài liệu Canva Connect, chưa chạy thử với tài khoản thật.
+Đã nối thật ngày 14/11/2026. Canva nay gọi "tích hợp" là "app": canva.com/developers/apps.
 
-1. Bật **xác thực 2 lớp** cho tài khoản Canva (bắt buộc để tạo tích hợp).
-2. Vào canva.com/developers → *Your integrations* → *Create an integration* → chọn **Public**. (Loại Private chỉ cho gói Enterprise.) Không cần bấm gửi Canva duyệt.
-3. Mục *Configuration*: chép **Client ID**, bấm tạo **Client secret** → dán vào Thuộc tính tập lệnh `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET`.
-4. Mục *Scopes*: tick asset (read, write), design content (read, write), design meta (read).
-5. Mục *Authentication* → thêm *Redirect URL*: dán địa chỉ app hiện ở **Đăng bài → Cài đặt đăng bài → Canva** (chính là link triển khai máy chủ, đuôi `/exec`).
+1. Bật **xác thực 2 lớp** cho tài khoản Canva (Cài đặt → Tài khoản và bảo mật → Ứng dụng xác thực). Canva bắt buộc mới mở phần REST API.
+2. *Create an app* → tên "KAS App" → chọn **Anyone on Canva** (loại "Restricted to your Canva team" chỉ cho gói Enterprise). Không cần gửi Canva duyệt.
+3. *Outside Canva* → *Start integrating* → mục *Configuration*: chép **Client ID**, bấm **Generate secret** → dán vào Thuộc tính tập lệnh `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET`.
+4. Mục *Scopes*: tick asset (read, write), design:content (read, write), design:meta (read).
+5. Mục *Redirect URLs*: dán **cả 2** link `/exec` của 2 bản triển khai (Apps Script → Triển khai → Quản lý tùy chọn triển khai).
 6. Trong app bấm **Nối Canva** → đăng nhập Canva → **Allow**. Thấy chữ "Đã nối Canva" là xong.
 
-Dùng: trong bài bấm **Mở ảnh bìa trong Canva** → sửa trên Canva (điện thoại mở app Canva) → quay lại bài bấm **Lấy ảnh đã sửa từ Canva**, ảnh về làm ảnh bìa. Điền chữ tự động vào mẫu Canva (autofill) cần gói Enterprise, nên chữ trên Canva Thầy tự sửa.
+Dùng (trong bài, mục **Ảnh bìa → Cách 1. Sửa trong Canva**):
+1. **Đưa ảnh sang Canva**: app cắt ảnh bìa đang dùng (chưa có thì ảnh đầu) đúng khổ 1080×1350 rồi mở Canva.
+2. Sửa trên Canva, chờ vài giây cho Canva tự lưu.
+3. Quay lại bài bấm **Lấy ảnh từ Canva làm ảnh bìa**. Khung "Ảnh bìa đang dùng" đổi sang ảnh mới, ghi "lấy từ Canva lúc …".
 
-Chưa chắc 2 điểm, thử thật mới biết: Canva có cho chủ tích hợp Public dùng khi chưa gửi duyệt không (hướng dẫn mẫu của Canva cho bấm nối ngay, nên em nghĩ là được), và Canva có nhận địa chỉ chuyển về là link Apps Script không. Không được thì Thầy vẫn dùng nút **Chia sẻ sang app Canva** + **Thay bằng ảnh từ máy** như cũ.
+Điền chữ tự động vào mẫu Canva (autofill) cần gói Enterprise, nên chữ trên Canva Thầy tự sửa. Gói Canva hết hạn thì phần nối vẫn chạy (API tải ảnh, tạo thiết kế, xuất ảnh hiện miễn phí theo trang Credit rates của Canva).
 
 ### Thư viện phong thủy
 

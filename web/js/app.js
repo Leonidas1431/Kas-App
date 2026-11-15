@@ -33,7 +33,7 @@ import {
   KENH, KENH_TU_DONG, LOAI_BAI, TT_BAI, MAC_DINH_BD, MODEL, caiDatBD, timBai, taoBai, suaBai, xoaBai, nhanBai, boChoGui, kenhXong, kenhLoi, coLoi,
   MODEL_ANH, dauTuan, lichTuan, choDuyet, chuaHen, loiDang, choDangTay, daDangGanDay, goiYCongTrinh, chiAIThang, chuDeChep, nhomViet, kiemTruocKhiViet,
 } from './dangbai.js';
-import { MAU_BIA, veBia, taiAnh } from './anhbia.js';
+import { MAU_BIA, veBia, taiAnh, catKho } from './anhbia.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2971,6 +2971,19 @@ async function anhChuaGui(b) {
   return n;
 }
 
+// Ảnh bìa lấy từ đâu (hiện cạnh ảnh bìa).
+function nguonBia(b) {
+  if (b.canva && b.canva.anhId && b.canva.anhId === b.anhBia) return ` (lấy từ Canva lúc ${gioNgay(b.canva.layLuc)})`;
+  return '';
+}
+const gioNgay = (iso) => { const d = new Date(iso); const p = (x) => String(x).padStart(2, '0'); return isNaN(d) ? '' : `${p(d.getHours())}:${p(d.getMinutes())} ${p(d.getDate())}/${p(d.getMonth() + 1)}`; };
+function trangThaiCanva(b) {
+  const c = b.canva || {};
+  if (!c.id) return 'Chưa đưa ảnh sang Canva.';
+  if (c.anhId && c.anhId === b.anhBia) return `✓ Đã lấy ảnh từ Canva lúc ${gioNgay(c.layLuc)}, ảnh bìa đã thay. Sửa tiếp: bấm "Mở lại thiết kế cũ", sửa xong lấy về lần nữa.`;
+  return `Đã đưa sang Canva lúc ${gioNgay(c.luc)}. Sửa xong thì bấm bước 3.`;
+}
+
 function manMotBai(id) {
   const b = timBai(db, id);
   if (!b || b.xoa) { $('#view').innerHTML = '<p>Không tìm thấy bài này.</p><p><a href="#dang-bai">← Đăng bài</a></p>'; return; }
@@ -3008,7 +3021,7 @@ function manMotBai(id) {
     <label class="f">Kênh</label><div class="bd-chon">${Object.entries(KENH).map(([k, t]) => `<label class="cham-dong"><input type="checkbox" data-kenh="${k}" ${(b.kenh || []).includes(k) ? 'checked' : ''} ${khoa}><span>${t}${KENH_TU_DONG.includes(k) ? '' : ' (đăng tay)'}</span></label>`).join('')}</div>
     <div class="hai-cot"><div><label class="f">Ngày đăng</label><input id="bNgay" type="date" value="${esc(b.ngayDang)}" ${khoa}></div>
       <div><label class="f">Giờ</label><input id="bGio" type="time" value="${esc(b.gioDang)}" placeholder="${esc(cd.bdGio)}" ${khoa}></div></div>
-    <h3>Ảnh <span class="muted">(ảnh đầu làm nền ảnh bìa)</span></h3>
+    <h3>Ảnh <span class="muted">(ảnh đầu dùng làm nền khi làm ảnh bìa)</span></h3>
     <div id="bAnh" class="bd-anh"></div>
     ${daDang ? '' : `<div class="actions">${b.maCongTrinh ? '<button id="chonAnhCT">Chọn ảnh công trình</button>' : ''}<label class="btn">Thêm ảnh từ máy<input id="themAnh" type="file" accept="image/*" multiple hidden></label></div>`}
     ${daDang ? '' : `<h3>AI viết</h3>
@@ -3026,20 +3039,33 @@ function manMotBai(id) {
         <label class="f">Website: từ khóa (cách nhau dấu phẩy)</label><input id="vWk" value="${esc(((bv.web || {}).tuKhoa || []).join(', '))}" ${khoa}>` : ''}
       <p class="muted">Chỗ AI ghi [Thầy điền: …] là số liệu AI không có, Thầy điền trước khi duyệt.</p>` : ''}
     ${(b.kenh || []).some((k) => k !== 'WEB') ? `<h3>Ảnh bìa</h3>
-      ${b.anhBia ? '<img id="biaHienTai" class="bia" alt="Ảnh bìa đang dùng">' : ''}<p id="biaTT" class="muted">${b.anhBia ? 'Ảnh bìa đang dùng.' : 'Chưa có ảnh bìa.'}</p>
-      ${daDang ? '' : `<h4>Gemini làm bìa từ ảnh đầu</h4>
-        <select id="gmKieu"><option value="SANG">Giữ ảnh thật, chỉ chỉnh sáng</option><option value="CHU">In chữ trên bìa lên ảnh</option></select>
-        <div class="actions"><button id="geminiBia">Gemini làm bìa</button></div>
-        <h4>Sửa trong Canva</h4>
-        <div class="actions"><button id="canvaMo">${b.canva && b.canva.id ? 'Mở lại trong Canva' : 'Mở ảnh bìa trong Canva'}</button>${b.canva && b.canva.id ? '<button id="canvaLay" class="btn-chinh">Lấy ảnh đã sửa từ Canva</button>' : ''}</div>
-        <p class="muted">Sửa xong trên Canva (không cần tải về), quay lại đây bấm "Lấy ảnh đã sửa từ Canva".</p>
-        <h4>Hoặc dựng bìa ngay trên máy</h4>`}
-      <div class="loc">${Object.entries(MAU_BIA).map(([k, t]) => `<button data-mau="${k}" class="${k === (b.mauBia || 'TRAN') ? 'on' : ''}" ${khoa}>${t}</button>`).join('')}</div>
-      <label class="f">Chữ trên bìa</label><input id="bTieuDe" value="${esc(b.tieuDeBia)}" placeholder="Tối đa 8 chữ" ${khoa}>
-      <label class="f">Dòng phụ</label><input id="bPhuDe" value="${esc(b.phuDeBia)}" ${khoa}>
-      <canvas id="bia" class="bia"></canvas>
-      ${daDang ? '' : `<div class="actions"><button id="luuBia">Dùng ảnh bìa này</button><button id="guiCanva">Chia sẻ sang app Canva</button>
-        <label class="btn">Thay bằng ảnh từ máy<input id="biaTuMay" type="file" accept="image/*" hidden></label></div>`}` : ''}
+      <div class="bia-dung">${b.anhBia ? '<img id="biaHienTai" class="bia" alt="Ảnh bìa đang dùng">' : ''}
+        <p id="biaTT">${b.anhBia ? `<b>Ảnh bìa đang dùng</b>${nguonBia(b)}: ảnh này lên đầu bài Facebook, Instagram.` : '<b>Chưa có ảnh bìa.</b> Chưa có thì ảnh đầu trong mục Ảnh được dùng làm ảnh đầu bài.'}</p></div>
+      ${daDang ? '' : `<p class="muted">Làm ảnh bìa: chọn 1 trong 3 cách dưới. Cách nào xong cũng thay ảnh bìa ở trên.</p>
+        <label class="f">Chữ trên bìa (dùng cho cách 2 và 3)</label><input id="bTieuDe" value="${esc(b.tieuDeBia)}" placeholder="Tối đa 8 chữ">
+        <label class="f">Dòng phụ</label><input id="bPhuDe" value="${esc(b.phuDeBia)}">
+        <details class="cham-ds" open><summary>Cách 1. Sửa trong Canva</summary>
+          <ol class="buoc">
+            <li><b>Đưa ảnh sang Canva.</b> App cắt ${b.anhBia ? 'ảnh bìa đang dùng' : 'ảnh đầu của bài'} đúng khổ 1080×1350 rồi mở Canva.
+              <div class="actions"><button id="canvaMo"${b.canva && b.canva.id ? '' : ' class="btn-chinh"'}>${b.canva && b.canva.id ? 'Đưa ảnh mới sang Canva' : 'Đưa ảnh sang Canva'}</button>${b.canva && b.canva.sua ? `<a class="btn" href="${esc(b.canva.sua)}" target="_blank" rel="noopener">Mở lại thiết kế cũ</a>` : ''}</div></li>
+            <li><b>Sửa trên Canva</b> (thêm chữ, logo…). Canva tự lưu, không cần tải về. Sửa xong chờ 3–5 giây cho Canva lưu.</li>
+            <li><b>Quay lại đây, lấy ảnh về.</b>
+              <div class="actions"><button id="canvaLay"${b.canva && b.canva.id ? ' class="btn-chinh"' : ' disabled'}>Lấy ảnh từ Canva làm ảnh bìa</button></div></li>
+          </ol>
+          <p id="canvaKQ" class="muted">${trangThaiCanva(b)}</p>
+        </details>
+        <details class="cham-ds"><summary>Cách 2. Gemini làm bìa từ ảnh đầu</summary>
+          <select id="gmKieu"><option value="SANG">Giữ ảnh thật, chỉ chỉnh sáng</option><option value="CHU">In chữ trên bìa lên ảnh</option></select>
+          <div class="actions"><button id="geminiBia">Gemini làm bìa</button></div>
+          <p class="muted">Tốn khoảng 1.700đ/ảnh, cần bật thanh toán cho khoá Gemini.</p>
+        </details>
+        <details id="cach3" class="cham-ds"><summary>Cách 3. Dựng bìa ngay trên máy (miễn phí)</summary>
+          <div class="loc">${Object.entries(MAU_BIA).map(([k, t]) => `<button data-mau="${k}" class="${k === (b.mauBia || 'TRAN') ? 'on' : ''}">${t}</button>`).join('')}</div>
+          <p id="biaXem" class="muted">Xem trước (chưa phải ảnh bìa, bấm "Dùng ảnh này làm bìa" mới thay):</p>
+          <canvas id="bia" class="bia"></canvas>
+          <div class="actions"><button id="luuBia">Dùng ảnh này làm bìa</button><button id="guiCanva">Chia sẻ sang app Canva</button>
+            <label class="btn">Thay bằng ảnh từ máy<input id="biaTuMay" type="file" accept="image/*" hidden></label></div>
+        </details>`}` : ''}
     ${b.trangThai === 'DUYET' || daDang ? `<h3>Đăng</h3>${(b.kenh || []).map(dongKenh).join('')}` : coBai ? `<h3>Chép để đăng tay</h3>${(b.kenh || []).map((k) => `<div class="row bd-kenh"><b>${KENH[k]}</b><button class="nho-nut" data-chep="${k}">Chép chữ</button></div>`).join('')}` : ''}
     <div class="actions">
       ${vaiTro === 'THAY' && coBai && (b.trangThai === 'CHO_DUYET' || b.trangThai === 'NHAP') ? '<button id="duyet" class="btn-chinh">Duyệt bài</button>' : ''}
@@ -3077,7 +3103,7 @@ function ganMotBai(b) {
     const o = $('#bAnh');
     if (!o) return;
     if (!ids.length) { o.innerHTML = '<p class="muted">Chưa có ảnh.</p>'; return; }
-    o.innerHTML = ids.map((id, i) => `<div class="bd-o"><img data-thu="${esc(id)}" alt="">${daDang ? '' : `<div class="bd-nut">${i ? `<button data-dau="${esc(id)}" title="Đưa lên đầu">↑</button>` : '<span class="muted">Bìa</span>'}<button data-bo="${esc(id)}" title="Bỏ">✕</button></div>`}</div>`).join('');
+    o.innerHTML = ids.map((id, i) => `<div class="bd-o"><img data-thu="${esc(id)}" alt="">${daDang ? '' : `<div class="bd-nut">${i ? `<button data-dau="${esc(id)}" title="Đưa lên đầu">↑</button>` : '<span class="muted">Đầu</span>'}<button data-bo="${esc(id)}" title="Bỏ">✕</button></div>`}</div>`).join('');
     o.querySelectorAll('[data-dau]').forEach((x) => { x.onclick = () => { suaBai(db, b, { dsAnh: [x.dataset.dau, ...b.dsAnh.filter((y) => y !== x.dataset.dau)] }); luu(); manMotBai(b.id); }; });
     o.querySelectorAll('[data-bo]').forEach((x) => { x.onclick = () => { suaBai(db, b, { dsAnh: b.dsAnh.filter((y) => y !== x.dataset.bo) }); luu(); manMotBai(b.id); }; });
     await layThuAnh(ids);
@@ -3102,17 +3128,17 @@ function ganMotBai(b) {
   if (canvas) {
     veLaiBia();
     const dau = (b.dsAnh || [])[0];
-    if (dau) layAnhDayDu(dau).then((a) => taiAnh(a.base64, a.loai)).then((im) => { nen = im; veLaiBia(); }).catch(() => { $('#biaTT').textContent = 'Chưa tải được ảnh nền (cần mạng).'; });
-    else if (!b.anhBia) $('#biaTT').textContent = 'Thêm ảnh để làm nền ảnh bìa.';
+    if (dau) layAnhDayDu(dau).then((a) => taiAnh(a.base64, a.loai)).then((im) => { nen = im; veLaiBia(); }).catch(() => { $('#biaXem').textContent = 'Chưa tải được ảnh nền để xem trước (cần mạng).'; });
+    else $('#biaXem').textContent = 'Thêm ảnh ở mục Ảnh để làm nền.';
     ['bTieuDe', 'bPhuDe'].forEach((k) => { $('#' + k).addEventListener('input', veLaiBia); });
-    v.querySelectorAll('[data-mau]').forEach((x) => { x.onclick = () => { suaBai(db, b, { ...doc(), mauBia: x.dataset.mau }); luu(); manMotBai(b.id); }; });
+    v.querySelectorAll('[data-mau]').forEach((x) => { x.onclick = () => { suaBai(db, b, { ...doc(), mauBia: x.dataset.mau }); luu(); manMotBai(b.id); if ($('#cach3')) $('#cach3').open = true; }; });
     if ($('#luuBia')) $('#luuBia').onclick = async () => {
       if (!nen) return bao('Cần ảnh nền trước');
       const base64 = canvas.toDataURL('image/jpeg', 0.86).split(',')[1];
       const id = await xepAnhSan({ id: crypto.randomUUID(), ma: b.id, viec: 'BIA', tenFile: `${b.id}_bia_${Date.now()}.jpg`, base64, loai: 'BAI_DANG' });
       thuAnhBD.set(id, base64);
       suaBai(db, b, { ...doc(), anhBia: id }); luu();
-      bao('Đã lưu ảnh bìa' + (daKetNoi() ? ', đang gửi lên Drive' : ''));
+      bao('Đã thay ảnh bìa' + (daKetNoi() ? ', đang gửi lên Drive' : ''));
       chayDongBo();
       manMotBai(b.id);
     };
@@ -3156,12 +3182,16 @@ function ganMotBai(b) {
       boChoGui(db, b.id);
       x = await goi(action, { id: b.id, ...data });
       nhanBai(db, x.bai); luu();
-      if (x.anhId && x.base64) { anhDayDu.set(x.anhId, { base64: x.base64, loai: x.loai }); bao('Đã thay ảnh bìa, Thầy xem lại rồi duyệt'); }
+      if (x.anhId && x.base64) { anhDayDu.set(x.anhId, { base64: x.base64, loai: x.loai }); bao(action === 'canvaLay' ? 'Đã lấy ảnh từ Canva, ảnh bìa đã thay. Thầy xem lại rồi duyệt' : 'Đã thay ảnh bìa, Thầy xem lại rồi duyệt'); }
+      if (x.url) bao('Đã mở Canva. Sửa xong quay lại bấm bước 3');
       if (x.url) { if (cuaSo) cuaSo.location = x.url; else location.href = x.url; }
     } catch (e) { if (cuaSo) cuaSo.close(); bao(e.message); }
     dangGoiAI = false;
     nut.disabled = false; nut.textContent = cu;
-    if (location.hash === '#' + b.id && !(x && x.url && !cuaSo)) manMotBai(b.id);
+    if (location.hash === '#' + b.id && !(x && x.url && !cuaSo)) {
+      manMotBai(b.id);
+      if (x && x.anhId && $('.bia-dung')) $('.bia-dung').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   };
   if ($('#geminiBia')) $('#geminiBia').onclick = () => {
     if (!(b.dsAnh || []).length && !b.anhBia) return bao('Thêm ảnh công trình trước');
@@ -3169,12 +3199,15 @@ function ganMotBai(b) {
     if (kieu === 'CHU' && !$('#bTieuDe').value.trim()) return bao('Ghi chữ trên bìa trước');
     goiAnhBia($('#geminiBia'), 'geminiBia', { kieu, anhId: (b.dsAnh || [])[0], tieuDe: $('#bTieuDe').value.trim(), phuDe: $('#bPhuDe').value.trim() }, 'Gemini đang làm…');
   };
-  if ($('#canvaMo')) $('#canvaMo').onclick = () => {
-    if (b.canva && b.canva.sua && confirm('Mở lại thiết kế Canva đã tạo? (Huỷ để tạo thiết kế mới từ ảnh bìa hiện tại)')) { window.open(b.canva.sua, '_blank'); return; }
-    if (!b.anhBia && !(b.dsAnh || []).length) return bao('Chưa có ảnh để đưa sang Canva');
-    goiAnhBia($('#canvaMo'), 'canvaMo', {}, 'Đang đưa sang Canva…');
+  if ($('#canvaMo')) $('#canvaMo').onclick = async () => {
+    const goc = b.anhBia || (b.dsAnh || [])[0];
+    if (!goc) return bao('Chưa có ảnh để đưa sang Canva. Thêm ảnh ở mục Ảnh trước');
+    // Cắt sẵn khổ 1080×1350 để ảnh tràn khung Canva. Không cắt được (mất mạng) thì máy chủ tự lấy ảnh gốc.
+    let base64 = '';
+    try { const a = await layAnhDayDu(goc); base64 = catKho(document.createElement('canvas'), await taiAnh(a.base64, a.loai)).toDataURL('image/jpeg', 0.92).split(',')[1]; } catch { /* để máy chủ lấy */ }
+    goiAnhBia($('#canvaMo'), 'canvaMo', base64 ? { base64 } : {}, 'Đang đưa sang Canva…');
   };
-  if ($('#canvaLay')) $('#canvaLay').onclick = () => goiAnhBia($('#canvaLay'), 'canvaLay', {}, 'Đang lấy ảnh…');
+  if ($('#canvaLay')) $('#canvaLay').onclick = () => goiAnhBia($('#canvaLay'), 'canvaLay', {}, 'Đang lấy ảnh từ Canva…');
   if ($('#ptThuVien')) $('#ptThuVien').onclick = () => { suaBai(db, b, doc()); luu(); moThuVienPT(b); };
   // AI viết từng nhóm kênh (máy chủ chờ tối đa khoảng 60 giây mỗi lần).
   if ($('#vietAI')) $('#vietAI').onclick = async () => {
