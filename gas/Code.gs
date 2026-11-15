@@ -1033,6 +1033,9 @@ function goiGemini(model, anh, loi) {
     try { j = JSON.parse(r.getContentText()); } catch (e) { j = {}; }
     if (!(r.getResponseCode() === 400 && /aspect/i.test(r.getContentText()))) break;
   }
+  if (r.getResponseCode() === 429 && /free.?tier|limit: ?0/i.test(r.getContentText())) {
+    throw new Error('Gemini chưa bật thanh toán: model làm ảnh không có lượt miễn phí. Thầy bật Billing cho khoá Gemini trong aistudio.google.com (xem hướng dẫn cài, mục Gemini), hoặc dùng Canva / dựng bìa trên máy.');
+  }
   if (r.getResponseCode() !== 200) throw new Error('Gemini lỗi ' + r.getResponseCode() + ': ' + ((j.error && j.error.message) || r.getContentText().slice(0, 200)));
   themDong('ChiAI', { luc: new Date().toISOString(), viec: 'Gemini ảnh bìa', model, vao: 0, ra: 0, timWeb: 0, usd: GIA_GEMINI[model] || 0 });
   const khoi = [];
@@ -1154,7 +1157,10 @@ Object.assign(HANH_DONG, {
   canvaMo: (n, data) => {
     canVanPhong(n);
     const b = timBai(data.id);
-    const anh = anhGoc(b, data.anhId);
+    if (b.trangThai === 'DA_DANG') throw new Error('Bài đã đăng');
+    // Máy đã cắt sẵn ảnh bìa khổ 1080×1350 thì dùng luôn (ảnh tràn khung Canva, không có viền trắng); không thì lấy ảnh gốc.
+    const b64 = typeof data.base64 === 'string' && data.base64.length > 100 && data.base64.length < 15e6 ? data.base64 : '';
+    const anh = b64 ? Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', 'bia.jpg') : anhGoc(b, data.anhId);
     const up = goiCanva('post', '/asset-uploads', {
       contentType: 'application/octet-stream', payload: anh.getBytes(),
       headers: { 'Asset-Upload-Metadata': JSON.stringify({ name_base64: Utilities.base64Encode(('KAS ' + b.id).slice(0, 50), Utilities.Charset.UTF_8) }) },
@@ -1179,6 +1185,7 @@ Object.assign(HANH_DONG, {
     if (r.getResponseCode() !== 200) throw new Error('Không tải được ảnh từ Canva (' + r.getResponseCode() + ')');
     const anh = r.getBlob().setContentType('image/jpeg');
     const id = luuAnhBai(n, b.id, anh, 'CANVA');
+    capNhatDong('BaiDang', (x) => x.id === b.id, { canva: Object.assign({}, b.canva, { layLuc: new Date().toISOString(), anhId: id }) }, true);
     datAnhBia(b, id);
     return { bai: traBai(timBai(b.id)), anhId: id, loai: 'image/jpeg', base64: Utilities.base64Encode(anh.getBytes()) };
   },

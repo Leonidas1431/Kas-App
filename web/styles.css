@@ -193,4 +193,8 @@ textarea.rat-cao { min-height: 360px; }
 .tv-tl { display: block; width: 100%; text-align: left; }
 .tv-tl .muted { display: block; }
 .tv-chu { white-space: pre-wrap; max-height: 50vh; overflow-y: auto; padding: 12px; border: 1px solid var(--vien); border-radius: 8px; font-size: 15px; line-height: 1.55; user-select: text; -webkit-user-select: text; }
+.bia-dung { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; padding: 10px 14px; margin: 8px 0; }
+.bia-dung p { margin: 8px 0 0; }
+ol.buoc { padding-left: 20px; margin: 8px 0; }
+ol.buoc li { margin: 0 0 10px; }
 img.bia { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 8px; }
