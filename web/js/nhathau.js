@@ -88,7 +88,7 @@ export function canDanhGia(db, nguoi) {
 const laThietKe = (v) => /^Thiết kế/.test(String(v.nhom || ''));
 export function congTrinhCanAnh(db, homNay, daXong = () => false) {
   return (db.congTrinh || []).filter((ct) => ct.loai !== 'TK' && !daXong(ct.ma) && ct.khoiCong <= homNay && sucLam(homNay, ct.lich) > 0
-    && viecHomNay(ct, homNay).some(({ v, nhan }) => nhan !== 'SAP' && !laThietKe(v)));
+    && viecHomNay(ct, homNay).some(({ v, nhan }) => nhan !== 'SAP' && nhan !== 'CHO' && !laThietKe(v)));
 }
 
 // Đã có ảnh hôm nay chưa: theo máy chủ (bảng Anh) hoặc ảnh chụp trên máy này hôm nay.

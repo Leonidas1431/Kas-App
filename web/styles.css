@@ -38,7 +38,7 @@ h3 { font-size: 16px; margin: 20px 0 8px; color: var(--mo); text-transform: uppe
 .tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
 .tag.TRE { background: var(--tre-nhat); color: var(--tre); }
 .tag.DANG { background: var(--dang-nhat); color: var(--dang); }
-.tag.SAP { background: var(--sap-nhat); color: var(--sap); }
+.tag.SAP, .tag.CHO { background: var(--sap-nhat); color: var(--sap); }
 .tag.XONG { background: var(--chinh-nhat); color: var(--chinh); }
 .bar { height: 8px; background: var(--vien); border-radius: 99px; overflow: hidden; margin-top: 8px; }
 .bar > i { display: block; height: 100%; background: var(--dang); }

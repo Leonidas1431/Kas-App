@@ -22,8 +22,8 @@ export function ghi(db) {
 
 export const taoMa = () => Math.random().toString(36).slice(2, 10);
 
-export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive, maKhach }) {
-  const viec = taoTuThuVien(thuVien, loai);
+export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNha, thuMucDrive, maKhach, soTang }) {
+  const viec = taoTuThuVien(thuVien, loai, soTang);
   const ct = { ma, ten, loai, khoiCong, lich, chuNha: chuNha || '', thuMucDrive: thuMucDrive || '', maKhach: maKhach || '', maLinkChuNha: taoMa() + taoMa(), viec, taoLuc: new Date().toISOString() };
   const lichGoc = xepLich(viec, khoiCong, lich);
   for (const v of viec) v.goc = lichGoc.get(v.id);
@@ -33,8 +33,19 @@ export function taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, chuNh
 }
 
 // Ngày hiện tại của từng việc, tính lại từ số ngày, ràng buộc và ngày thực tế.
-export function lichHienTai(ct) {
-  return xepLich(ct.viec, ct.khoiCong, ct.lich);
+// Truyền `homNay` để lấy dự báo: việc quá hạn chưa xong và việc sau nó lùi tới hôm nay.
+export function lichHienTai(ct, homNay = '') {
+  return xepLich(ct.viec, ct.khoiCong, ct.lich, homNay);
+}
+
+// Việc chưa bắt đầu, đi sau (xong mới làm) một việc ĐANG làm dở → đang chờ, không tính trễ.
+// Việc trước còn 0% thì không coi là chờ (có thể chỉ là chưa ai bấm cập nhật): việc vẫn hiện theo kế hoạch.
+export function dangCho(ct, v) {
+  if (Number(v.phanTram) > 0 || (v.thucTe && v.thucTe.batDau)) return false;
+  return (v.diSau || []).some((p) => {
+    const t = ct.viec.find((x) => x.id === p.id);
+    return !!t && p.kieu === 'XS' && t.phanTram > 0 && t.phanTram < 100;
+  });
 }
 
 export function capNhatTienDo(db, ct, viecId, phanTram, nguoi, homNay) {
@@ -94,15 +105,16 @@ export function day(db, thayDoi) {
 
 // Đã làm được bao nhiêu % (theo ngày công) so với kế hoạch tính đến hôm nay.
 export function tongHop(ct, homNay) {
-  const lich = lichHienTai(ct);
+  const keHoachHien = lichHienTai(ct);
+  // Lịch hiển thị = dự báo theo hôm nay, để ngày xong công trình không đứng yên khi có việc quá hạn.
+  const lich = lichHienTai(ct, homNay);
   let tong = 0, thucTe = 0, keHoach = 0, tre = 0;
   for (const v of ct.viec) {
     const w = v.soNgay;
     tong += w;
     thucTe += (w * v.phanTram) / 100;
     keHoach += w * tyLeKeHoach(v.goc, homNay, ct.lich);
-    const hien = lich.get(v.id);
-    if (v.phanTram < 100 && hien.ketThuc < homNay) tre++;
+    if (laTre(ct, v, keHoachHien, homNay)) tre++;
   }
   const ketThuc = [...lich.values()].reduce((m, x) => (x.ketThuc > m ? x.ketThuc : m), ct.khoiCong);
   const ketThucGoc = ct.viec.reduce((m, v) => (v.goc.ketThuc > m ? v.goc.ketThuc : m), ct.khoiCong);
@@ -113,8 +125,12 @@ export function tongHop(ct, homNay) {
     ketThuc,
     ketThucGoc,
     lich,
+    keHoachHien,
   };
 }
+
+// Trễ = quá ngày xong theo kế hoạch hiện tại mà chưa xong, và không phải đang chờ việc trước.
+export const laTre = (ct, v, keHoachHien, homNay) => v.phanTram < 100 && keHoachHien.get(v.id).ketThuc < homNay && !dangCho(ct, v);
 
 function tyLeKeHoach(goc, homNay, lichNghi) {
   if (homNay < goc.batDau) return 0;
@@ -131,17 +147,20 @@ function tyLeKeHoach(goc, homNay, lichNghi) {
 // Việc cần quan tâm hôm nay: đang chạy, sắp bắt đầu trong 3 ngày, hoặc đã trễ.
 export function viecHomNay(ct, homNay) {
   const lich = lichHienTai(ct);
+  const duBao = lichHienTai(ct, homNay);
   const sap = addDays(homNay, 3);
   const out = [];
   for (const v of ct.viec) {
     if (v.phanTram >= 100) continue;
-    const t = lich.get(v.id);
-    const tre = t.ketThuc < homNay;
+    const cho = dangCho(ct, v);
+    // Việc đang chờ việc trước: lấy ngày dự báo; việc khác giữ ngày kế hoạch để thấy trễ bao nhiêu.
+    const t = cho ? duBao.get(v.id) : lich.get(v.id);
+    const tre = !cho && t.ketThuc < homNay;
     const dang = t.batDau <= homNay && !tre;
     const sapToi = t.batDau > homNay && t.batDau <= sap;
-    if (tre || dang || sapToi) out.push({ v, t, nhan: tre ? 'TRE' : dang ? 'DANG' : 'SAP' });
+    if (tre || dang || sapToi) out.push({ v, t, nhan: tre ? 'TRE' : cho ? 'CHO' : dang ? 'DANG' : 'SAP' });
   }
-  const thuTu = { TRE: 0, DANG: 1, SAP: 2 };
+  const thuTu = { TRE: 0, DANG: 1, SAP: 2, CHO: 3 };
   return out.sort((a, b) => thuTu[a.nhan] - thuTu[b.nhan] || a.t.batDau.localeCompare(b.t.batDau));
 }
 
