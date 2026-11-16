@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rong } from '../web/js/store.js';
-import { taoBai, suaBai, xoaBai, nhanBai, boChoGui, dauTuan, lichTuan, choDuyet, choDangTay, loiDang, goiYCongTrinh, chiAIThang, chuDeChep, nhomViet,
+import { taoBai, suaBai, xoaBai, nhanBai, boChoGui, dauTuan, lichTuan, choDuyet, choDangTay, loiDang, goiYCongTrinh, chiAIThang, hanMucAI, soVoiHan, chuDeChep, nhomViet,
   kiemTruocKhiViet, caiDatBD, kenhXong } from '../web/js/dangbai.js';
 
 test('mặc định Thầy chốt: FB 3, TikTok 1, web 1 bài/tuần, Sonnet 5.5, web lưu nháp', () => {
@@ -72,8 +72,8 @@ test('gợi ý công trình cho đăng ảnh chưa có bài; chi AI tháng; ch�
   db.congTrinh = [{ ma: 'A', choDangAnh: true, viec: [] }, { ma: 'B', choDangAnh: false, viec: [] }, { ma: 'C', choDangAnh: true, viec: [] }];
   taoBai(db, { maCongTrinh: 'C' }, 'THAY');
   assert.deepEqual(goiYCongTrinh(db).map((c) => c.ma), ['A']);
-  db.chiAI = [{ luc: '2026-11-02T01:00:00Z', usd: 0.06 }, { luc: '2026-11-12T01:00:00Z', usd: 0.125 }, { luc: '2026-10-30T01:00:00Z', usd: 1 }];
-  assert.deepEqual(chiAIThang(db, '2026-11-13'), { lan: 2, usd: 0.19 });
+  db.chiAI = [{ luc: '2026-11-02T01:00:00Z', model: 'claude-sonnet-5-5', usd: 0.06 }, { luc: '2026-11-12T01:00:00Z', model: 'gemini-3.1-flash-image', usd: 0.125 }, { luc: '2026-10-30T01:00:00Z', usd: 1 }];
+  assert.deepEqual(chiAIThang(db, '2026-11-13'), { lan: 2, usd: 0.19, claude: { lan: 1, usd: 0.06 }, gemini: { lan: 1, usd: 0.13 } });
   const b = { baiViet: { fb: 'F', tt: { tieuDe: 'T', chuThich: 'C', kichBan: 'K' }, web: { tieuDe: 'W', moTa: 'M', noiDung: 'N' } } };
   assert.equal(chuDeChep(b, 'IG'), 'F');
   assert.equal(chuDeChep(b, 'TT'), 'T\n\nC');
@@ -107,4 +107,16 @@ test('khổ ảnh bìa theo kênh: Facebook, Instagram, TikTok dọc 4:5; websit
   assert.deepEqual(dsDichBia(['WEB']), ['WEB']);
   assert.deepEqual(dsDichBia(['TT', 'WEB']), ['MXH', 'WEB']);
   assert.deepEqual([KHO_BIA.MXH.w, KHO_BIA.MXH.h, KHO_BIA.WEB.w, KHO_BIA.WEB.h], [1080, 1350, 1200, 675]);
+});
+
+test('hạn mức chi AI: mặc định Gemini 100.000đ, cảnh báo từ 90%, vượt từ 100%', () => {
+  const h = hanMucAI({});
+  assert.deepEqual(h, { aiTyGia: 25400, aiHanClaude: 0, aiHanGemini: 100000 });
+  assert.equal(hanMucAI({ aiHanClaude: '500000', aiTyGia: 'x' }).aiHanClaude, 500000);
+  assert.equal(hanMucAI({ aiTyGia: '0' }).aiTyGia, 25400);
+  assert.equal(soVoiHan({ lan: 1, usd: 3 }, 100000, 25400).muc, '');
+  assert.equal(soVoiHan({ lan: 1, usd: 3.6 }, 100000, 25400).muc, 'GAN');
+  assert.equal(soVoiHan({ lan: 1, usd: 4 }, 100000, 25400).muc, 'VUOT');
+  assert.equal(soVoiHan({ lan: 1, usd: 4 }, 0, 25400).pct, null);
+  assert.equal(soVoiHan({ lan: 1, usd: 4 }, 0, 25400).dong, 101600);
 });

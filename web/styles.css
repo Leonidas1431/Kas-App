@@ -198,3 +198,6 @@ textarea.rat-cao { min-height: 360px; }
 ol.buoc { padding-left: 20px; margin: 8px 0; }
 ol.buoc li { margin: 0 0 10px; }
 img.bia { display: block; width: 100%; max-width: 420px; height: auto; border-radius: 8px; }
+.so-lieu.chi-ai { grid-template-columns: 1fr 1fr; margin-top: 0; }
+.so-lieu > a.canh { border: 2px solid var(--tre); }
+.so-lieu > a.canh b { color: var(--tre); }

@@ -31,7 +31,7 @@ import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPha
 import { xepAnh, xepAnhLayMa, xepAnhSan, anhCho, demCho, guiAnhCho } from './anh.js';
 import {
   KENH, KENH_TU_DONG, LOAI_BAI, TT_BAI, MAC_DINH_BD, MODEL, caiDatBD, timBai, taoBai, suaBai, xoaBai, nhanBai, boChoGui, kenhXong, kenhLoi, coLoi,
-  MODEL_ANH, dauTuan, lichTuan, choDuyet, chuaHen, loiDang, choDangTay, daDangGanDay, goiYCongTrinh, chiAIThang, chuDeChep, nhomViet, kiemTruocKhiViet,
+  MODEL_ANH, dauTuan, lichTuan, choDuyet, chuaHen, loiDang, choDangTay, daDangGanDay, goiYCongTrinh, chiAIThang, hanMucAI, soVoiHan, MAC_DINH_HAN, chuDeChep, nhomViet, kiemTruocKhiViet,
 } from './dangbai.js';
 import { MAU_BIA, veBia, taiAnh, catKho, KHO_BIA, dsDichBia } from './anhbia.js';
 
@@ -150,7 +150,7 @@ function manHomNay() {
   datTab('hom-nay', 'Hôm nay ' + ddmm(homNay()));
   const v = $('#view');
   const hn = homNay();
-  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
+  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? chiAIHomNay(hn) + khachHomNay(hn) + tienHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
@@ -2868,6 +2868,18 @@ function theBai(b) {
 }
 
 // Hôm nay (văn phòng): bài chờ Thầy duyệt, bài đến ngày phải đăng tay TikTok, bài đăng lỗi; từ thứ 5 nhắc tuần còn thiếu bài.
+// Chi AI tháng này ngay đầu màn Hôm nay (chỉ văn phòng, máy chủ chỉ gửi bảng ChiAI cho văn phòng). Chạm để mở Đăng bài.
+function chiAIHomNay(hn) {
+  const ai = chiAIThang(db, hn), h = hanMucAI(db.caiDat);
+  const usd = (x) => String(x).replace('.', ',') + ' USD';
+  const o = (ten, x0, han) => {
+    const x = soVoiHan(x0, han, h.aiTyGia);
+    const canh = x.muc === 'VUOT' ? `<span class="tre">Vượt hạn mức ${x.pct}%</span>` : x.muc === 'GAN' ? `<span class="tre">Đã ${x.pct}% hạn mức</span>` : x.han ? `<span>${x.pct}% hạn mức ${tienGon(x.han)}</span>` : `<span>${x.lan} lần gọi</span>`;
+    return `<a href="#dang-bai" class="${x.muc ? 'canh' : ''}"><span>${ten}</span><b>${usd(x.usd)}</b><span>≈ ${tienGon(x.dong)}</span>${canh}</a>`;
+  };
+  return `<div class="so-lieu chi-ai">${o('Claude tháng ' + hn.slice(5, 7), ai.claude, h.aiHanClaude)}${o('Gemini tháng ' + hn.slice(5, 7), ai.gemini, h.aiHanGemini)}</div>`;
+}
+
 function baiHomNay(hn) {
   if (!laVanPhong()) return '';
   const cho = choDuyet(db), tay = choDangTay(db, hn), loi = loiDang(db);
@@ -2915,7 +2927,11 @@ function manDangBai() {
       <label class="f">Bài website khi đăng</label><select id="bdWebTrangThai"><option value="draft" ${cd.bdWebTrangThai === 'draft' ? 'selected' : ''}>Lưu nháp trên web, Thầy xem rồi bấm đăng</option><option value="publish" ${cd.bdWebTrangThai === 'publish' ? 'selected' : ''}>Đăng luôn</option></select>
       <label class="f">Chuyên mục website mặc định</label><span id="oCM">${ochonChuyenMuc('bdWebChuyenMuc', chuyenMucMD())}</span>
       ${vaiTro === 'THAY' ? '<div class="actions"><button id="kiemWP">Kiểm tra kết nối website</button></div><p id="wpTT" class="muted"></p>' : ''}
-      <p class="muted">Chi AI tháng này (Claude + Gemini): ${ai.lan} lần gọi, khoảng ${String(ai.usd).replace('.', ',')} USD.</p>
+      <p class="muted">Chi AI tháng này: Claude ${String(ai.claude.usd).replace('.', ',')} USD (${ai.claude.lan} lần), Gemini ${String(ai.gemini.usd).replace('.', ',')} USD (${ai.gemini.lan} ảnh). Màn Hôm nay cũng hiện số này.</p>
+      <div class="hai-cot"><div><label class="f">Hạn mức Claude/tháng (đ)</label><input id="aiHanClaude" inputmode="numeric" value="${esc((db.caiDat || {}).aiHanClaude ?? '')}" placeholder="Không đặt"></div>
+        <div><label class="f">Hạn mức Gemini/tháng (đ)</label><input id="aiHanGemini" inputmode="numeric" value="${esc((db.caiDat || {}).aiHanGemini ?? '')}" placeholder="${MAC_DINH_HAN.aiHanGemini}"></div></div>
+      <label class="f">Tỷ giá quy đổi (đ/USD)</label><input id="aiTyGia" inputmode="numeric" value="${esc((db.caiDat || {}).aiTyGia ?? '')}" placeholder="${MAC_DINH_HAN.aiTyGia}">
+      <p class="muted">Đạt 90% hạn mức thì ô chi AI ở màn Hôm nay chuyển đỏ.</p>
       <div class="actions"><button id="luuBD" class="btn-chinh">Lưu</button></div>
       <h4>Canva</h4><p id="canvaTT" class="muted">${daKetNoi() ? 'Đang kiểm tra…' : 'Bản thử: cần nối máy chủ.'}</p>
       ${vaiTro === 'THAY' ? '<div class="actions"><button id="noiCanva">Nối Canva</button></div>' : ''}
@@ -2972,6 +2988,7 @@ function manDangBai() {
     datCaiDat(db, 'bdGio', $('#bdGio').value || '');
     datCaiDat(db, 'bdModel', $('#bdModel').value);
     datCaiDat(db, 'bdGemini', $('#bdGemini').value);
+    ['aiHanClaude', 'aiHanGemini', 'aiTyGia'].forEach((k) => datCaiDat(db, k, String($('#' + k).value).replace(/[^\d]/g, '')));
     datCaiDat(db, 'bdWebTrangThai', $('#bdWebTrangThai').value);
     datCaiDat(db, 'bdWebChuyenMuc', String(Number($('#bdWebChuyenMuc').value) || ''));
     luu(); bao('Đã lưu cài đặt đăng bài'); manDangBai();
