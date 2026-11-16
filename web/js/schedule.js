@@ -66,9 +66,12 @@ export function congNgayLam(ngay, soNgay, lich) {
  * Xếp lịch cho danh sách việc.
  * viec: { id, soNgay, diSau: [{ id, kieu: 'XS'|'GD'|'CC', goi }], batDauCoDinh?, thucTe?: { batDau?, ketThuc? } }
  * Việc đã có ngày thực tế thì dùng ngày thực tế để đẩy các việc sau.
+ * Cuốn chiếu (CC): bắt đầu theo việc trước như gối đầu, và không xong trước việc trước (+ số ngày gối).
+ * Có `homNay` thì tính dự báo: việc chưa bắt đầu không thể bắt đầu trước hôm nay,
+ * việc đang làm đã quá hạn thì coi như xong sớm nhất hôm nay; các việc sau lùi theo.
  * Trả về Map id → { batDau, ketThuc }.
  */
-export function xepLich(viec, khoiCong, lich) {
+export function xepLich(viec, khoiCong, lich, homNay = '') {
   const theoId = new Map(viec.map((v) => [v.id, v]));
   const kq = new Map();
   const dangXet = new Set();
@@ -79,6 +82,7 @@ export function xepLich(viec, khoiCong, lich) {
     dangXet.add(id);
     const v = theoId.get(id);
     let bd = v.batDauCoDinh || khoiCong;
+    let ktToiThieu = '';
     for (const p of v.diSau || []) {
       if (!theoId.has(p.id)) continue;
       const t = tinh(p.id);
@@ -86,10 +90,18 @@ export function xepLich(viec, khoiCong, lich) {
       const moc = p.kieu === 'XS' ? congNgayLam(t.ketThuc, 1, lich) : t.batDau;
       const bdTheoP = goi ? congNgayLam(moc, goi, lich) : moc;
       if (!v.batDauCoDinh && bdTheoP > bd) bd = bdTheoP;
+      if (p.kieu === 'CC') {
+        const kt = goi ? congNgayLam(t.ketThuc, goi, lich) : t.ketThuc;
+        if (kt > ktToiThieu) ktToiThieu = kt;
+      }
     }
     const thucTe = v.thucTe || {};
+    const chuaXong = !thucTe.ketThuc && !(Number(v.phanTram) >= 100);
+    if (homNay && chuaXong && !thucTe.batDau && bd < homNay) bd = homNay;
     const batDau = thucTe.batDau || ngayLamTiepTheo(bd, lich);
-    const ketThuc = thucTe.ketThuc || ngayKetThuc(batDau, v.soNgay, lich);
+    let ketThuc = thucTe.ketThuc || ngayKetThuc(batDau, v.soNgay, lich);
+    if (!thucTe.ketThuc && ktToiThieu > ketThuc) ketThuc = ktToiThieu;
+    if (homNay && chuaXong && ketThuc < homNay) ketThuc = ngayLamTiepTheo(homNay, lich);
     const r = { batDau, ketThuc };
     dangXet.delete(id);
     kq.set(id, r);
@@ -116,8 +128,8 @@ export function leCanHoi(tu, den, lich) {
  * Tạo kế hoạch công trình từ thư viện hạng mục.
  * `loai` là một trong TK, XM, CT, NTCT, NT. `diSau` dạng "A|B": lấy A nếu có, không thì B.
  */
-export function taoTuThuVien(thuVien, loai) {
-  const chon = thuVien.filter((r) => r.loai.split(/\s+/).includes(loai));
+export function taoTuThuVien(thuVien, loai, soTang = 1) {
+  const chon = nhanTang(thuVien.filter((r) => r.loai.split(/\s+/).includes(loai)), soTang);
   const co = new Set(chon.map((r) => r.ma));
   return chon.map((r, i) => {
     const pred = (r.di_sau || '').split('|').find((m) => co.has(m));
@@ -136,4 +148,33 @@ export function taoTuThuVien(thuVien, loai) {
       trangThai: 'CHUA',
     };
   });
+}
+
+// Dòng "(lặp theo số tầng)" trong thư viện: nhân bản cho từng tầng, tầng sau làm sau khi tầng trước xong.
+// Tầng 1 giữ mã gốc (TH01…) để các việc khác vẫn nối được; tầng k mang mã TH01-Tk. Việc nào đi sau
+// dòng cuối của khối lặp (vd tháo cốp pha đi sau TH03) thì nối sang dòng cuối của tầng trên cùng.
+function nhanTang(rows, soTang) {
+  const lap = rows.filter((r) => /lặp theo số tầng/i.test(r.hang_muc));
+  if (!lap.length) return rows;
+  const n = Math.max(1, Math.min(30, Math.floor(Number(soTang)) || 1));
+  const maLap = new Set(lap.map((r) => r.ma));
+  const cuoi = lap[lap.length - 1].ma;
+  const maTang = (ma, k) => (k === 1 ? ma : `${ma}-T${k}`);
+  const ten = (r, k) => `Tầng ${k}: ${r.dau_viec || 'kết cấu'}`;
+  const out = [];
+  for (const r of rows) {
+    if (maLap.has(r.ma)) {
+      if (r.ma !== lap[0].ma) continue;
+      for (let k = 1; k <= n; k++) {
+        lap.forEach((x, j) => {
+          const diSau = j === 0 ? (k === 1 ? x.di_sau : maTang(cuoi, k - 1)) : maTang(lap[j - 1].ma, k);
+          out.push({ ...x, ma: maTang(x.ma, k), hang_muc: ten(x, k), dau_viec: '', di_sau: diSau, kieu: j === 0 && k > 1 ? 'XS' : x.kieu, goi: j === 0 && k > 1 ? '' : x.goi });
+        });
+      }
+      continue;
+    }
+    const ds = String(r.di_sau || '').split('|').map((m) => (m === cuoi ? maTang(cuoi, n) : m)).join('|');
+    out.push({ ...r, di_sau: ds });
+  }
+  return out;
 }

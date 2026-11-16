@@ -1,8 +1,8 @@
-import { LICH, KIEU_NOI, leCanHoi, diffDays, addDays, xepLich } from './schedule.js';
+import { LICH, KIEU_NOI, leCanHoi, diffDays, addDays, xepLich, taoTuThuVien } from './schedule.js';
 import { suaViec, themViec, xoaViec, suaCongTrinh, chotKeHoachGoc, xemTruoc, dsNhaThau } from './kehoach.js';
 import {
   doc, ghi, taoCongTrinh, lichHienTai, capNhatTienDo, baoCham, ghiChu, tongHop, viecHomNay, datCongKhai,
-  NGUYEN_NHAN, LOAI_HINH, VAI_TRO, VAN_PHONG, rong, datCaiDat,
+  NGUYEN_NHAN, LOAI_HINH, VAI_TRO, VAN_PHONG, rong, datCaiDat, laTre,
 } from './store.js';
 import {
   TRANG_THAI, DANG_THEO, NGUON, LY_DO_MAT, NHU_CAU_LOAI, O_NHU_CAU, taoKhach, timTheoSdt, suaKhach, doiTrangThai, daGoi,
@@ -172,7 +172,7 @@ function manHomNay() {
 }
 
 function theViec(ct, x, t, nhan) {
-  const nhanChu = { TRE: `Trễ ${diffDays(t.ketThuc, homNay())} ngày`, DANG: 'Đang làm', SAP: `Bắt đầu ${ddmm(t.batDau)}` }[nhan];
+  const nhanChu = { TRE: `Trễ ${diffDays(t.ketThuc, homNay())} ngày`, DANG: 'Đang làm', SAP: `Bắt đầu ${ddmm(t.batDau)}`, CHO: 'Chờ việc trước' }[nhan];
   return `<button class="card" data-ct="${esc(ct.ma)}" data-viec="${esc(x.id)}">
     <div class="row"><span class="name">${esc(x.hangMuc)}</span><span class="tag ${nhan}">${nhanChu}</span></div>
     <div class="muted">${esc(x.nhom)} · ${ddmm(t.batDau)}–${ddmm(t.ketThuc)}${x.moc ? ` · Mốc: ${esc(x.moc)}` : ''}</div>
@@ -202,7 +202,7 @@ function moViec(maCt, id) {
     <div class="actions">
       <label class="btn" style="text-align:center">📷 Chụp ảnh<input id="anh" type="file" accept="image/*" capture="environment" multiple hidden></label>
       <button id="zalo">Gửi Zalo</button>
-      <button id="cham" class="btn-do">Báo chậm</button>
+      ${x.phanTram < 100 ? '<button id="cham" class="btn-do">Báo chậm</button>' : ''}
     </div>
     ${x.phanTram >= 100 && canNghiemThu(x) ? (() => { const r = ketQuaViec(db, ct, x); return `<div class="actions"><button id="nthu" class="${r.tt === 'CHUA' ? 'btn-chinh' : ''}">${r.tt === 'CHUA' ? '✅ Nghiệm thu việc này' : `Nghiệm thu lại · ${TAG_NTHU[r.tt][1].toLowerCase()}${r.con.length ? ' ' + r.con.length : ''}`}</button></div>`; })() : ''}
     ${laVanPhong() ? '<div class="actions"><button id="suaViec">✏️ Sửa việc: số ngày, khối lượng, thầu, việc đi trước</button></div>' : ''}
@@ -230,7 +230,7 @@ function moViec(maCt, id) {
     await guiAnhHienTruong(files, ct.ma, id);
   };
   $('#zalo', d).onclick = () => chiaSe(`[${ct.ma}] ${x.hangMuc}\nLịch: ${ddmm(t.batDau)} – ${ddmm(t.ketThuc)}\nTiến độ: ${x.phanTram}%`);
-  $('#cham', d).onclick = () => moBaoCham(ct, x);
+  if ($('#cham', d)) $('#cham', d).onclick = () => moBaoCham(ct, x);
   if ($('#suaViec', d)) $('#suaViec', d).onclick = () => moSuaViec(ct, id);
   if ($('#nthu', d)) $('#nthu', d).onclick = () => moNghiemThu(ct, x);
   $('#dong', d).onclick = () => d.close();
@@ -342,7 +342,7 @@ function manCongTrinh(ma) {
   const rows = ct.viec.map((x) => {
     const t = lich.get(x.id);
     const g = x.nhom !== nhom ? `<div class="g-group">${esc((nhom = x.nhom))}</div>` : '';
-    const cls = x.phanTram >= 100 ? 'xong' : t.ketThuc < hn ? 'tre' : '';
+    const cls = x.phanTram >= 100 ? 'xong' : laTre(ct, x, th.keHoachHien, hn) ? 'tre' : '';
     return `${g}<div class="g-row" data-viec="${esc(x.id)}" data-ct="${esc(ct.ma)}" role="button" tabindex="0">
       <div class="g-name" title="${esc(x.hangMuc)}">${esc(x.hangMuc)}</div>
       <div class="g-track"><span class="g-goc" style="${pos(x.goc.batDau, x.goc.ketThuc)}"></span><span class="g-hien ${cls}" style="${pos(t.batDau, t.ketThuc)}"></span></div>
@@ -441,7 +441,8 @@ function manSuaKeHoach(ma) {
     });
     const kt = ketThucCuoi(l);
     const lech = diffDays(gocCuoi, kt);
-    $('#khTong').innerHTML = `Xong dự kiến <b>${fmtNgay(kt)}</b> · kế hoạch gốc ${fmtNgay(gocCuoi)}${lech ? ` (<span class="${lech > 0 ? 'tre' : ''}">${lech > 0 ? 'chậm' : 'sớm'} ${Math.abs(lech)} ngày</span>)` : ''}`;
+    const db2 = ketThucCuoi(lichHienTai(ct, homNay()));
+    $('#khTong').innerHTML = `Xong theo kế hoạch <b>${fmtNgay(kt)}</b> · kế hoạch gốc ${fmtNgay(gocCuoi)}${lech ? ` (<span class="${lech > 0 ? 'tre' : ''}">${lech > 0 ? 'chậm' : 'sớm'} ${Math.abs(lech)} ngày</span>)` : ''}${db2 > kt ? `<br><span class="tre">Theo tiến độ thực tế (có việc quá hạn chưa xong): dự báo xong ${fmtNgay(db2)}</span>` : ''}`;
   };
   capNhatNgay();
   $('#view').querySelectorAll('tr[data-id] input[data-f]').forEach((inp) => {
@@ -812,6 +813,7 @@ function manTao() {
     <select id="loai">${Object.entries(LOAI_HINH).map(([k, v]) => `<option value="${k}" ${k === loaiDau ? 'selected' : ''}>${v}</option>`).join('')}</select>
     <label class="f">Loại hợp đồng</label>
     <select id="dauMa">${Object.entries(LOAI_HD).map(([k, v]) => `<option value="${k}" ${k === (DAU_MA[loaiDau] || 'NT') ? 'selected' : ''}>${v}</option>`).join('')}</select>
+    <div id="oTang"><label class="f">Số tầng (phần thân lặp theo từng tầng)</label><input id="soTang" type="number" min="1" max="30" step="1" inputmode="numeric" value="1"></div>
     <label class="f">Mã dự án</label><input id="ma" value="${esc(goiYMa(loaiDau, tenNgan))}">
     <label class="f">Tên công trình</label><input id="ten" value="${esc(kh ? kh.ten : '')}" placeholder="Vd: Căn hộ chị Xuân, Xa La">
     <label class="f">Ngày khởi công</label><input id="kc" type="date" value="${homNay()}">
@@ -820,10 +822,14 @@ function manTao() {
     <label class="f">Link thư mục Drive của công trình</label><input id="drive" placeholder="Dán link thư mục, để trống thì app tự tạo">
     <p id="xemTruoc" class="muted"></p>
     <div class="actions"><button id="tao" class="btn-chinh">Tạo công trình</button></div>`;
+  const coTang = () => thuVien.some((r) => r.loai.split(/\s+/).includes($('#loai').value) && /lặp theo số tầng/i.test(r.hang_muc));
+  const soTang = () => (coTang() ? Math.max(1, Math.min(30, parseInt($('#soTang').value, 10) || 1)) : 1);
   const xem = () => {
-    const n = thuVien.filter((r) => r.loai.split(/\s+/).includes($('#loai').value)).length;
+    $('#oTang').hidden = !coTang();
+    const n = taoTuThuVien(thuVien, $('#loai').value, soTang()).length;
     $('#xemTruoc').textContent = `${n} việc sẽ được tạo sẵn. Sau khi tạo, chạm vào từng việc để sửa.`;
   };
+  $('#soTang').oninput = xem;
   // Đổi loại thì đổi đầu mã, giữ phần tên Thầy đã gõ. Trọn gói (TG) Thầy chọn tay.
   const datDau = (dau) => { const m = $('#ma').value.split('-'); m[0] = dau; $('#ma').value = m.join('-'); };
   $('#loai').onchange = () => {
@@ -842,11 +848,12 @@ function manTao() {
     const loai = $('#loai').value, khoiCong = $('#kc').value;
     // Tạo thử để biết khoảng thời gian, rồi hỏi các ngày lễ nằm trong đó.
     const thu = { db: { congTrinh: [], lichSu: [], outbox: [] } };
-    const tam = taoCongTrinh(thu.db, thuVien, { ma, ten, loai, khoiCong, lich });
+    const tang = soTang();
+    const tam = taoCongTrinh(thu.db, thuVien, { ma, ten, loai, khoiCong, lich, soTang: tang });
     const den = tam.viec.reduce((m, v) => (v.goc.ketThuc > m ? v.goc.ketThuc : m), khoiCong);
     hoiNgayLe(leCanHoi(khoiCong, den, lich), (nghi, daHoi) => {
       lich.nghi = nghi; lich.daHoi = daHoi;
-      const ct = taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, thuMucDrive: $('#drive').value.trim(), maKhach: kh ? kh.ma : '', chuNha: kh ? kh.ten : '' });
+      const ct = taoCongTrinh(db, thuVien, { ma, ten, loai, khoiCong, lich, soTang: tang, thuMucDrive: $('#drive').value.trim(), maKhach: kh ? kh.ma : '', chuNha: kh ? kh.ten : '' });
       if (kh) ganCongTrinh(db, kh, ct.ma, vaiTro, homNay());
       tuKhach = null;
       luu(); bao('Đã tạo ' + ct.ma + (kh ? '. Nhập hợp đồng' : ''));
@@ -2509,7 +2516,7 @@ function manMotThau(id) {
     <h3>Việc theo công trình</h3>
     ${!theoCt.size ? '<p class="muted">Chưa có việc nào ghi tên thầu này trong kế hoạch.</p>' : ''}
     ${[...theoCt.values()].map(({ ct, vs }) => {
-      const lich = lichHienTai(ct);
+      const lich = lichHienTai(ct, homNay());
       const xong = vs.every((v) => v.phanTram >= 100);
       const dgs = dgCua(ct.ma);
       const cuaToi = dgs.find((x) => x.nguoi === vaiTro);
@@ -2625,7 +2632,7 @@ async function manChoThau(maLink, api) {
   $('#view').innerHTML = `<h2>${esc(du.thau.ten)}</h2><p class="muted">Lịch việc của anh ở các công trình KAS, cập nhật theo tiến độ mới nhất.</p>
     ${!du.congTrinh.length ? '<p>Hiện chưa có việc nào đang chờ anh.</p>' : ''}
     ${du.congTrinh.map((c) => {
-      const lich = xepLich(c.viec, c.khoiCong, c.lich);
+      const lich = xepLich(c.viec, c.khoiCong, c.lich, hn);
       const cua = c.viec.filter((v) => v.cuaThau).sort((a, b) => lich.get(a.id).batDau.localeCompare(lich.get(b.id).batDau));
       const vs = cua.filter((v) => v.phanTram < 100);
       const daXong = cua.length - vs.length;
