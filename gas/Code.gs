@@ -1393,7 +1393,9 @@ function wpGoc() {
 // Gọi REST WordPress. coKhoa false: không gửi mật khẩu (đọc chuyên mục, thẻ công khai).
 function goiWP(duong, opt, coKhoa) {
   const goc = wpGoc();
-  const auth = coKhoa === false ? {} : { Authorization: 'Basic ' + Utilities.base64Encode(bi('WP_USER') + ':' + bi('WP_APP_PASSWORD').replace(/\s+/g, '')) };
+  const basic = 'Basic ' + Utilities.base64Encode(bi('WP_USER') + ':' + bi('WP_APP_PASSWORD').replace(/\s+/g, ''));
+  // Gửi kèm X-KAS-Auth: hosting noithatkas.com bỏ mất header Authorization (thử 15–16/11), plugin nhỏ kas-auth.php trên web đọc lại header này.
+  const auth = coKhoa === false ? {} : { Authorization: basic, 'X-KAS-Auth': basic };
   const o = Object.assign({ method: 'post', muteHttpExceptions: true }, opt || {});
   o.headers = Object.assign({}, auth, (opt && opt.headers) || {});
   const r = UrlFetchApp.fetch(goc + '/wp-json/wp/v2' + duong, o);
@@ -1407,7 +1409,7 @@ function goiWP(duong, opt, coKhoa) {
 function loiWP(ma, j) {
   const c = String(j.code || '');
   if (ma === 401 && /rest_not_logged_in|rest_cannot_create|rest_cannot_upload|rest_forbidden/.test(c)) {
-    return 'Website: WordPress không nhận được mật khẩu ứng dụng (máy chủ web chặn header Authorization). Thầy làm theo hướng dẫn cài, mục WordPress, bước sửa .htaccess.';
+    return 'Website: WordPress không nhận được mật khẩu ứng dụng (hosting chặn header Authorization). Thầy cài file kas-auth.php vào wp-content/mu-plugins theo hướng dẫn cài, mục WordPress.';
   }
   if (/incorrect_password|invalid_username|invalid_email/.test(c)) return 'Website: sai tên đăng nhập hoặc mật khẩu ứng dụng (WP_USER, WP_APP_PASSWORD).';
   if (ma === 403) return 'Website: tài khoản ' + bi('WP_USER') + ' không đủ quyền (' + (j.message || c) + '). Cần vai trò Biên tập viên hoặc Quản trị viên.';

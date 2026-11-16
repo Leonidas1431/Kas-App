@@ -150,7 +150,11 @@ Nghĩa là hosting đã bỏ mất phần mật khẩu (header `Authorization`) 
    ```
    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
    ```
-3. Bấm lại **Kiểm tra kết nối website**. Vẫn lỗi thì nhắn hosting: "nhờ bật chuyển header Authorization xuống PHP cho WordPress REST API (Application Passwords)".
+3. Bấm lại **Kiểm tra kết nối website**. Vẫn lỗi (noithatkas.com rơi vào trường hợp này, thử ngày 16/11) thì cài plugin nhỏ của app:
+   - Tải file [`wordpress/kas-auth.php`](../wordpress/kas-auth.php) trong repo về máy.
+   - File Manager → `public_html/wp-content/` → mở thư mục `mu-plugins` (chưa có thì bấm *+ Folder* tạo tên `mu-plugins`) → *Upload* file `kas-auth.php` vào.
+   - Không cần bật gì: WordPress tự chạy file trong `mu-plugins`. Kiểm tra lại bằng nút ở bước 3.
+   - App gửi kèm mật khẩu ở header `X-KAS-Auth`, file này chuyển lại cho WordPress tự kiểm tra; sai mật khẩu vẫn bị từ chối.
 4. Tài khoản `WP_USER` cần vai trò **Biên tập viên** hoặc **Quản trị viên** để đăng bài, tải ảnh, tạo thẻ mới.
 - Từng công trình: Sửa công trình → tick **Chủ nhà cho đăng ảnh**. Chỉ công trình có tick mới hiện trong gợi ý và chọn ảnh.
 

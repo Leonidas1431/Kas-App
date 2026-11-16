@@ -903,6 +903,8 @@ test('Website: chuyên mục, thẻ theo bài; ảnh đại diện riêng cho we
   assert.equal(post.featured_media, 71);
   assert.equal(media, 2); // ảnh đại diện web + 1 ảnh bài
   assert.match(m.goiRa.find((g) => g.url.includes('/wp/v2/media')).opt.headers.Authorization, /^Basic /);
+  const h = m.goiRa.find((g) => g.url.endsWith('/wp/v2/posts')).opt.headers;
+  assert.equal(h['X-KAS-Auth'], h.Authorization); // hosting bỏ Authorization: plugin kas-auth.php đọc header này
 });
 
 test('Website: chưa chọn thẻ thì lấy từ khóa AI; chuyên mục lấy cài đặt; đọc chuyên mục, thẻ từ WordPress; Thầy kiểm tra mật khẩu ứng dụng', () => {
