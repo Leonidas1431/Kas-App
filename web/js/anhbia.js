@@ -1,6 +1,14 @@
 // Ảnh bìa bài đăng: dựng trên máy từ ảnh công trình thật + tiêu đề + tên KAS. Claude API không vẽ ảnh, nên không tốn tiền.
 // Khổ 1080×1350 (dọc 4:5): Facebook và Instagram đều hiện trọn; Instagram cắt các ảnh sau theo tỉ lệ ảnh đầu.
 export const KHO = { w: 1080, h: 1350 };
+// Khổ tối ưu từng kênh (máy chủ dùng cùng số, xem KHO_BIA trong gas/Code.gs).
+// Website: ảnh đại diện ngang 16:9, giao diện blog và link chia sẻ trên Facebook, Zalo đều hiện đủ.
+export const KHO_BIA = {
+  MXH: { w: 1080, h: 1350, ten: 'Facebook, Instagram', tiLe: 'dọc 4:5' },
+  WEB: { w: 1200, h: 675, ten: 'Website (ảnh đại diện)', tiLe: 'ngang 16:9' },
+};
+/** Bài có kênh nào thì cần ảnh bìa khổ nào. TikTok đăng tay dùng chung ảnh dọc. */
+export const dsDichBia = (kenh = []) => [...(kenh.some((k) => k !== 'WEB') ? ['MXH'] : []), ...(kenh.includes('WEB') ? ['WEB'] : [])];
 export const MAU_BIA = { TRAN: 'Ảnh tràn, chữ dưới', DAI: 'Dải trắng dưới', KHUNG: 'Khung giữa' };
 const THUONG_HIEU = 'KAS HOUZING';
 const FONT = '"Be Vietnam Pro", "Segoe UI", Roboto, Arial, sans-serif';
@@ -40,18 +48,22 @@ function viet(ctx, dong, x, y, coChu, cach, canh = 'left') {
 }
 
 /** Vẽ ảnh bìa lên canvas. img: ảnh đã tải (Image / ImageBitmap). Trả canvas. */
-export function veBia(canvas, img, { mau = 'TRAN', tieuDe = '', phuDe = '' } = {}) {
-  const { w, h } = KHO;
-  canvas.width = w; canvas.height = h;
+export function veBia(canvas, img, { mau = 'TRAN', tieuDe = '', phuDe = '', kho = KHO } = {}) {
+  // Vẽ theo khung logic (cỡ chữ, lề giữ như khổ dọc 1080×1350), rồi thu về khổ thật. Khổ ngang website: khung logic 1920×1080.
+  const ngang = kho.w > kho.h;
+  const tl = ngang ? kho.h / 1080 : kho.w / 1080;
+  const w = kho.w / tl, h = kho.h / tl;
+  canvas.width = kho.w; canvas.height = kho.h;
   const ctx = canvas.getContext('2d');
+  ctx.setTransform(tl, 0, 0, tl, 0, 0);
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
   const le = 72;
   if (mau === 'DAI') {
-    const cao = Math.round(h * 0.68);
+    const cao = Math.round(h * (ngang ? 0.6 : 0.68));
     if (img) phuKin(ctx, img, 0, 0, w, cao);
     ctx.fillStyle = '#1d1b18';
     ctx.font = `700 76px ${FONT}`;
-    const dong = ngatDong(ctx, tieuDe, w - le * 2, 2);
+    const dong = ngatDong(ctx, tieuDe, w - le * 2, ngang ? 1 : 2);
     let y = viet(ctx, dong, le, cao + 120, 76, 1.18);
     if (phuDe) { ctx.fillStyle = '#6b655c'; ctx.font = `400 40px ${FONT}`; y = viet(ctx, ngatDong(ctx, phuDe, w - le * 2, 1), le, y + 12, 40, 1.2); }
     ctx.fillStyle = '#b08d57'; ctx.fillRect(le, h - 96, 64, 6);
@@ -102,9 +114,9 @@ export function taiAnh(base64, loai = 'image/jpeg') {
   });
 }
 
-/** Cắt ảnh phủ kín khổ bìa 1080×1350 (giữ giữa), không thêm chữ. Dùng trước khi đưa sang Canva để ảnh tràn khung. */
-export function catKho(canvas, img) {
-  const { w, h } = KHO;
+/** Cắt ảnh phủ kín khổ bìa (mặc định 1080×1350) (giữ giữa), không thêm chữ. Dùng trước khi đưa sang Canva để ảnh tràn khung. */
+export function catKho(canvas, img, kho = KHO) {
+  const { w, h } = kho;
   canvas.width = w; canvas.height = h;
   phuKin(canvas.getContext('2d'), img, 0, 0, w, h);
   return canvas;

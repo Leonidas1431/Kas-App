@@ -47,7 +47,7 @@ export function taoBai(db, du, nguoi) {
 // Sửa bài trên máy. Đổi nội dung, ảnh sau khi đã duyệt thì về chờ duyệt (máy chủ cũng kiểm như vậy). Bài đã đăng chỉ ghi ý kiến.
 export function suaBai(db, b, thayDoi) {
   if (b.trangThai === 'DA_DANG') thayDoi = Object.fromEntries(Object.entries(thayDoi).filter(([k]) => k === 'yKien' || k === 'xoa'));
-  const doiNoiDung = ['baiViet', 'dsAnh', 'anhBia'].some((k) => k in thayDoi && JSON.stringify(thayDoi[k]) !== JSON.stringify(b[k]));
+  const doiNoiDung = ['baiViet', 'dsAnh', 'anhBia', 'anhBiaWeb'].some((k) => k in thayDoi && JSON.stringify(thayDoi[k]) !== JSON.stringify(b[k]));
   Object.assign(b, thayDoi);
   if (b.trangThai === 'DUYET' && doiNoiDung) Object.assign(b, { trangThai: 'CHO_DUYET', nguoiDuyet: '', duyetLuc: '' });
   if (b.trangThai === 'NHAP' && Object.keys(b.baiViet || {}).length) b.trangThai = 'CHO_DUYET';
@@ -57,8 +57,19 @@ export function suaBai(db, b, thayDoi) {
 export const xoaBai = (db, b) => suaBai(db, b, { xoa: new Date().toISOString().slice(0, 10) });
 
 // Bài máy chủ trả về (sau khi AI viết, duyệt, đăng) thay bản trên máy. Bỏ các thay đổi đang chờ gửi của bài đó, vì máy chủ đã có bản mới nhất.
+// Giữ nguyên đối tượng bài đang mở (màn hình đang cầm nó), chỉ thay ruột: tránh màn hình sửa vào bản cũ đã bị thay.
+export function thayRuot(cu, moi) {
+  if (!cu || cu === moi) return moi;
+  Object.keys(cu).forEach((k) => { if (!(k in moi)) delete cu[k]; });
+  return Object.assign(cu, moi);
+}
+export function thayDsBai(db, dsMoi) {
+  const cu = new Map((db.baiDang || []).map((b) => [b.id, b]));
+  db.baiDang = dsMoi.map((b) => thayRuot(cu.get(b.id), b));
+}
 export function nhanBai(db, b) {
-  db.baiDang = (db.baiDang || []).filter((x) => x.id !== b.id).concat([b]);
+  const cu = (db.baiDang || []).find((x) => x.id === b.id);
+  db.baiDang = (db.baiDang || []).filter((x) => x.id !== b.id).concat([thayRuot(cu, b)]);
   db.outbox = (db.outbox || []).filter((o) => !(o.loai === 'BD' && o.b && o.b.id === b.id));
 }
 // Trước khi gọi máy chủ với bản đầy đủ của bài: bỏ các thay đổi cũ của bài đó trong hàng chờ, để không ghi đè kết quả AI.

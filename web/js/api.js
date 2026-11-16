@@ -1,4 +1,5 @@
 // Nối với máy chủ Apps Script. Không có kết nối thì app chạy bản thử, dữ liệu chỉ ở trên máy.
+import { thayDsBai } from './dangbai.js';
 const KN = 'kas-ket-noi';
 
 export function ketNoi() {
@@ -100,7 +101,7 @@ export function dongBo(db, luu) {
         if (d.danhGia) db.danhGia = d.danhGia;
         if (d.anh) db.anh = d.anh;
         if (d.nghiemThu) db.nghiemThu = d.nghiemThu;
-        if (d.baiDang) db.baiDang = d.baiDang;
+        if (d.baiDang) thayDsBai(db, d.baiDang);
         if (d.chiAI) db.chiAI = d.chiAI;
         db.toi = d.toi;
         luu();

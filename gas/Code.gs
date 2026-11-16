@@ -42,14 +42,15 @@ const TAB = {
   NghiemThu: ['id', 'maCongTrinh', 'viec', 'ngay', 'nguoi', 'checklist', 'tonTai', 'ghiChu', 'soAnh', 'xoa', 'capNhatLuc'],
   // Bài đăng mạng xã hội, website. AI viết, Thầy duyệt, máy chủ đăng. ketQua, nguoiDuyet, duyetLuc, lanViet chỉ máy chủ ghi.
   BaiDang: ['id', 'loai', 'chuDe', 'ghiChu', 'maCongTrinh', 'nguonTL', 'trichDan', 'kenh', 'ngayDang', 'gioDang', 'baiViet', 'dsAnh', 'anhBia',
-    'mauBia', 'tieuDeBia', 'phuDeBia', 'trangThai', 'yKien', 'lanViet', 'nguoiDuyet', 'duyetLuc', 'ketQua', 'nguoiTao', 'xoa', 'taoLuc', 'capNhatLuc', 'canva'],
+    'mauBia', 'tieuDeBia', 'phuDeBia', 'trangThai', 'yKien', 'lanViet', 'nguoiDuyet', 'duyetLuc', 'ketQua', 'nguoiTao', 'xoa', 'taoLuc', 'capNhatLuc', 'canva',
+    'anhBiaWeb', 'canvaWeb', 'webChuyenMuc', 'webThe'],
   // Mỗi lần gọi Claude API: số token để Thầy theo dõi chi phí AI.
   ChiAI: ['luc', 'viec', 'model', 'vao', 'ra', 'timWeb', 'usd'],
   CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -605,8 +606,8 @@ const GRAPH_IG = 'https://graph.instagram.com/v26.0';
 const GRAPH_IG_FB = 'https://graph.facebook.com/v26.0';
 const laMaIGLogin = (ma) => /^IG/.test(String(ma || ''));
 // Máy gửi lên không được tự đặt các trường này.
-const TRUONG_MAY_CHU = ['trangThai', 'ketQua', 'nguoiDuyet', 'duyetLuc', 'lanViet', 'canva'];
-const TRUONG_NOI_DUNG = ['baiViet', 'dsAnh', 'anhBia'];
+const TRUONG_MAY_CHU = ['trangThai', 'ketQua', 'nguoiDuyet', 'duyetLuc', 'lanViet', 'canva', 'canvaWeb'];
+const TRUONG_NOI_DUNG = ['baiViet', 'dsAnh', 'anhBia', 'anhBiaWeb'];
 
 const bi = (k) => PropertiesService.getScriptProperties().getProperty(k) || '';
 const caiDatMay = () => Object.fromEntries(docBang('CaiDat').map((r) => [r.khoa, String(r.giaTri)]));
@@ -997,12 +998,19 @@ function anhGoc(b, id) {
 }
 
 // Đổi ảnh bìa: bài đã duyệt thì về chờ duyệt (ảnh là nội dung).
-function datAnhBia(b, id) {
-  const sua = { anhBia: id, capNhatLuc: new Date().toISOString() };
+// dich WEB: ảnh đại diện website (khổ ngang), còn lại: ảnh bìa Facebook, Instagram (khổ dọc).
+function datAnhBia(b, id, dich) {
+  const sua = { capNhatLuc: new Date().toISOString() };
+  sua[dich === 'WEB' ? 'anhBiaWeb' : 'anhBia'] = id;
   if (b.trangThai === 'DUYET') Object.assign(sua, { trangThai: 'CHO_DUYET', nguoiDuyet: '', duyetLuc: '' });
   if (b.trangThai === 'NHAP' && Object.keys(b.baiViet).length) sua.trangThai = 'CHO_DUYET';
   capNhatDong('BaiDang', (r) => r.id === b.id, sua, true);
 }
+
+// Khổ ảnh tối ưu từng kênh. Facebook, Instagram: dọc 4:5 (hiện trọn trên điện thoại, Instagram cắt ảnh sau theo ảnh đầu).
+// Website: ảnh đại diện ngang 16:9 (giao diện blog, chia sẻ link Facebook, Zalo đều hiện đủ).
+const KHO_BIA = { MXH: { w: 1080, h: 1350, tl: ['4:5', '3:4', ''] }, WEB: { w: 1200, h: 675, tl: ['16:9', '3:2', ''] } };
+const dichBia = (x) => (x === 'WEB' ? 'WEB' : 'MXH');
 
 // Giá Gemini (USD / ảnh 1K), tra trang giá chính thức ngày 13/11/2026. Gói Gemini Pro của Thầy không gồm tiền API: cần bật thanh toán trong Google AI Studio.
 const GIA_GEMINI = { 'gemini-3.1-flash-image': 0.067, 'gemini-3-pro-image': 0.134 };
@@ -1018,7 +1026,7 @@ const LOI_GEMINI = {
     + '{P}Add a small "KAS HOUZING" wordmark near the bottom. No other text.',
 };
 
-function goiGemini(model, anh, loi) {
+function goiGemini(model, anh, loi, dsTiLe) {
   const key = bi('GEMINI_API_KEY');
   if (!key) throw new Error('Chưa có khoá Gemini API. Thầy dán khoá vào Thuộc tính tập lệnh GEMINI_API_KEY (xem hướng dẫn cài).');
   const thu = (tl) => UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
@@ -1026,9 +1034,9 @@ function goiGemini(model, anh, loi) {
     payload: JSON.stringify({ model, input: [{ type: 'text', text: loi }, { type: 'image', mime_type: anh.getContentType() || 'image/jpeg', data: Utilities.base64Encode(anh.getBytes()) }],
       response_format: Object.assign({ type: 'image', mime_type: 'image/jpeg', image_size: '1K' }, tl ? { aspect_ratio: tl } : {}) }),
   });
-  // Tài liệu chưa ghi rõ model này nhận tỉ lệ 4:5 không: thử 4:5, rồi 3:4, rồi để model tự chọn.
+  // Tài liệu chưa ghi rõ model nhận tỉ lệ nào: thử lần lượt (vd 4:5, rồi 3:4), cuối cùng để model tự chọn.
   let r; let j = {};
-  for (const tl of ['4:5', '3:4', '']) {
+  for (const tl of dsTiLe || KHO_BIA.MXH.tl) {
     r = thu(tl);
     try { j = JSON.parse(r.getContentText()); } catch (e) { j = {}; }
     if (!(r.getResponseCode() === 400 && /aspect/i.test(r.getContentText()))) break;
@@ -1139,10 +1147,12 @@ Object.assign(HANH_DONG, {
     const tieuDe = String(data.tieuDe || b.tieuDeBia || '').trim();
     if (kieu === 'CHU' && !tieuDe) throw new Error('Ghi chữ trên bìa trước');
     const phu = String(data.phuDe || b.phuDeBia || '').trim();
-    const loi = LOI_GEMINI[kieu].replace('{T}', tieuDe.replace(/"/g, "'")).replace('{P}', phu ? 'Below it, a smaller line EXACTLY: "' + phu.replace(/"/g, "'") + '". ' : '');
-    const anh = goiGemini(model, anhGoc(b, data.anhId), loi);
-    const id = luuAnhBai(n, b.id, anh, 'GEMINI');
-    datAnhBia(b, id);
+    const dich = dichBia(data.dich);
+    let loi = LOI_GEMINI[kieu].replace('{T}', tieuDe.replace(/"/g, "'")).replace('{P}', phu ? 'Below it, a smaller line EXACTLY: "' + phu.replace(/"/g, "'") + '". ' : '');
+    if (dich === 'WEB') loi = loi.replace(/portrait social-media cover/g, 'landscape 16:9 website featured image').replace('crop to portrait', 'crop to landscape 16:9');
+    const anh = goiGemini(model, anhGoc(b, data.anhId), loi, KHO_BIA[dich].tl);
+    const id = luuAnhBai(n, b.id, anh, dich === 'WEB' ? 'GEMINI_WEB' : 'GEMINI');
+    datAnhBia(b, id, dich);
     return { bai: traBai(timBai(b.id)), anhId: id, loai: anh.getContentType(), base64: Utilities.base64Encode(anh.getBytes()) };
   },
 
@@ -1159,17 +1169,22 @@ Object.assign(HANH_DONG, {
     const b = timBai(data.id);
     if (b.trangThai === 'DA_DANG') throw new Error('Bài đã đăng');
     // Máy đã cắt sẵn ảnh bìa khổ 1080×1350 thì dùng luôn (ảnh tràn khung Canva, không có viền trắng); không thì lấy ảnh gốc.
+    const dich = dichBia(data.dich);
+    const truong = dich === 'WEB' ? 'canvaWeb' : 'canva';
     const b64 = typeof data.base64 === 'string' && data.base64.length > 100 && data.base64.length < 15e6 ? data.base64 : '';
-    const anh = b64 ? Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', 'bia.jpg') : anhGoc(b, data.anhId);
+    const anh = b64 ? Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', 'bia.jpg') : anhGoc(b, data.anhId || (dich === 'WEB' ? b.anhBiaWeb : ''));
     const up = goiCanva('post', '/asset-uploads', {
       contentType: 'application/octet-stream', payload: anh.getBytes(),
       headers: { 'Asset-Upload-Metadata': JSON.stringify({ name_base64: Utilities.base64Encode(('KAS ' + b.id).slice(0, 50), Utilities.Charset.UTF_8) }) },
     });
     const job = choCanva('/asset-uploads/' + up.job.id);
     const d = goiCanva('post', '/designs', { contentType: 'application/json', payload: JSON.stringify({
-      type: 'type_and_asset', design_type: { type: 'custom', width: 1080, height: 1350 }, asset_id: job.asset.id, title: ('KAS – ' + (b.tieuDeBia || b.chuDe || b.id)).slice(0, 255) }) }).design;
+      type: 'type_and_asset', design_type: { type: 'custom', width: KHO_BIA[dich].w, height: KHO_BIA[dich].h }, asset_id: job.asset.id,
+      title: ('KAS – ' + (dich === 'WEB' ? 'Web – ' : '') + (b.tieuDeBia || b.chuDe || b.id)).slice(0, 255) }) }).design;
     const canva = { id: d.id, sua: d.urls && d.urls.edit_url, luc: new Date().toISOString() };
-    capNhatDong('BaiDang', (r) => r.id === b.id, { canva, capNhatLuc: new Date().toISOString() }, true);
+    const sua = { capNhatLuc: new Date().toISOString() };
+    sua[truong] = canva;
+    capNhatDong('BaiDang', (r) => r.id === b.id, sua, true);
     return { bai: traBai(timBai(b.id)), url: canva.sua };
   },
 
@@ -1177,16 +1192,21 @@ Object.assign(HANH_DONG, {
   canvaLay: (n, data) => {
     canVanPhong(n);
     const b = timBai(data.id);
-    if (!b.canva || !b.canva.id) throw new Error('Bài chưa mở bên Canva');
+    const dich = dichBia(data.dich);
+    const truong = dich === 'WEB' ? 'canvaWeb' : 'canva';
+    const cv = b[truong];
+    if (!cv || !cv.id) throw new Error(dich === 'WEB' ? 'Ảnh website chưa mở bên Canva' : 'Bài chưa mở bên Canva');
     if (b.trangThai === 'DA_DANG') throw new Error('Bài đã đăng');
-    const ex = goiCanva('post', '/exports', { contentType: 'application/json', payload: JSON.stringify({ design_id: b.canva.id, format: { type: 'jpg', quality: 92 } }) });
+    const ex = goiCanva('post', '/exports', { contentType: 'application/json', payload: JSON.stringify({ design_id: cv.id, format: { type: 'jpg', quality: 92 } }) });
     const job = choCanva('/exports/' + ex.job.id);
     const r = UrlFetchApp.fetch(job.urls[0], { muteHttpExceptions: true });
     if (r.getResponseCode() !== 200) throw new Error('Không tải được ảnh từ Canva (' + r.getResponseCode() + ')');
     const anh = r.getBlob().setContentType('image/jpeg');
-    const id = luuAnhBai(n, b.id, anh, 'CANVA');
-    capNhatDong('BaiDang', (x) => x.id === b.id, { canva: Object.assign({}, b.canva, { layLuc: new Date().toISOString(), anhId: id }) }, true);
-    datAnhBia(b, id);
+    const id = luuAnhBai(n, b.id, anh, dich === 'WEB' ? 'CANVA_WEB' : 'CANVA');
+    const sua = {};
+    sua[truong] = Object.assign({}, cv, { layLuc: new Date().toISOString(), anhId: id });
+    capNhatDong('BaiDang', (x) => x.id === b.id, sua, true);
+    datAnhBia(b, id, dich);
     return { bai: traBai(timBai(b.id)), anhId: id, loai: 'image/jpeg', base64: Utilities.base64Encode(anh.getBytes()) };
   },
 });
@@ -1197,9 +1217,11 @@ function luuKetQua(b) {
 }
 
 // Ảnh của bài theo thứ tự: ảnh bìa trước, rồi các ảnh đã chọn. Trả blob JPEG.
-function anhCuaBai(b) {
+// Website: ảnh đại diện website (nếu đã làm) thay ảnh bìa dọc của Facebook.
+function anhCuaBai(b, kenh) {
   const anh = docBang('Anh');
-  const ids = [b.anhBia].concat(b.dsAnh).filter((x, i, a) => x && a.indexOf(x) === i);
+  const dau = kenh === 'WEB' && b.anhBiaWeb ? b.anhBiaWeb : b.anhBia;
+  const ids = [dau].concat(b.dsAnh).filter((x, i, a) => x && a.indexOf(x) === i);
   return ids.map((id) => anh.find((a) => a.id === id)).filter(Boolean).slice(0, 10).map((a) => DriveApp.getFileById(a.fileId).getBlob().setName(a.tenFile || a.id + '.jpg'));
 }
 
@@ -1363,28 +1385,84 @@ function htmlWeb(noiDung, anhUrl) {
 }
 
 // WordPress: mật khẩu ứng dụng (Users → Profile → Application Passwords). Mặc định đăng nháp để Thầy xem trên web trước.
-function dangWeb(b, blobs, cd) {
+function wpGoc() {
   const goc = bi('WP_URL').replace(/\/+$/, '');
   if (!goc || !bi('WP_USER') || !bi('WP_APP_PASSWORD')) throw new Error('Chưa có WP_URL, WP_USER, WP_APP_PASSWORD');
-  const auth = { Authorization: 'Basic ' + Utilities.base64Encode(bi('WP_USER') + ':' + bi('WP_APP_PASSWORD').replace(/\s+/g, '')) };
-  const goiWP = (duong, opt) => {
-    const r = UrlFetchApp.fetch(goc + '/wp-json/wp/v2' + duong, Object.assign({ method: 'post', muteHttpExceptions: true, headers: auth }, opt));
-    let j = {};
-    try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
-    if (r.getResponseCode() >= 300) throw new Error('Website: ' + (j.message || r.getResponseCode()));
-    return j;
-  };
+  return goc;
+}
+// Gọi REST WordPress. coKhoa false: không gửi mật khẩu (đọc chuyên mục, thẻ công khai).
+function goiWP(duong, opt, coKhoa) {
+  const goc = wpGoc();
+  const basic = 'Basic ' + Utilities.base64Encode(bi('WP_USER') + ':' + bi('WP_APP_PASSWORD').replace(/\s+/g, ''));
+  // Gửi kèm X-KAS-Auth: hosting noithatkas.com bỏ mất header Authorization (thử 15–16/11), plugin nhỏ kas-auth.php trên web đọc lại header này.
+  const auth = coKhoa === false ? {} : { Authorization: basic, 'X-KAS-Auth': basic };
+  const o = Object.assign({ method: 'post', muteHttpExceptions: true }, opt || {});
+  o.headers = Object.assign({}, auth, (opt && opt.headers) || {});
+  const r = UrlFetchApp.fetch(goc + '/wp-json/wp/v2' + duong, o);
+  let j = {};
+  try { j = JSON.parse(r.getContentText()); } catch (e) { /* không phải JSON */ }
+  if (r.getResponseCode() >= 300) throw new Error(loiWP(r.getResponseCode(), j));
+  return j;
+}
+// Lỗi WordPress dễ hiểu. rest_not_logged_in / rest_cannot_create mã 401: WordPress không thấy mật khẩu ứng dụng,
+// thường do hosting bỏ mất header Authorization trước khi tới WordPress (sai mật khẩu thì WordPress báo incorrect_password).
+function loiWP(ma, j) {
+  const c = String(j.code || '');
+  if (ma === 401 && /rest_not_logged_in|rest_cannot_create|rest_cannot_upload|rest_forbidden/.test(c)) {
+    return 'Website: WordPress không nhận được mật khẩu ứng dụng (hosting chặn header Authorization). Thầy cài file kas-auth.php vào wp-content/mu-plugins theo hướng dẫn cài, mục WordPress.';
+  }
+  if (/incorrect_password|invalid_username|invalid_email/.test(c)) return 'Website: sai tên đăng nhập hoặc mật khẩu ứng dụng (WP_USER, WP_APP_PASSWORD).';
+  if (ma === 403) return 'Website: tài khoản ' + bi('WP_USER') + ' không đủ quyền (' + (j.message || c) + '). Cần vai trò Biên tập viên hoặc Quản trị viên.';
+  return 'Website: ' + (j.message || ma);
+}
+
+// Tên thẻ → mã thẻ: tìm thẻ có sẵn trùng tên, chưa có thì tạo. Thẻ lỗi thì bỏ qua, không làm hỏng bài.
+function maTheWP(ten) {
+  const t = String(ten || '').trim();
+  if (!t) return null;
+  try {
+    const ds = goiWP('/tags?per_page=100&search=' + encodeURIComponent(t), { method: 'get' });
+    const co = (ds || []).find((x) => String(x.name).toLowerCase() === t.toLowerCase());
+    if (co) return co.id;
+    return goiWP('/tags', { contentType: 'application/json', payload: JSON.stringify({ name: t }) }).id;
+  } catch (e) { return null; }
+}
+
+function dangWeb(b, blobs, cd) {
+  wpGoc();
   const media = blobs.slice(0, 6).map((bl, i) => goiWP('/media', {
     contentType: 'image/jpeg', payload: bl.getBytes(),
-    headers: Object.assign({ 'Content-Disposition': 'attachment; filename="' + b.id + '-' + (i + 1) + '.jpg"' }, auth) }));
+    headers: { 'Content-Disposition': 'attachment; filename="' + b.id + '-' + (i + 1) + '.jpg"' } }));
   const w = b.baiViet.web;
   const trangThai = cd.bdWebTrangThai === 'publish' ? 'publish' : 'draft';
   const bai = { title: w.tieuDe, excerpt: w.moTa, content: htmlWeb(w.noiDung, media.map((m) => m.source_url)), status: trangThai };
   if (media.length) bai.featured_media = media[0].id;
-  if (Number(cd.bdWebChuyenMuc)) bai.categories = [Number(cd.bdWebChuyenMuc)];
+  const cm = Number(b.webChuyenMuc) || Number(cd.bdWebChuyenMuc);
+  if (cm) bai.categories = [cm];
+  // Thẻ: Thầy chọn trên bài; chưa chọn bao giờ thì lấy từ khóa AI viết.
+  const the = Array.isArray(b.webThe) ? b.webThe : (w.tuKhoa || []).slice(0, 5);
+  const maThe = the.slice(0, 10).map(maTheWP).filter(Boolean);
+  if (maThe.length) bai.tags = maThe;
   const p = goiWP('/posts', { contentType: 'application/json', payload: JSON.stringify(bai) });
   return { id: p.id, link: p.link || '', trangThai, luc: new Date().toISOString() };
 }
+
+Object.assign(HANH_DONG, {
+  // Chuyên mục, thẻ trên website để chọn khi soạn bài (đọc công khai, không cần mật khẩu).
+  wpDanhMuc: (n) => {
+    canVanPhong(n);
+    const ds = (duong) => (goiWP(duong, { method: 'get' }, false) || []).map((x) => ({ id: x.id, ten: x.name, so: x.count }));
+    return { chuyenMuc: ds('/categories?per_page=100&orderby=name'), the: ds('/tags?per_page=100&orderby=count&order=desc') };
+  },
+  // Kiểm tra mật khẩu ứng dụng: WordPress nhận ra ai, vai trò gì, có đăng bài được không.
+  kiemTraWP: (n) => {
+    if (n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy kiểm tra');
+    const u = goiWP('/users/me?context=edit', { method: 'get' });
+    const vt = u.roles || [];
+    const caps = u.capabilities || {};
+    return { ten: u.name || u.slug, vaiTro: vt, dangDuoc: !!(caps.publish_posts && caps.upload_files), taoThe: !!caps.manage_categories };
+  },
+});
 
 // Đăng các kênh tự động chưa đăng của 1 bài đã duyệt. Kênh nào lỗi ghi lỗi, kênh khác vẫn đăng; bấm lại chỉ đăng kênh còn thiếu.
 function dangMotBai(b) {
@@ -1404,7 +1482,7 @@ function dangMotBai(b) {
     };
     chay('FB', () => dangFacebook(b, blobs));
     chay('IG', () => dangInstagram(b, blobs, b.ketQua.FB && b.ketQua.FB.anh));
-    chay('WEB', () => dangWeb(b, blobs, cd));
+    chay('WEB', () => dangWeb(b, b.anhBiaWeb ? anhCuaBai(b, 'WEB') : blobs, cd));
     luuKetQua(b);
     return timBai(b.id);
   } finally {

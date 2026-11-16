@@ -70,7 +70,7 @@ Không có khoá nào thì app vẫn chạy bình thường, chỉ nút AI viế
 | `FB_PAGE_TOKEN` | Mã truy cập của Trang (Page access token), cần quyền `pages_manage_posts`, `pages_read_engagement`, và cho Instagram thêm `instagram_basic`, `instagram_content_publish`. Lấy qua ứng dụng Meta (developers.facebook.com) hoặc người dùng hệ thống trong Meta Business | Đăng Facebook, Instagram |
 | `IG_TOKEN` | **Cách nên dùng.** Mã Instagram lấy theo cách "Instagram API with Instagram login", không cần nối Fanpage. Xem mục *Nối Instagram không qua Fanpage* bên dưới | Đăng Instagram |
 | `IG_USER_ID` | Có `IG_TOKEN` thì máy chủ tự điền. Chỉ cần tự điền khi Instagram nối với Fanpage (gọi `/{FB_PAGE_ID}?fields=instagram_business_account`) | Đăng Instagram |
-| `WP_URL` | `https://www.noithatkas.com` | Đăng website |
+| `WP_URL` | `https://noithatkas.com` (không có www, đúng địa chỉ chính của web) | Đăng website |
 | `WP_USER` | Tên đăng nhập WordPress của người đăng | Đăng website |
 | `WP_APP_PASSWORD` | WordPress → Người dùng → Hồ sơ → **Mật khẩu ứng dụng** → đặt tên "KAS App" → Thêm. Không dùng mật khẩu đăng nhập | Đăng website |
 | `GEMINI_API_KEY`, `CANVA_CLIENT_ID`, `CANVA_CLIENT_SECRET`, `PT_FOLDER_ID` | Xem các mục Gemini, Canva, Thư viện phong thủy bên dưới | Ảnh bìa, tài liệu phong thủy |
@@ -138,7 +138,24 @@ Máy chủ tự tìm thư mục `My Drive/LeonidasProject/_shared/phong-thuy-cor
 
 **Trong app (Khách → Đăng bài → Cài đặt đăng bài):**
 - Số bài mỗi tuần, giờ đăng (mặc định 19:30), model AI (mặc định Sonnet).
-- Website: trạng thái **Nháp** (mặc định, Thầy vào WordPress xem rồi bấm Đăng) hoặc **Đăng luôn**. Mã chuyên mục "Chia sẻ": WordPress → Bài viết → Chuyên mục → di chuột vào "Chia sẻ", số sau `tag_ID=` trên đường dẫn là mã.
+- Website: trạng thái **Nháp** (mặc định, Thầy vào WordPress xem rồi bấm Đăng) hoặc **Đăng luôn**. Chuyên mục mặc định chọn trong Cài đặt đăng bài (app tự lấy danh sách từ web, chưa chọn thì dùng "Chia sẻ"). Từng bài chọn lại chuyên mục và thẻ được, ở mục Nội dung → Website.
+- Ảnh: Facebook, Instagram dùng ảnh dọc 1080×1350 (4:5); website dùng ảnh đại diện ngang 1200×675 (16:9). Bài có cả hai thì mục Ảnh bìa có nút đổi kênh, mỗi kênh làm 1 ảnh (Canva, Gemini hoặc dựng trên máy).
+
+### WordPress báo "không được phép tạo bài viết" hoặc "không nhận được mật khẩu ứng dụng"
+
+Nghĩa là hosting đã bỏ mất phần mật khẩu (header `Authorization`) trước khi tới WordPress. Kiểm tra: Cài đặt đăng bài → **Kiểm tra kết nối website**. Cách sửa:
+
+1. Vào trình quản lý file của hosting (cPanel → File Manager), mở thư mục web (thường là `public_html`), bật hiện file ẩn, mở file `.htaccess`.
+2. Thêm dòng này lên **đầu file** (trên dòng `# BEGIN WordPress`), rồi lưu:
+   ```
+   SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+   ```
+3. Bấm lại **Kiểm tra kết nối website**. Vẫn lỗi (noithatkas.com rơi vào trường hợp này, thử ngày 16/11) thì cài plugin nhỏ của app:
+   - Tải file [`wordpress/kas-auth.php`](../wordpress/kas-auth.php) trong repo về máy.
+   - File Manager → `public_html/wp-content/` → mở thư mục `mu-plugins` (chưa có thì bấm *+ Folder* tạo tên `mu-plugins`) → *Upload* file `kas-auth.php` vào.
+   - Không cần bật gì: WordPress tự chạy file trong `mu-plugins`. Kiểm tra lại bằng nút ở bước 3.
+   - App gửi kèm mật khẩu ở header `X-KAS-Auth`, file này chuyển lại cho WordPress tự kiểm tra; sai mật khẩu vẫn bị từ chối.
+4. Tài khoản `WP_USER` cần vai trò **Biên tập viên** hoặc **Quản trị viên** để đăng bài, tải ảnh, tạo thẻ mới.
 - Từng công trình: Sửa công trình → tick **Chủ nhà cho đăng ảnh**. Chỉ công trình có tick mới hiện trong gợi ý và chọn ảnh.
 
 **Quy tắc khoá ở máy chủ:** chỉ tài khoản Thầy bấm được Duyệt; bài chưa duyệt không lên mạng; sửa chữ hoặc ảnh sau khi duyệt thì bài về chờ duyệt. AI không nhận tên chủ nhà, địa chỉ, giá; bài phong thủy bắt buộc dán đoạn tài liệu và tên nguồn. TikTok đăng tay: đến ngày app nhắc, bấm Chép chữ, tải ảnh, đăng xong dán link vào app.

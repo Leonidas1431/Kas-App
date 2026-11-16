@@ -83,3 +83,28 @@ test('gợi ý công trình cho đăng ảnh chưa có bài; chi AI tháng; ch�
   assert.match(kiemTruocKhiViet({ loai: 'DU_AN', kenh: ['FB'] }), /chủ đề/);
   assert.equal(kiemTruocKhiViet({ loai: 'DU_AN', kenh: ['FB'], maCongTrinh: 'A' }), '');
 });
+
+test('sửa ảnh website sau khi duyệt thì về chờ duyệt; bản máy chủ kéo về giữ nguyên đối tượng bài đang mở', async () => {
+  const { thayDsBai, timBai } = await import('../web/js/dangbai.js');
+  const db = rong();
+  const b = taoBai(db, { kenh: ['WEB'], ghiChu: 'cũ' }, 'THAY');
+  Object.assign(b, { trangThai: 'DUYET', nguoiDuyet: 'THAY' });
+  suaBai(db, b, { anhBiaWeb: 'w1' });
+  assert.equal(b.trangThai, 'CHO_DUYET');
+  // Màn hình đang cầm b; máy chủ trả bản mới: b phải là bản mới, không phải bản rơi khỏi danh sách.
+  thayDsBai(db, [{ ...b, ghiChu: 'máy chủ', tam: undefined }]);
+  assert.equal(db.baiDang[0], b);
+  assert.equal(b.ghiChu, 'máy chủ');
+  nhanBai(db, { id: b.id, ghiChu: 'lần 2', kenh: ['WEB'] });
+  assert.equal(timBai(db, b.id), b);
+  assert.equal(b.ghiChu, 'lần 2');
+  assert.equal(b.anhBiaWeb, undefined);
+});
+
+test('khổ ảnh bìa theo kênh: Facebook, Instagram, TikTok dọc 4:5; website ngang 16:9', async () => {
+  const { dsDichBia, KHO_BIA } = await import('../web/js/anhbia.js');
+  assert.deepEqual(dsDichBia(['FB', 'IG']), ['MXH']);
+  assert.deepEqual(dsDichBia(['WEB']), ['WEB']);
+  assert.deepEqual(dsDichBia(['TT', 'WEB']), ['MXH', 'WEB']);
+  assert.deepEqual([KHO_BIA.MXH.w, KHO_BIA.MXH.h, KHO_BIA.WEB.w, KHO_BIA.WEB.h], [1080, 1350, 1200, 675]);
+});
