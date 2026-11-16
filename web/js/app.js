@@ -150,7 +150,7 @@ function manHomNay() {
   datTab('hom-nay', 'Hôm nay ' + ddmm(homNay()));
   const v = $('#view');
   const hn = homNay();
-  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? khachHomNay(hn) + tienHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
+  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? chiAIHomNay(hn) + khachHomNay(hn) + tienHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
@@ -2868,6 +2868,14 @@ function theBai(b) {
 }
 
 // Hôm nay (văn phòng): bài chờ Thầy duyệt, bài đến ngày phải đăng tay TikTok, bài đăng lỗi; từ thứ 5 nhắc tuần còn thiếu bài.
+// Chi AI tháng này ngay đầu màn Hôm nay (chỉ văn phòng, máy chủ chỉ gửi bảng ChiAI cho văn phòng). Chạm để mở Đăng bài.
+function chiAIHomNay(hn) {
+  const ai = chiAIThang(db, hn);
+  const usd = (x) => String(x).replace('.', ',') + ' USD';
+  const o = (ten, x) => `<a href="#dang-bai"><span>${ten}</span><b>${usd(x.usd)}</b><span>${x.lan} lần gọi</span></a>`;
+  return `<div class="so-lieu chi-ai">${o('Claude tháng ' + hn.slice(5, 7), ai.claude)}${o('Gemini tháng ' + hn.slice(5, 7), ai.gemini)}</div>`;
+}
+
 function baiHomNay(hn) {
   if (!laVanPhong()) return '';
   const cho = choDuyet(db), tay = choDangTay(db, hn), loi = loiDang(db);
@@ -2915,7 +2923,7 @@ function manDangBai() {
       <label class="f">Bài website khi đăng</label><select id="bdWebTrangThai"><option value="draft" ${cd.bdWebTrangThai === 'draft' ? 'selected' : ''}>Lưu nháp trên web, Thầy xem rồi bấm đăng</option><option value="publish" ${cd.bdWebTrangThai === 'publish' ? 'selected' : ''}>Đăng luôn</option></select>
       <label class="f">Chuyên mục website mặc định</label><span id="oCM">${ochonChuyenMuc('bdWebChuyenMuc', chuyenMucMD())}</span>
       ${vaiTro === 'THAY' ? '<div class="actions"><button id="kiemWP">Kiểm tra kết nối website</button></div><p id="wpTT" class="muted"></p>' : ''}
-      <p class="muted">Chi AI tháng này (Claude + Gemini): ${ai.lan} lần gọi, khoảng ${String(ai.usd).replace('.', ',')} USD.</p>
+      <p class="muted">Chi AI tháng này: Claude ${String(ai.claude.usd).replace('.', ',')} USD (${ai.claude.lan} lần), Gemini ${String(ai.gemini.usd).replace('.', ',')} USD (${ai.gemini.lan} ảnh). Màn Hôm nay cũng hiện số này.</p>
       <div class="actions"><button id="luuBD" class="btn-chinh">Lưu</button></div>
       <h4>Canva</h4><p id="canvaTT" class="muted">${daKetNoi() ? 'Đang kiểm tra…' : 'Bản thử: cần nối máy chủ.'}</p>
       ${vaiTro === 'THAY' ? '<div class="actions"><button id="noiCanva">Nối Canva</button></div>' : ''}

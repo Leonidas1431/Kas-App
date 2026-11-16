@@ -111,11 +111,14 @@ export function goiYCongTrinh(db) {
   return (db.congTrinh || []).filter((ct) => ct.choDangAnh === true && !coBai.has(ct.ma));
 }
 
-/** Chi AI tháng này (USD), lấy từ nhật ký gọi Claude trên máy chủ. */
+/** Chi AI tháng này (USD), lấy từ nhật ký gọi Claude, Gemini trên máy chủ (bảng ChiAI). Tách riêng Claude và Gemini theo tên model. */
 export function chiAIThang(db, homNay) {
   const thang = homNay.slice(0, 7);
   const ds = (db.chiAI || []).filter((r) => String(r.luc).slice(0, 7) === thang);
-  return { lan: ds.length, usd: Math.round(ds.reduce((s, r) => s + (Number(r.usd) || 0), 0) * 100) / 100 };
+  const tong = (a) => Math.round(a.reduce((s, r) => s + (Number(r.usd) || 0), 0) * 100) / 100;
+  const gem = ds.filter((r) => /^gemini/i.test(String(r.model || '')) || /^Gemini/.test(String(r.viec || '')));
+  const cla = ds.filter((r) => !gem.includes(r));
+  return { lan: ds.length, usd: tong(ds), claude: { lan: cla.length, usd: tong(cla) }, gemini: { lan: gem.length, usd: tong(gem) } };
 }
 
 // Chữ để chép khi đăng tay.

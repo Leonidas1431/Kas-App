@@ -72,8 +72,8 @@ test('gợi ý công trình cho đăng ảnh chưa có bài; chi AI tháng; ch�
   db.congTrinh = [{ ma: 'A', choDangAnh: true, viec: [] }, { ma: 'B', choDangAnh: false, viec: [] }, { ma: 'C', choDangAnh: true, viec: [] }];
   taoBai(db, { maCongTrinh: 'C' }, 'THAY');
   assert.deepEqual(goiYCongTrinh(db).map((c) => c.ma), ['A']);
-  db.chiAI = [{ luc: '2026-11-02T01:00:00Z', usd: 0.06 }, { luc: '2026-11-12T01:00:00Z', usd: 0.125 }, { luc: '2026-10-30T01:00:00Z', usd: 1 }];
-  assert.deepEqual(chiAIThang(db, '2026-11-13'), { lan: 2, usd: 0.19 });
+  db.chiAI = [{ luc: '2026-11-02T01:00:00Z', model: 'claude-sonnet-5-5', usd: 0.06 }, { luc: '2026-11-12T01:00:00Z', model: 'gemini-3.1-flash-image', usd: 0.125 }, { luc: '2026-10-30T01:00:00Z', usd: 1 }];
+  assert.deepEqual(chiAIThang(db, '2026-11-13'), { lan: 2, usd: 0.19, claude: { lan: 1, usd: 0.06 }, gemini: { lan: 1, usd: 0.13 } });
   const b = { baiViet: { fb: 'F', tt: { tieuDe: 'T', chuThich: 'C', kichBan: 'K' }, web: { tieuDe: 'W', moTa: 'M', noiDung: 'N' } } };
   assert.equal(chuDeChep(b, 'IG'), 'F');
   assert.equal(chuDeChep(b, 'TT'), 'T\n\nC');
