@@ -121,6 +121,27 @@ export function chiAIThang(db, homNay) {
   return { lan: ds.length, usd: tong(ds), claude: { lan: cla.length, usd: tong(cla) }, gemini: { lan: gem.length, usd: tong(gem) } };
 }
 
+// Hạn mức chi AI mỗi tháng (đồng), Thầy chỉnh trong Cài đặt đăng bài. Gemini 100.000đ theo Thầy (16/11/2026); Claude để trống là không đặt.
+// Tỷ giá quy đổi USD → đồng: 25.400 suy từ giá Gemini đã chốt (0,067 USD ≈ 1.700đ/ảnh, 13/11/2026), chưa tra tỷ giá ngân hàng; Thầy sửa được.
+export const MAC_DINH_HAN = { aiTyGia: 25400, aiHanClaude: 0, aiHanGemini: 100000 };
+export const CANH_BAO_HAN = 0.9;
+export function hanMucAI(caiDat = {}) {
+  const o = {};
+  for (const [k, v] of Object.entries(MAC_DINH_HAN)) {
+    const x = caiDat[k];
+    o[k] = x === undefined || x === '' || !Number.isFinite(Number(x)) || Number(x) < 0 ? v : Number(x);
+  }
+  if (!o.aiTyGia) o.aiTyGia = MAC_DINH_HAN.aiTyGia;
+  return o;
+}
+/** Một nguồn chi AI so với hạn mức: số đồng, % hạn mức, mức cảnh báo ('' | 'GAN' từ 90% | 'VUOT' từ 100%). */
+export function soVoiHan(x, han, tyGia) {
+  const dong = Math.round(x.usd * tyGia);
+  if (!han) return { ...x, dong, han: 0, pct: null, muc: '' };
+  const pct = Math.round((dong / han) * 100);
+  return { ...x, dong, han, pct, muc: dong >= han ? 'VUOT' : dong >= han * CANH_BAO_HAN ? 'GAN' : '' };
+}
+
 // Chữ để chép khi đăng tay.
 export function chuDeChep(b, k) {
   const v = b.baiViet || {};

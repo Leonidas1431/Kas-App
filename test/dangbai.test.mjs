@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rong } from '../web/js/store.js';
-import { taoBai, suaBai, xoaBai, nhanBai, boChoGui, dauTuan, lichTuan, choDuyet, choDangTay, loiDang, goiYCongTrinh, chiAIThang, chuDeChep, nhomViet,
+import { taoBai, suaBai, xoaBai, nhanBai, boChoGui, dauTuan, lichTuan, choDuyet, choDangTay, loiDang, goiYCongTrinh, chiAIThang, hanMucAI, soVoiHan, chuDeChep, nhomViet,
   kiemTruocKhiViet, caiDatBD, kenhXong } from '../web/js/dangbai.js';
 
 test('mặc định Thầy chốt: FB 3, TikTok 1, web 1 bài/tuần, Sonnet 5.5, web lưu nháp', () => {
@@ -107,4 +107,16 @@ test('khổ ảnh bìa theo kênh: Facebook, Instagram, TikTok dọc 4:5; websit
   assert.deepEqual(dsDichBia(['WEB']), ['WEB']);
   assert.deepEqual(dsDichBia(['TT', 'WEB']), ['MXH', 'WEB']);
   assert.deepEqual([KHO_BIA.MXH.w, KHO_BIA.MXH.h, KHO_BIA.WEB.w, KHO_BIA.WEB.h], [1080, 1350, 1200, 675]);
+});
+
+test('hạn mức chi AI: mặc định Gemini 100.000đ, cảnh báo từ 90%, vượt từ 100%', () => {
+  const h = hanMucAI({});
+  assert.deepEqual(h, { aiTyGia: 25400, aiHanClaude: 0, aiHanGemini: 100000 });
+  assert.equal(hanMucAI({ aiHanClaude: '500000', aiTyGia: 'x' }).aiHanClaude, 500000);
+  assert.equal(hanMucAI({ aiTyGia: '0' }).aiTyGia, 25400);
+  assert.equal(soVoiHan({ lan: 1, usd: 3 }, 100000, 25400).muc, '');
+  assert.equal(soVoiHan({ lan: 1, usd: 3.6 }, 100000, 25400).muc, 'GAN');
+  assert.equal(soVoiHan({ lan: 1, usd: 4 }, 100000, 25400).muc, 'VUOT');
+  assert.equal(soVoiHan({ lan: 1, usd: 4 }, 0, 25400).pct, null);
+  assert.equal(soVoiHan({ lan: 1, usd: 4 }, 0, 25400).dong, 101600);
 });
