@@ -19,6 +19,7 @@ import {
 import {
   CTY, HM_CHI, HM_CTY, HM_THU, HINH_THUC, docTien, ghiKhoan, suaKhoan, xoaKhoan, soConLai, dsTraThau, daTra, goiYMaDot, themDotTra, suaDotTra, xoaDotTra,
   xacNhanKL, trangThaiTra, canXacNhanKL, tongThang, congNoThau, laiGop, dsDoiTuong,
+  LOAI_TK, loaiNo, dsTaiKhoan, tkChoGiamSat, themTaiKhoan, suaTaiKhoan, soDu, congNoKhach, noTheoDoiTuong, dongTien, choKiem, duyetKhoan,
 } from './thuchi.js';
 import {
   TT_PS, QUA_PS, HAN_CHOT, NGUONG_MAC_DINH, psCuaCongTrinh, baoPhatSinh, baoGia, khachTraLoi, suaPS, xoaPS, daLamPS, daThuPS, tongPS, viecPSHomNay, tinBaoGia,
@@ -138,8 +139,11 @@ function route() {
   if (h.startsWith('BD-')) return laVanPhong() ? manMotBai(h) : manHomNay();
   if (h.startsWith('kh-')) return laVanPhong() ? manMotKhach(h.slice(3)) : manHomNay();
   if (h === 'hop-dong') return laVanPhong() ? manHopDong() : manHomNay();
-  if (h === 'thu-chi') return laVanPhong() ? manThuChi(ts.ma !== undefined ? decodeURIComponent(ts.ma) : undefined) : manHomNay();
+  if (h === 'thu-chi') return laVanPhong() ? manThuChi(ts.ma !== undefined ? decodeURIComponent(ts.ma) : undefined, ts.tk !== undefined ? decodeURIComponent(ts.tk) : undefined) : manHomNay();
   if (h === 'tra-thau') return laVanPhong() ? manTraThau() : manHomNay();
+  if (h === 'cong-no') return laVanPhong() ? manCongNo() : manHomNay();
+  if (h === 'dong-tien') return laVanPhong() ? manDongTien() : manHomNay();
+  if (h === 'tai-khoan') return laVanPhong() ? manTaiKhoan() : manHomNay();
   if (h === 'phat-sinh') return laVanPhong() ? manPhatSinh() : manHomNay();
   if (h === 'tao-hd') return laVanPhong() ? manTaoHD() : manHomNay();
   if (h.startsWith('HD-')) return laVanPhong() ? manMotHD(h) : manHomNay();
@@ -153,10 +157,12 @@ function manHomNay() {
   datTab('hom-nay', 'Hôm nay ' + ddmm(homNay()));
   const v = $('#view');
   const hn = homNay();
-  const khoiKhach = anhHomNay(hn) + (laVanPhong() ? chiAIHomNay(hn) + khachHomNay(hn) + tienHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
+  const nutChi = !laVanPhong() && db.congTrinh.length ? '<div class="actions"><button id="hnGhiChi">− Ghi chi công trình</button></div>' : '';
+  const khoiKhach = nutChi + anhHomNay(hn) + (laVanPhong() ? chiAIHomNay(hn) + khachHomNay(hn) + tienHomNay(hn) + noHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
+    ganNutTraThau(v);
     return;
   }
   v.innerHTML = khoiKhach + dangLam.map((ct) => {
@@ -168,6 +174,8 @@ function manHomNay() {
   }).join('');
   v.querySelectorAll('[data-viec]').forEach((b) => { b.onclick = () => moViec(b.dataset.ct, b.dataset.viec); });
   ganNutTraThau(v);
+  const hnChi = $('#hnGhiChi');
+  if (hnChi) hnChi.onclick = () => moGhiKhoan({ loai: 'CHI', ma: (dangLam[0] || {}).ma || '' });
   ganNutPS(v);
   ganNutMau(v);
   ganNutAnh(v);
@@ -1556,9 +1564,7 @@ function manMotHD(ma) {
   v.querySelectorAll('[data-thu]').forEach((b) => { b.onclick = () => moGhiThu(hd, timDot(b.dataset.thu)); });
   v.querySelectorAll('[data-dn]').forEach((b) => {
     b.onclick = () => {
-      const d = timDot(b.dataset.dn);
-      const tk = (db.caiDat && db.caiDat.taiKhoan) || '';
-      chiaSe(`KAS Houzing kính gửi anh/chị ${kh ? kh.ten : ''}\nĐề nghị thanh toán đợt ${d.so} (${d.tyLe}%) theo hợp đồng số ${hd.soHD}.\nNội dung: ${d.ten}\nSố tiền: ${tien(d.conLai)}\n${tk ? `Thông tin chuyển khoản:\n${tk}\nNội dung chuyển khoản: ${hd.soHD} dot ${d.so}\n` : ''}Trân trọng cảm ơn anh/chị.`);
+      chiaSe(tinDeNghiTT(hd, timDot(b.dataset.dn)));
     };
   });
   v.querySelectorAll('[data-dong]').forEach((b) => {
@@ -1585,13 +1591,37 @@ function manMotHD(ma) {
   });
 }
 
-function moGhiThu(hd, d) {
+function tinDeNghiTT(hd, d) {
+  const kh = (db.khach || []).find((k) => k.ma === hd.maKhach);
+  const tk = (db.caiDat && db.caiDat.taiKhoan) || '';
+  return `KAS Houzing kính gửi anh/chị ${kh ? kh.ten : ''}\nĐề nghị thanh toán đợt ${d.so} (${d.tyLe}%) theo hợp đồng số ${hd.soHD}.\nNội dung: ${d.ten}\nSố tiền: ${tien(d.conLai)}\n${tk ? `Thông tin chuyển khoản:\n${tk}\nNội dung chuyển khoản: ${hd.soHD} dot ${d.so}\n` : ''}Trân trọng cảm ơn anh/chị.`;
+}
+
+// ---------- Tài khoản tiền (chọn khi ghi thu, chi) ----------
+const KHOA_TK_CUOI = 'kas-tk-cuoi';
+const tkCuoi = () => { try { return localStorage.getItem(KHOA_TK_CUOI) || ''; } catch { return ''; } };
+const nhoTK = (id) => { try { if (id) localStorage.setItem(KHOA_TK_CUOI, id); } catch { /* bị chặn bộ nhớ */ } };
+const tenTK = (id) => { const q = (db.taiKhoan || []).find((x) => x.id === id); return q ? q.ten : ''; };
+// Ô chọn tài khoản, gom theo loại. Giám sát chỉ thấy tài khoản văn phòng cho phép.
+function chonTK(chon, chu = 'Chưa chọn tài khoản') {
+  const ds = laVanPhong() ? dsTaiKhoan(db) : tkChoGiamSat(db);
+  const co = ds.some((q) => q.id === chon);
+  const gia = !co && chon === undefined ? (ds.some((q) => q.id === tkCuoi()) ? tkCuoi() : '') : chon;
+  return `<option value="">${esc(chu)}</option>${Object.entries(LOAI_TK).map(([k, ten]) => {
+    const nhom = ds.filter((q) => q.loai === k);
+    return nhom.length ? `<optgroup label="${ten}">${nhom.map((q) => `<option value="${esc(q.id)}" ${q.id === gia ? 'selected' : ''}>${esc(q.ten)}${q.nguoiGiu ? ' · ' + esc(q.nguoiGiu) : ''}</option>`).join('')}</optgroup>` : '';
+  }).join('')}`;
+}
+
+// `sau`: chạy sau khi lưu (mặc định mở lại hợp đồng).
+function moGhiThu(hd, d, sau) {
   const dl = $('#sheet');
   dl.innerHTML = `<h2>Thu đợt ${d.so}: ${esc(d.ten)}</h2>
     <p class="muted">Phải thu ${tien(d.phaiThu)} · đã thu ${tien(d.daThu)} · còn ${tien(d.conLai)}</p>
     <label class="f">Số tiền khách chuyển (đồng)</label><input id="st" type="number" inputmode="numeric" value="${Math.max(0, d.conLai)}">
     <p class="muted" id="stChu"></p>
     <label class="f">Ngày</label><input id="ng" type="date" value="${homNay()}">
+    <label class="f">Tiền vào tài khoản nào</label><select id="tk">${chonTK()}</select>
     <label class="f">Ghi chú</label><input id="gc" placeholder="Vd: chuyển khoản Vietcombank">
     <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
   dl.showModal();
@@ -1601,10 +1631,12 @@ function moGhiThu(hd, d) {
   $('#ok', dl).onclick = () => {
     const st = Number($('#st', dl).value);
     if (!st) return bao('Nhập số tiền');
-    const dong = ghiThu(db, hd, d.id, { ngay: $('#ng', dl).value, soTien: st, ghiChu: $('#gc', dl).value.trim() }, vaiTro);
+    const tk = $('#tk', dl).value;
+    nhoTK(tk);
+    const dong = ghiThu(db, hd, d.id, { ngay: $('#ng', dl).value, soTien: st, ghiChu: $('#gc', dl).value.trim(), taiKhoan: tk }, vaiTro);
     luu(); dl.close();
     bao(dong ? 'Đủ tiền, đã đóng đợt' : 'Đã ghi. Thu thiếu thì bấm Đóng đợt để chuyển phần thiếu sang đợt sau');
-    manMotHD(hd.ma);
+    if (sau) sau(); else manMotHD(hd.ma);
   };
 }
 
@@ -1681,7 +1713,9 @@ function moDungHD(hd) {
 // ---------- Thu chi, trả thầu (văn phòng; giám sát chỉ xác nhận khối lượng) ----------
 let locThang = '';
 let locMaTC = '';
-const dauTien = (tab) => `<div class="loc doan khong-in">${[['hop-dong', 'Hợp đồng'], ['thu-chi', 'Thu chi'], ['tra-thau', 'Trả thầu'], ['phat-sinh', 'Phát sinh']]
+let locTK = ''; // '' = tất cả, 'CHUA' = chưa gắn tài khoản, còn lại = id tài khoản
+const dauTien = (tab) => `<div class="loc doan nhieu khong-in">${[['hop-dong', 'Hợp đồng'], ['thu-chi', 'Thu chi'], ['cong-no', 'Công nợ'], ['dong-tien', 'Dòng tiền'],
+  ['tai-khoan', 'Tài khoản'], ['tra-thau', 'Trả thầu'], ['phat-sinh', 'Phát sinh']]
   .map(([h, t]) => `<a class="btn ${h === tab ? 'on' : ''}" href="#${h}">${t}</a>`).join('')}</div>`;
 const tenMa = (ma) => (ma === CTY ? 'Chi chung công ty' : ma || 'Chưa gắn công trình');
 const laiToiThieu = () => Number((db.caiDat || {}).laiGopToiThieu) || 0;
@@ -1695,28 +1729,39 @@ function thuHDTrongThang(thang, ma) {
     for (const d of hd.dot || []) for (const x of d.thu || []) {
       if (!String(x.ngay).startsWith(thang)) continue;
       ds.push({ id: x.id, ngay: x.ngay, ma: hd.maCongTrinh, loai: 'THU', hangMuc: hd.dang === 'TK' ? 'Thu HĐ thiết kế' : 'Thu HĐ thi công', doiTuong: hd.tenHD,
-        soTien: Number(x.soTien) || 0, noiDung: `Đợt ${d.so} · ${hd.soHD}`, hd: hd.ma, taoLuc: '' });
+        soTien: Number(x.soTien) || 0, noiDung: `Đợt ${d.so} · ${hd.soHD}`, hd: hd.ma, taoLuc: '', taiKhoan: x.taiKhoan || '', duyet: 'VP', nguoi: 'THAY' });
     }
   }
   return ds;
 }
 
 function theKhoan(e) {
+  if (e.loai === 'CHUYEN') {
+    return `<button class="card" data-tc="${esc(e.id)}"><div class="row"><span class="name">Chuyển tiền</span><b>⇄ ${tienGon(e.soTien)}</b></div>
+      <div class="muted">${esc(tenTK(e.taiKhoan) || '?')} → ${esc(tenTK(e.toiTK) || '?')}${e.noiDung ? ' · ' + esc(e.noiDung) : ''}</div></button>`;
+  }
   const dau = e.loai === 'THU' ? '+' : '−';
-  const inner = `<div class="row"><span class="name">${esc(e.hangMuc)}</span><b class="${e.loai === 'THU' ? 'tien-thu' : 'tien-chi'}">${dau}${tienGon(e.soTien)}</b></div>
-    <div class="muted">${esc(tenMa(e.ma))}${e.doiTuong ? ' · ' + esc(e.doiTuong) : ''}${e.noiDung ? ' · ' + esc(e.noiDung) : ''}${e.soAnh ? ` · 📎 ${e.soAnh}` : ''}${e.hinhThuc === 'TM' ? ' · tiền mặt' : ''}</div>`;
+  const gs = !VAN_PHONG.includes(e.nguoi) && e.nguoi;
+  const tagKiem = gs ? (e.duyet ? '<span class="tag XONG">Đã kiểm</span>' : `<span class="tag SAP">${laVanPhong() ? esc(tenNguoi(e.nguoi)) + ' ghi, chưa kiểm' : 'Chờ văn phòng kiểm'}</span>`) : '';
+  const tk = e.taiKhoan ? tenTK(e.taiKhoan) : '';
+  const inner = `<div class="row"><span class="name">${esc(e.hangMuc)} ${tagKiem}</span><b class="${e.loai === 'THU' ? 'tien-thu' : 'tien-chi'}">${dau}${tienGon(e.soTien)}</b></div>
+    <div class="muted">${esc(tenMa(e.ma))}${e.doiTuong ? ' · ' + esc(e.doiTuong) : ''}${e.noiDung ? ' · ' + esc(e.noiDung) : ''}${e.soAnh ? ` · 📎 ${e.soAnh}` : ''}${e.hinhThuc === 'TM' ? ' · tiền mặt' : ''}${tk ? ' · 🏦 ' + esc(tk) : laVanPhong() ? ' · <span class="tre">chưa gắn tài khoản</span>' : ''}</div>`;
   return e.hd ? `<a class="card" href="#${esc(e.hd)}">${inner}</a>` : `<button class="card" data-tc="${esc(e.id)}">${inner}</button>`;
 }
 
-function manThuChi(ma) {
+function manThuChi(ma, tk) {
   datTab('hop-dong', 'Thu chi');
   const hn = homNay();
   if (!locThang) locThang = hn.slice(0, 7);
   if (ma !== undefined) locMaTC = ma;
+  if (tk !== undefined) locTK = tk;
   const t = tongThang(db, locThang);
   const no = congNoThau(db, hn);
+  const hopTK = (e) => !locTK || (locTK === 'CHUA' ? !e.taiKhoan && e.loai !== 'CHUYEN' : e.taiKhoan === locTK || e.toiTK === locTK);
   const ds = [...soConLai(db).filter((e) => String(e.ngay).startsWith(locThang) && (!locMaTC || e.ma === locMaTC)), ...(locMaTC === CTY ? [] : thuHDTrongThang(locThang, locMaTC))]
+    .filter(hopTK)
     .sort((a, b) => (b.ngay + b.taoLuc).localeCompare(a.ngay + a.taoLuc));
+  const kiem = choKiem(db);
   let ngay = '';
   const dsHtml = ds.map((e) => `${e.ngay !== ngay ? `<p class="ngay-nhom">${fmtNgay((ngay = e.ngay))}</p>` : ''}${theKhoan(e)}`).join('');
   const lg = locMaTC && locMaTC !== CTY ? laiGop(db, locMaTC, laiToiThieu(), nguongPS()) : null;
@@ -1724,12 +1769,14 @@ function manThuChi(ma) {
     <div class="so-lieu"><div><span>Thu tháng ${locThang.slice(5)}</span><b class="tien-thu">${tienGon(t.thu)}</b></div><div><span>Chi tháng ${locThang.slice(5)}</span><b class="tien-chi">${tienGon(t.chi)}</b></div>
       <div><span>Chênh lệch</span><b>${t.chenh < 0 ? '−' : ''}${tienGon(Math.abs(t.chenh))}</b></div><div><span>Trong đó chi công ty</span><b>${tienGon(t.chiCty)}</b></div></div>
     <div class="so-lieu"><a href="#tra-thau"><span>Đến hạn trả thầu</span><b class="${no.denHan ? 'tre' : ''}">${tienGon(no.denHan)}</b></a><a href="#tra-thau"><span>Còn phải trả thầu</span><b>${tienGon(no.conPhaiTra)}</b></a></div>
-    <div class="actions"><button id="ghiChi" class="btn-chinh">− Ghi chi</button><button id="ghiThu">+ Ghi thu khác</button></div>
+    <div class="actions"><button id="ghiChi" class="btn-chinh">− Ghi chi</button><button id="ghiThu">+ Ghi thu khác</button><button id="chuyenTien">⇄ Chuyển tiền</button></div>
+    ${kiem.length ? `<h3>Giám sát ghi, chờ kiểm (${kiem.length})</h3><p class="muted">Bấm vào khoản, xem ảnh chứng từ trong Drive, đúng thì bấm "Đã kiểm".</p>${kiem.map(theKhoan).join('')}` : ''}
     <div class="hai-cot loc-tc">
       <div><span class="muted">Tháng</span><input id="thang" type="month" value="${esc(locThang)}"></div>
       <div><span class="muted">Công trình</span><select id="locMa"><option value="">Tất cả</option><option value="${CTY}" ${locMaTC === CTY ? 'selected' : ''}>Chi chung công ty</option>
         ${db.congTrinh.map((c) => `<option value="${esc(c.ma)}" ${c.ma === locMaTC ? 'selected' : ''}>${esc(c.ma)}</option>`).join('')}</select></div>
     </div>
+    <div class="loc-tc"><span class="muted">Tài khoản</span><select id="locTk">${chonTK(locTK, 'Tất cả tài khoản').replace('</option>', `</option><option value="CHUA" ${locTK === 'CHUA' ? 'selected' : ''}>Chưa gắn tài khoản</option>`)}</select></div>
     ${lg ? khoiLaiGop(lg) : ''}
     ${dsHtml || '<p class="muted">Tháng này chưa ghi khoản nào.</p>'}
     <p class="muted">Thu theo hợp đồng ghi ở màn Hợp đồng (bấm vào để mở). Ở đây ghi chi và các khoản thu ngoài hợp đồng.</p>
@@ -1742,6 +1789,8 @@ function manThuChi(ma) {
     </details>`;
   $('#thang').onchange = () => { locThang = $('#thang').value || hn.slice(0, 7); manThuChi(); };
   $('#locMa').onchange = () => { locMaTC = $('#locMa').value; manThuChi(); };
+  $('#locTk').onchange = () => { locTK = $('#locTk').value; manThuChi(); };
+  $('#chuyenTien').onclick = () => moGhiKhoan({ loai: 'CHUYEN' });
   $('#ghiChi').onclick = () => moGhiKhoan({ loai: 'CHI', ma: locMaTC });
   $('#ghiThu').onclick = () => moGhiKhoan({ loai: 'THU', ma: locMaTC === CTY ? '' : locMaTC });
   $('#luuLai').onclick = () => {
@@ -1762,35 +1811,51 @@ function khoiLaiGop(lg) {
     ${lg.canhBao.map((c) => `<p class="note"><b class="tre">${esc(c)}</b></p>`).join('')}`;
 }
 
-// Ghi 1 khoản thu/chi (mới hoặc sửa). `du` điền sẵn: { loai, ma, hangMuc, thamChieu, doiTuong, soTien }.
+// Ghi 1 khoản thu/chi/chuyển tiền (mới hoặc sửa). `du` điền sẵn: { loai, ma, hangMuc, thamChieu, doiTuong, soTien }.
+// Giám sát: chỉ ghi chi ở công trình được giao, chọn tài khoản văn phòng cho phép; văn phòng kiểm rồi thì chỉ xem.
 function moGhiKhoan(du, cu) {
   const d = $('#sheet');
   if (d.open) d.close();
+  const vp = laVanPhong();
   const e0 = cu || { loai: 'CHI', ngay: homNay(), ma: '', hangMuc: '', thamChieu: '', doiTuong: '', soTien: '', noiDung: '', hinhThuc: 'CK', ...du };
-  let loai = e0.loai;
-  d.innerHTML = `<h2>${cu ? 'Sửa khoản' : loai === 'THU' ? 'Ghi thu ngoài hợp đồng' : 'Ghi chi'}</h2>
-    <div class="grid-btn hai"><button data-loai="CHI">Chi</button><button data-loai="THU">Thu</button></div>
+  let loai = vp ? e0.loai : 'CHI';
+  const khoa = !vp && cu && !!cu.duyet; // giám sát xem khoản đã kiểm
+  const choKiemNay = vp && cu && !cu.duyet && !VAN_PHONG.includes(cu.nguoi);
+  const tieuDe = () => (cu ? 'Sửa khoản' : loai === 'THU' ? 'Ghi thu ngoài hợp đồng' : loai === 'CHUYEN' ? 'Chuyển tiền giữa tài khoản' : 'Ghi chi');
+  d.innerHTML = `<h2 id="tieuDe">${tieuDe()}</h2>
+    ${vp ? '<div class="grid-btn ba"><button data-loai="CHI">Chi</button><button data-loai="THU">Thu</button><button data-loai="CHUYEN">Chuyển tiền</button></div>' : ''}
+    ${choKiemNay ? `<p class="note">${esc(tenNguoi(cu.nguoi))} ghi, chưa kiểm. Xem ảnh chứng từ${cu.soAnh ? ` (${cu.soAnh} ảnh trong Drive, thư mục "KAS App – Chứng từ")` : ''}, đúng thì bấm "Đã kiểm".</p>` : ''}
+    ${khoa ? '<p class="note">Văn phòng đã kiểm khoản này. Ghi nhầm thì báo văn phòng sửa.</p>' : ''}
     <div class="hai-cot">
       <div><label class="f">Ngày</label><input id="ngay" type="date" value="${esc(e0.ngay)}"></div>
-      <div><label class="f">Công trình</label><select id="ma"></select></div>
+      <div id="maBox"><label class="f">Công trình</label><select id="ma"></select></div>
     </div>
-    <label class="f">Hạng mục</label><select id="hm"></select>
+    <div id="hmBox"><label class="f">Hạng mục</label><select id="hm"></select></div>
     <div id="dotBox"><label class="f" id="dotNhan">Trả đợt nào</label><select id="dot"></select></div>
-    <label class="f" id="dtNhan">Đối tượng (thầu, nhà cung cấp, người nhận)</label><input id="dt" list="dsDt" value="${esc(e0.doiTuong)}"><datalist id="dsDt"></datalist>
+    <div id="dtBox"><label class="f" id="dtNhan">Đối tượng (thầu, nhà cung cấp, người nhận)</label><input id="dt" list="dsDt" value="${esc(e0.doiTuong)}"><datalist id="dsDt"></datalist></div>
+    <label class="f" id="tkNhan">Tài khoản</label><select id="tk">${chonTK(cu ? e0.taiKhoan || '' : undefined)}</select>
+    <div id="tk2Box"><label class="f">Sang tài khoản</label><select id="tk2">${chonTK(e0.toiTK || '', 'Chọn tài khoản nhận')}</select></div>
+    ${!vp && !tkChoGiamSat(db).length ? '<p class="muted">Văn phòng chưa cho chọn tài khoản nào, cứ ghi, văn phòng gắn sau.</p>' : ''}
     <label class="f">Số tiền</label><input id="st" inputmode="decimal" value="${e0.soTien ? esc(e0.soTien) : ''}" placeholder="Vd: 12tr, 500k, 12000000"><p id="stChu" class="muted"></p>
     <label class="f">Nội dung</label><div class="mic"><textarea id="nd" placeholder="Vd: Thầu điện nước đợt 1">${esc(e0.noiDung)}</textarea><button id="noi">🎤</button></div>
-    <label class="f">Hình thức</label><select id="ht">${Object.entries(HINH_THUC).map(([k, t]) => `<option value="${k}" ${k === e0.hinhThuc ? 'selected' : ''}>${t}</option>`).join('')}</select>
+    <div id="htBox"><label class="f">Hình thức</label><select id="ht">${Object.entries(HINH_THUC).map(([k, t]) => `<option value="${k}" ${k === e0.hinhThuc ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
     <label class="btn anh-ct" style="display:block;text-align:center;margin-top:12px">📎 Ảnh chuyển khoản / hoá đơn${e0.soAnh ? ` (đã có ${e0.soAnh})` : ''}<input id="anh" type="file" accept="image/*" multiple hidden></label>
     <p id="soAnh" class="muted"></p>
-    <div class="actions">${cu ? '<button id="xoa" class="btn-do">Xoá</button>' : ''}<button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+    <div class="actions">${cu && !khoa ? '<button id="xoa" class="btn-do">Xoá</button>' : ''}<button id="huy">${khoa ? 'Đóng' : 'Huỷ'}</button>${choKiemNay ? '<button id="kiem">✓ Đã kiểm</button>' : ''}${khoa ? '' : '<button id="ok" class="btn-chinh">Lưu</button>'}</div>`;
   const veLoai = (dau) => {
     d.querySelectorAll('[data-loai]').forEach((b) => b.classList.toggle('on', b.dataset.loai === loai));
+    $('#tieuDe', d).textContent = tieuDe();
+    const chuyen = loai === 'CHUYEN';
+    ['#maBox', '#hmBox', '#dtBox', '#htBox'].forEach((id) => { $(id, d).hidden = chuyen; });
+    $('#tk2Box', d).hidden = !chuyen;
+    $('#tkNhan', d).textContent = chuyen ? 'Từ tài khoản' : loai === 'THU' ? 'Tiền vào tài khoản nào' : 'Chi từ tài khoản nào';
     const truoc = dau ? e0.ma : $('#ma', d).value;
     const sel = $('#ma', d);
-    sel.innerHTML = `${loai === 'CHI' ? `<option value="${CTY}">Chi chung công ty</option>` : '<option value="">Không gắn công trình</option>'}${db.congTrinh.map((c) => `<option value="${esc(c.ma)}">${esc(c.ma)}</option>`).join('')}`;
+    const dsCt = vp ? db.congTrinh : db.congTrinh.filter((c) => !congTrinhDaXong(db, c.ma));
+    sel.innerHTML = `${!vp ? '' : loai === 'CHI' ? `<option value="${CTY}">Chi chung công ty</option>` : '<option value="">Không gắn công trình</option>'}${dsCt.map((c) => `<option value="${esc(c.ma)}">${esc(c.ma)}${vp ? '' : ' · ' + esc(c.ten)}</option>`).join('')}`;
     const co = (m) => [...sel.options].some((o) => o.value === m);
     // Chưa chọn: chi thì lấy công trình đang làm đầu tiên (đổi được), thu thì không gắn.
-    const macDinh = loai === 'CHI' ? ((db.congTrinh.find((c) => !congTrinhDaXong(db, c.ma)) || {}).ma || CTY) : '';
+    const macDinh = loai === 'CHI' ? ((dsCt.find((c) => !congTrinhDaXong(db, c.ma)) || {}).ma || (vp ? CTY : (dsCt[0] || {}).ma || '')) : '';
     sel.value = truoc && co(truoc) ? truoc : macDinh;
     veHM();
   };
@@ -1801,21 +1866,23 @@ function moGhiKhoan(du, cu) {
     $('#hm', d).innerHTML = ds.map((h) => `<option ${h === hm ? 'selected' : ''}>${esc(h)}</option>`).join('');
     veDot();
   };
-  // Chi thầu phụ → chọn đợt trả thầu; Thu phát sinh → chọn phiếu phát sinh đã duyệt. Để tự trừ công nợ.
+  // Chi thầu phụ → chọn đợt trả thầu; Chi vật tư → nợ nhà cung cấp; Thu phát sinh → phiếu phát sinh đã duyệt. Để tự trừ công nợ.
   const veDot = () => {
     const ma = $('#ma', d).value, hm = $('#hm', d).value;
     // Chi quảng cáo: ô Đối tượng là kênh, để tính chi phí trên mỗi khách theo nguồn.
     const mkt = hm === HM_MKT;
     $('#dtNhan', d).textContent = mkt ? 'Kênh quảng cáo (chọn đúng tên để tính chi phí trên mỗi khách)' : 'Đối tượng (thầu, nhà cung cấp, người nhận)';
     $('#dsDt', d).innerHTML = (mkt ? KENH_MKT : dsDoiTuong(db)).map((x) => `<option value="${esc(x)}">`).join('');
-    const ds = loai === 'CHI' && hm === 'Chi thầu phụ'
-      ? dsTraThau(db, ma).map((t) => [t.id, `${t.thau} · ${t.dot} · còn ${tienGon(trangThaiTra(db, t, homNay()).con)}`])
-      : loai === 'THU' && hm === 'Thu phát sinh'
-        ? psCuaCongTrinh(db, ma).filter((p) => p.trangThai === 'DUYET').map((p) => [p.id, `${p.ma} · ${p.moTa} · còn ${tienGon((Number(p.giaBan) || 0) - daThuPS(db, p))}`])
-        : [];
+    const no = (lo) => dsTraThau(db, ma, lo).map((t) => [t.id, `${t.thau} · ${t.dot} · còn ${tienGon(trangThaiTra(db, t, homNay()).con)}`]);
+    const ds = !vp || loai === 'CHUYEN' ? []
+      : loai === 'CHI' && hm === 'Chi thầu phụ' ? no('THAU')
+        : loai === 'CHI' && hm === 'Chi vật tư' ? no('NCC')
+          : loai === 'THU' && hm === 'Thu phát sinh'
+            ? psCuaCongTrinh(db, ma).filter((p) => p.trangThai === 'DUYET').map((p) => [p.id, `${p.ma} · ${p.moTa} · còn ${tienGon((Number(p.giaBan) || 0) - daThuPS(db, p))}`])
+            : [];
     $('#dotBox', d).hidden = !ds.length;
-    $('#dotNhan', d).textContent = loai === 'THU' ? 'Thu phát sinh nào' : 'Trả đợt nào';
-    $('#dot', d).innerHTML = `<option value="">${loai === 'THU' ? 'Không theo phiếu' : 'Không theo đợt'}</option>${ds.map(([id, ten]) => `<option value="${esc(id)}" ${id === e0.thamChieu ? 'selected' : ''}>${esc(ten)}</option>`).join('')}`;
+    $('#dotNhan', d).textContent = loai === 'THU' ? 'Thu phát sinh nào' : hm === 'Chi vật tư' ? 'Trả nợ nhà cung cấp nào' : 'Trả đợt nào';
+    $('#dot', d).innerHTML = `<option value="">${loai === 'THU' ? 'Không theo phiếu' : hm === 'Chi vật tư' ? 'Không phải trả nợ (mua trả ngay)' : 'Không theo đợt'}</option>${ds.map(([id, ten]) => `<option value="${esc(id)}" ${id === e0.thamChieu ? 'selected' : ''}>${esc(ten)}</option>`).join('')}`;
   };
   const xemTien = () => { const n = docTien($('#st', d).value); $('#stChu', d).textContent = Number.isFinite(n) ? `= ${tien(n)}` : $('#st', d).value ? 'Chưa đọc được số tiền' : ''; };
   veLoai(true); xemTien();
@@ -1838,14 +1905,22 @@ function moGhiKhoan(du, cu) {
   $('#st', d).oninput = xemTien;
   $('#noi', d).onclick = () => noiThanhChu($('#nd', d));
   $('#anh', d).onchange = () => { const n = $('#anh', d).files.length; $('#soAnh', d).textContent = n ? `${n} ảnh sẽ gửi lên Drive (thư mục "KAS App – Chứng từ")` : ''; };
+  if (khoa) d.querySelectorAll('input, select, textarea, #noi').forEach((x) => { x.disabled = true; });
   d.showModal();
   $('#huy', d).onclick = () => d.close();
-  $('#ok', d).onclick = async () => {
+  if (choKiemNay) $('#kiem', d).onclick = () => { duyetKhoan(db, cu); luu(); d.close(); bao('Đã kiểm'); route(); };
+  if (!khoa) $('#ok', d).onclick = async () => {
     const soTien = docTien($('#st', d).value);
     if (!(soTien > 0)) return bao('Nhập số tiền, vd 12tr');
     if (!$('#ngay', d).value) return bao('Chọn ngày');
-    const tt = { loai, ngay: $('#ngay', d).value, ma: $('#ma', d).value, hangMuc: $('#hm', d).value, thamChieu: $('#dotBox', d).hidden ? '' : $('#dot', d).value,
-      doiTuong: $('#dt', d).value.trim(), soTien, noiDung: $('#nd', d).value.trim(), hinhThuc: $('#ht', d).value };
+    const tk = $('#tk', d).value, tk2 = $('#tk2', d).value;
+    if (loai === 'CHUYEN' && (!tk || !tk2 || tk === tk2)) return bao('Chọn 2 tài khoản khác nhau');
+    if (!vp && !$('#ma', d).value) return bao('Chọn công trình');
+    nhoTK(tk);
+    const tt = loai === 'CHUYEN'
+      ? { loai, ngay: $('#ngay', d).value, ma: CTY, hangMuc: 'Chuyển tiền', thamChieu: '', doiTuong: '', soTien, noiDung: $('#nd', d).value.trim(), hinhThuc: 'CK', taiKhoan: tk, toiTK: tk2 }
+      : { loai, ngay: $('#ngay', d).value, ma: $('#ma', d).value, hangMuc: $('#hm', d).value, thamChieu: $('#dotBox', d).hidden ? '' : $('#dot', d).value,
+        doiTuong: $('#dt', d).value.trim(), soTien, noiDung: $('#nd', d).value.trim(), hinhThuc: $('#ht', d).value, taiKhoan: tk, toiTK: '' };
     const e = cu ? (suaKhoan(db, cu, tt), cu) : ghiKhoan(db, tt, vaiTro);
     const files = [...$('#anh', d).files];
     d.close();
@@ -1855,10 +1930,10 @@ function moGhiKhoan(du, cu) {
         try { await xepAnh(files, e.ma || CTY, e.id, 'CHUNG_TU'); suaKhoan(db, e, { soAnh: (Number(e.soAnh) || 0) + files.length }); } catch (err) { bao('Không đọc được ảnh: ' + err.message); }
       }
     }
-    luu(); bao(cu ? 'Đã sửa' : `Đã ghi ${loai === 'THU' ? 'thu' : 'chi'} ${tien(soTien)}`); route();
+    luu(); bao(cu ? 'Đã sửa' : loai === 'CHUYEN' ? `Đã chuyển ${tien(soTien)}` : `Đã ghi ${loai === 'THU' ? 'thu' : 'chi'} ${tien(soTien)}`); route();
   };
   let bamXoa = false;
-  if (cu) $('#xoa', d).onclick = () => {
+  if (cu && !khoa) $('#xoa', d).onclick = () => {
     if (!bamXoa) { bamXoa = true; $('#xoa', d).textContent = 'Bấm lần nữa để xoá'; return; }
     xoaKhoan(db, cu, vaiTro); luu(); d.close(); bao('Đã xoá'); route();
   };
@@ -1867,6 +1942,7 @@ function moGhiKhoan(du, cu) {
 // ---------- Trả thầu ----------
 let locMaTT = '';
 function theDotTra(t, hn, coTien) {
+  if (loaiNo(t) === 'NCC') return coTien ? theNoNCC(t, hn) : '';
   const ct = db.congTrinh.find((c) => c.ma === t.maCongTrinh);
   const v = t.viecMoc && ct ? ct.viec.find((x) => x.id === t.viecMoc) : null;
   const r = coTien ? trangThaiTra(db, t, hn) : null;
@@ -1880,14 +1956,27 @@ function theDotTra(t, hn, coTien) {
   </div>`;
 }
 
+// Nợ nhà cung cấp (mua chịu): không cần nghiệm thu, đến hạn theo ngày hẹn trả.
+function theNoNCC(t, hn) {
+  const r = trangThaiTra(db, t, hn);
+  const tag = { DU: ['XONG', 'Đã trả đủ'], QUA_HAN: ['TRE', `Quá hạn ${diffDays(t.hanTra, hn)} ngày`], DEN_HAN: ['SAP', 'Đến hạn trả'], CHUA_DEN: ['DANG', 'Hạn ' + ddmm(t.hanTra)] }[r.tt];
+  return `<div class="card">
+    <div class="row"><span class="name">${esc(t.thau || 'Chưa ghi tên')} · ${esc(t.dot)}</span><span class="tag ${tag[0]}">${tag[1]}</span></div>
+    <div class="muted">${esc(t.maCongTrinh)}${t.hangMuc ? ' · ' + esc(t.hangMuc) : ''}${t.hanTra ? ' · hẹn trả ' + ddmm(t.hanTra) : ' · chưa hẹn ngày trả'}${t.ghiChu ? ' · ' + esc(t.ghiChu) : ''}</div>
+    <div>Nợ ${tien(t.soTien)} · đã trả ${tien(r.tra)}${r.con > 0 ? ` · còn <b>${tien(r.con)}</b>` : ''}</div>
+    <div class="actions">${r.con > 0 ? `<button data-tra="${esc(t.id)}" ${r.tt !== 'CHUA_DEN' ? 'class="btn-chinh"' : ''}>Ghi trả</button>` : ''}<button data-sua-tt="${esc(t.id)}">Sửa</button></div>
+  </div>`;
+}
+
 function ganNutTraThau(el) {
   const tim = (id) => dsTraThau(db).find((t) => t.id === id);
   el.querySelectorAll('[data-kl]').forEach((b) => { b.onclick = () => moXacNhanKL(tim(b.dataset.kl)); });
   el.querySelectorAll('[data-tra]').forEach((b) => {
     b.onclick = () => {
       const t = tim(b.dataset.tra);
-      if (!t.klXacNhan) bao('Lưu ý: đợt này chưa xác nhận khối lượng');
-      moGhiKhoan({ loai: 'CHI', ma: t.maCongTrinh, hangMuc: 'Chi thầu phụ', thamChieu: t.id, doiTuong: t.thau, soTien: trangThaiTra(db, t, homNay()).con, noiDung: `${t.hangMuc} đợt ${t.dot}`.trim() });
+      const ncc = loaiNo(t) === 'NCC';
+      if (!ncc && !t.klXacNhan) bao('Lưu ý: đợt này chưa xác nhận khối lượng');
+      moGhiKhoan({ loai: 'CHI', ma: t.maCongTrinh, hangMuc: ncc ? 'Chi vật tư' : 'Chi thầu phụ', thamChieu: t.id, doiTuong: t.thau, soTien: trangThaiTra(db, t, homNay()).con, noiDung: `${t.hangMuc} đợt ${t.dot}`.trim() });
     };
   });
   el.querySelectorAll('[data-sua-tt]').forEach((b) => { const t = tim(b.dataset.suaTt); b.onclick = () => moDotTra(t.maCongTrinh, t); });
@@ -1897,12 +1986,12 @@ function manTraThau() {
   datTab('hop-dong', 'Trả thầu');
   const hn = homNay();
   const no = congNoThau(db, hn);
-  const ds = dsTraThau(db, locMaTT);
+  const ds = dsTraThau(db, locMaTT, 'THAU');
   const theoCt = [...new Set(ds.map((t) => t.maCongTrinh))];
   $('#view').innerHTML = `${dauTien('tra-thau')}
     <div class="so-lieu"><div><span>Đến hạn trả</span><b class="${no.denHan ? 'tre' : ''}">${tienGon(no.denHan)}</b></div><div><span>Còn phải trả</span><b>${tienGon(no.conPhaiTra)}</b></div>
       <div><span>Chờ xác nhận KL</span><b>${canXacNhanKL(db, hn).length}</b></div></div>
-    <p class="muted">Đợt trả thầu theo khối lượng. Giám sát bấm "Xác nhận khối lượng" (không thấy tiền), văn phòng thấy đến hạn trả rồi bấm "Ghi trả".</p>
+    <p class="muted">Đợt trả thầu theo khối lượng. Giám sát bấm "Xác nhận khối lượng" (không thấy tiền), văn phòng thấy đến hạn trả rồi bấm "Ghi trả". Nợ nhà cung cấp vật tư xem ở <a href="#cong-no">Công nợ</a>.</p>
     <div class="actions"><button id="themTT" class="btn-chinh">+ Thêm đợt trả thầu</button></div>
     <div class="loc-tc"><span class="muted">Công trình</span><select id="locMa"><option value="">Tất cả</option>${db.congTrinh.map((c) => `<option value="${esc(c.ma)}" ${c.ma === locMaTT ? 'selected' : ''}>${esc(c.ma)}</option>`).join('')}</select></div>
     ${theoCt.map((ma) => `<div class="dau-ct"><h3>${esc(ma)}</h3><a class="nho" href="#ct-${esc(ma)}">Công trình</a></div>${ds.filter((t) => t.maCongTrinh === ma).map((t) => theDotTra(t, hn, true)).join('')}`).join('')
@@ -1912,24 +2001,174 @@ function manTraThau() {
   ganNutTraThau($('#view'));
 }
 
-function moDotTra(maCt, cu) {
+// ---------- Công nợ gộp: khách còn nợ, phải trả thầu, nợ nhà cung cấp ----------
+function manCongNo() {
+  datTab('hop-dong', 'Công nợ');
+  const hn = homNay();
+  const kh = congNoKhach(db, hn);
+  const thau = noTheoDoiTuong(db, hn, 'THAU');
+  const ncc = noTheoDoiTuong(db, hn, 'NCC');
+  const nt = congNoThau(db, hn), nn = congNoThau(db, hn, 'NCC');
+  const tagKh = (x) => (x.tt === 'QUA_HAN' ? `<span class="tag TRE">Quá hạn ${x.soNgayQua} ngày</span>`
+    : x.tt === 'DEN_HAN' ? '<span class="tag SAP">Đến hạn</span>'
+      : `<span class="tag DANG">${x.ngayDen ? (x.duKien ? 'Dự kiến ' : 'Hạn ') + ddmm(x.ngayDen) : 'Chưa có ngày'}</span>`);
+  const nhomNo = (x, loai) => `<div class="card">
+      <div class="row"><span class="name">${esc(x.ten)}</span><b>${tienGon(x.con)}</b></div>
+      <div class="muted">Tổng ${tien(x.tong)} · đã trả ${tien(x.tra)}${x.denHan ? ` · <span class="${x.quaHan ? 'tre' : ''}">đến hạn ${tien(x.denHan)}${x.quaHan ? `, quá hạn ${tien(x.quaHan)}` : ''}</span>` : ''}</div>
+      <details><summary>${x.ds.filter((r) => r.con > 0).length} ${loai === 'NCC' ? 'khoản nợ' : 'đợt'} còn phải trả</summary>${x.ds.filter((r) => r.con > 0).map((r) => theDotTra(r.t, hn, true)).join('')}</details>
+      <div class="actions"><button data-doi-chieu="${esc(loai)}|${esc(x.ten)}">Gửi đối chiếu Zalo</button></div>
+    </div>`;
+  $('#view').innerHTML = `${dauTien('cong-no')}
+    <h3>Khách còn nợ</h3>
+    <div class="so-lieu"><div><span>Quá hạn</span><b class="${kh.quaHan ? 'tre' : ''}">${tienGon(kh.quaHan)}</b></div><div><span>Đến hạn</span><b>${tienGon(kh.denHan)}</b></div><div><span>Chưa đến hạn</span><b>${tienGon(kh.chuaDen)}</b></div></div>
+    ${kh.ds.map((x, i) => `<div class="card">
+      <div class="row"><span class="name">${esc(x.hd.tenHD || x.hd.soHD)} · đợt ${x.d.so}</span>${tagKh(x)}</div>
+      <div class="muted">${esc(x.hd.soHD)} · ${esc(x.d.ten)}${x.d.daThu ? ` · đã trả ${tien(x.d.daThu)}` : ''}</div>
+      <div>Còn <b>${tien(x.con)}</b></div>
+      <div class="actions"><button data-nhac="${i}">Nhắc Zalo</button><button data-thu-no="${i}" ${x.tt !== 'CHUA' ? 'class="btn-chinh"' : ''}>Ghi thu</button><a class="btn" href="#${esc(x.hd.ma)}" style="text-align:center">Hợp đồng</a></div>
+    </div>`).join('') || '<p class="muted">Không có khách nào còn nợ.</p>'}
+    <h3>Phải trả thầu</h3>
+    <div class="so-lieu"><a href="#tra-thau"><span>Đến hạn trả</span><b class="${nt.denHan ? 'tre' : ''}">${tienGon(nt.denHan)}</b></a><a href="#tra-thau"><span>Còn phải trả</span><b>${tienGon(nt.conPhaiTra)}</b></a></div>
+    ${thau.map((x) => nhomNo(x, 'THAU')).join('') || '<p class="muted">Không còn nợ thầu.</p>'}
+    <div class="dau-ct"><h3>Nợ nhà cung cấp</h3><button id="themNCC" class="nho">+ Ghi nợ</button></div>
+    <div class="so-lieu"><div><span>Đến hạn / quá hạn</span><b class="${nn.denHan ? 'tre' : ''}">${tienGon(nn.denHan)}</b></div><div><span>Còn phải trả</span><b>${tienGon(nn.conPhaiTra)}</b></div></div>
+    ${ncc.map((x) => nhomNo(x, 'NCC')).join('') || '<p class="muted">Không còn nợ nhà cung cấp. Mua chịu vật tư thì bấm "+ Ghi nợ", trả tiền thì bấm "Ghi trả".</p>'}`;
+  const v = $('#view');
+  v.querySelectorAll('[data-nhac]').forEach((b) => { const x = kh.ds[+b.dataset.nhac]; b.onclick = () => chiaSe(tinDeNghiTT(x.hd, x.d)); });
+  v.querySelectorAll('[data-thu-no]').forEach((b) => { const x = kh.ds[+b.dataset.thuNo]; b.onclick = () => moGhiThu(x.hd, x.d, () => manCongNo()); });
+  v.querySelectorAll('[data-doi-chieu]').forEach((b) => {
+    b.onclick = () => {
+      const [loai, ten] = b.dataset.doiChieu.split('|');
+      const x = (loai === 'NCC' ? ncc : thau).find((g) => g.ten === ten);
+      chiaSe(`KAS Houzing gửi ${ten} đối chiếu công nợ ngày ${fmtNgay(hn)}:\n${x.ds.map((r) => `- ${r.t.maCongTrinh} · ${r.t.hangMuc || ''} ${r.t.dot}: ${tien(r.t.soTien)}, đã trả ${tien(r.tra)}, còn ${tien(Math.max(0, r.con))}`).join('\n')}\nTổng còn phải trả: ${tien(x.con)}.\nAnh/chị kiểm tra giúp, có sai lệch thì báo lại KAS. Cảm ơn anh/chị.`);
+    };
+  });
+  $('#themNCC').onclick = () => moDotTra((db.congTrinh.find((c) => !congTrinhDaXong(db, c.ma)) || {}).ma || '', null, 'NCC');
+  ganNutTraThau(v);
+}
+
+// ---------- Dự báo dòng tiền theo tuần ----------
+let soTuanDT = 8;
+let tinhCtyDT = true;
+function manDongTien() {
+  datTab('hop-dong', 'Dòng tiền');
+  const hn = homNay();
+  const r = dongTien(db, hn, { soTuan: soTuanDT, tinhChiCty: tinhCtyDT });
+  const thap = r.tuan.reduce((m, w) => (w.cuoi < m.cuoi ? w : m), r.tuan[0]);
+  const am = (n) => `${n < 0 ? '−' : ''}${tienGon(Math.abs(n))}`;
+  const dong = (x, vao) => (vao
+    ? `<div class="muted">+ ${tienGon(x.con)} · ${esc(x.hd.tenHD || x.hd.soHD)} đợt ${x.d.so}${x.tt === 'QUA_HAN' ? ` <span class="tre">(quá hạn ${x.soNgayQua} ngày)</span>` : x.duKien ? ` (dự kiến ${ddmm(x.ngayDen)})` : ` (${ddmm(x.ngayDen)})`}</div>`
+    : `<div class="muted">− ${tienGon(x.con)} · ${esc(x.t.thau)} ${esc(x.t.dot)}${loaiNo(x.t) === 'NCC' ? ' (nhà cung cấp)' : ''} · ${x.ngay < hn ? '<span class="tre">quá hạn</span>' : ddmm(x.ngay)}</div>`);
+  $('#view').innerHTML = `${dauTien('dong-tien')}
+    <div class="so-lieu"><div><span>Tiền đang có</span><b>${am(r.soDuDau)}</b></div><div><span>Thấp nhất (tuần ${ddmm(thap.tu)})</span><b class="${thap.cuoi < 0 ? 'tre' : ''}">${am(thap.cuoi)}</b></div>
+      <div><span>Cuối tuần thứ ${soTuanDT}</span><b>${am(r.tuan[r.tuan.length - 1].cuoi)}</b></div></div>
+    ${r.tuanAm ? `<p class="note"><b class="tre">Tuần ${ddmm(r.tuanAm.tu)}–${ddmm(r.tuanAm.den)} dự kiến thiếu tiền (${am(r.tuanAm.cuoi)}).</b> Đốc thu khách sớm hoặc lùi hẹn trả thầu, nhà cung cấp.</p>` : ''}
+    ${r.coTaiKhoan ? '' : '<p class="note">Chưa khai tài khoản nên tiền đang có = 0. Vào <a href="#tai-khoan">Tài khoản</a> nhập số dư để dự báo đúng.</p>'}
+    <div class="loc">${[4, 8].map((n) => `<button data-tuan="${n}" class="${n === soTuanDT ? 'on' : ''}">${n} tuần</button>`).join('')}
+      <button id="boCty" class="${tinhCtyDT ? 'on' : ''}">Chi công ty ~${tienGon(r.chiCtyTuan)}/tuần</button></div>
+    ${r.tuan.map((w, i) => `<details class="card" ${i === 0 ? 'open' : ''}>
+      <summary class="row"><span class="name">${ddmm(w.tu)}–${ddmm(w.den)}</span><span><span class="tien-thu">+${tienGon(w.vao)}</span> <span class="tien-chi">−${tienGon(w.ra + w.chiCty)}</span> → <b class="${w.cuoi < 0 ? 'tre' : ''}">${am(w.cuoi)}</b></span></summary>
+      ${w.dsVao.map((x) => dong(x, true)).join('')}${w.dsRa.map((x) => dong(x, false)).join('')}
+      ${w.chiCty ? `<div class="muted">− ${tienGon(w.chiCty)} · chi chung công ty (ước, trung bình 3 tháng)</div>` : ''}
+      ${!w.dsVao.length && !w.dsRa.length && !w.chiCty ? '<div class="muted">Không có khoản nào.</div>' : ''}
+    </details>`).join('')}
+    ${r.khongNgayVao.length || r.khongNgayRa.length ? `<h3>Chưa có ngày, chưa tính vào tuần nào</h3>
+      ${r.khongNgayVao.map((x) => dong({ ...x, ngayDen: '', duKien: false }, true).replace(' ()', '')).join('')}
+      ${r.khongNgayRa.map((x) => `<div class="muted">− ${tienGon(x.con)} · ${esc(x.t.thau)} ${esc(x.t.dot)} · chưa hẹn ngày trả</div>`).join('')}
+      <p class="muted">Ghi hạn ở đợt thu hợp đồng, hạn trả ở đợt thầu / nợ nhà cung cấp để dự báo đủ.</p>` : ''}
+    <p class="muted">Tiền vào: đợt thu khách còn nợ, theo hạn đợt hoặc ngày xong mốc (dự báo theo kế hoạch). Tiền ra: đợt trả thầu, nợ nhà cung cấp theo hạn trả hoặc ngày xong việc mốc. Khoản quá hạn tính vào tuần này. Chưa gồm phát sinh và chi lẻ chưa có kế hoạch.</p>`;
+  $('#view').querySelectorAll('[data-tuan]').forEach((b) => { b.onclick = () => { soTuanDT = +b.dataset.tuan; manDongTien(); }; });
+  $('#boCty').onclick = () => { tinhCtyDT = !tinhCtyDT; manDongTien(); };
+}
+
+// ---------- Tài khoản tiền: số dư từng tài khoản ----------
+function manTaiKhoan() {
+  datTab('hop-dong', 'Tài khoản');
+  const sd = soDu(db);
+  $('#view').innerHTML = `${dauTien('tai-khoan')}
+    <div class="so-lieu"><div><span>Tổng tiền</span><b>${sd.tong < 0 ? '−' : ''}${tienGon(Math.abs(sd.tong))}</b></div><div><span>TK công ty</span><b>${tienGon(sd.congTy)}</b></div><div><span>TK tiền mặt</span><b>${tienGon(sd.tienMat)}</b></div></div>
+    ${sd.soChuaGan ? `<p class="note">${sd.soChuaGan} khoản thu chi chưa gắn tài khoản (${sd.chuaGan < 0 ? '−' : '+'}${tienGon(Math.abs(sd.chuaGan))}), chưa tính vào số dư nào. <a href="#thu-chi&tk=CHUA">Mở để gắn</a></p>` : ''}
+    <div class="actions"><button id="themTk" class="btn-chinh">+ Thêm tài khoản</button><button id="chuyen">⇄ Chuyển tiền</button></div>
+    ${Object.entries(LOAI_TK).map(([k, ten]) => {
+      const ds = sd.ds.filter((r) => r.q.loai === k);
+      return `<h3>${ten}</h3>${ds.map(({ q, soDu: so, vao, ra }) => `<div class="card">
+        <div class="row"><span class="name">${esc(q.ten)}${q.hoatDong === false ? ' <span class="tag CHO">Ngừng dùng</span>' : ''}</span><b class="${so < 0 ? 'tre' : ''}">${so < 0 ? '−' : ''}${tien(Math.abs(so))}</b></div>
+        <div class="muted">${q.nguoiGiu ? 'Người giữ: ' + esc(q.nguoiGiu) + ' · ' : ''}Đầu ${tienGon(q.soDuDau)}${q.ngayDau ? ' ngày ' + ddmm(q.ngayDau) : ''} · vào ${tienGon(vao)} · ra ${tienGon(ra)}${q.choGiamSat ? ' · giám sát dùng được' : ''}</div>
+        <div class="actions"><a class="btn" href="#thu-chi&tk=${esc(q.id)}" style="text-align:center">Sổ</a><button data-sua-tk="${esc(q.id)}">Sửa</button></div>
+      </div>`).join('') || `<p class="muted">Chưa có ${ten.toLowerCase()}.</p>`}`;
+    }).join('')}
+    <p class="muted">Số dư đầu = tiền thực có trong tài khoản ở ngày bắt đầu theo dõi; app cộng trừ các khoản thu, chi, chuyển tiền từ ngày đó. Lệch với ngân hàng thì sửa số dư đầu hoặc ghi khoản còn thiếu. Tạm ứng cho giám sát = chuyển tiền từ tài khoản công ty sang tài khoản tiền mặt giám sát giữ.</p>`;
+  $('#themTk').onclick = () => moTaiKhoan();
+  $('#chuyen').onclick = () => moGhiKhoan({ loai: 'CHUYEN' });
+  $('#view').querySelectorAll('[data-sua-tk]').forEach((b) => { b.onclick = () => moTaiKhoan((db.taiKhoan || []).find((q) => q.id === b.dataset.suaTk)); });
+}
+
+function moTaiKhoan(cu) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const q0 = cu || { ten: '', loai: 'CONG_TY', nguoiGiu: '', soDuDau: '', ngayDau: homNay(), ghiChu: '', choGiamSat: false, hoatDong: true };
+  d.innerHTML = `<h2>${cu ? 'Sửa tài khoản' : 'Thêm tài khoản'}</h2>
+    <label class="f">Tên tài khoản</label><input id="ten" value="${esc(q0.ten)}" placeholder="Vd: MB công ty, VCB Thầy, Tiền mặt Kha giữ">
+    <label class="f">Loại</label><div class="grid-btn hai">${Object.entries(LOAI_TK).map(([k, t]) => `<button data-loai-tk="${k}" class="${k === q0.loai ? 'on' : ''}">${t}</button>`).join('')}</div>
+    <label class="f">Người giữ</label><input id="giu" value="${esc(q0.nguoiGiu)}" placeholder="Vd: Thầy, Kha">
+    <div class="hai-cot">
+      <div><label class="f">Số dư đầu</label><input id="sd" inputmode="decimal" value="${q0.soDuDau !== '' ? esc(q0.soDuDau) : ''}" placeholder="Vd: 150tr"></div>
+      <div><label class="f">Tại ngày</label><input id="nd" type="date" value="${esc(q0.ngayDau)}"></div>
+    </div>
+    <p id="sdChu" class="muted"></p>
+    <label class="f">Ghi chú (số tài khoản, ngân hàng…)</label><input id="gc" value="${esc(q0.ghiChu)}">
+    <label class="cham-dong"><input id="gs" type="checkbox" ${q0.choGiamSat ? 'checked' : ''}><span>Giám sát được chọn tài khoản này khi ghi chi (chỉ thấy tên, không thấy số dư)</span></label>
+    ${cu ? `<label class="cham-dong"><input id="ngung" type="checkbox" ${q0.hoatDong === false ? 'checked' : ''}><span>Ngừng dùng (vẫn giữ lịch sử)</span></label>` : ''}
+    <div class="actions"><button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+  let loai = q0.loai;
+  d.querySelectorAll('[data-loai-tk]').forEach((b) => { b.onclick = () => { loai = b.dataset.loaiTk; d.querySelectorAll('[data-loai-tk]').forEach((x) => x.classList.toggle('on', x === b)); }; });
+  const xem = () => { const v = $('#sd', d).value.trim(); const n = v.startsWith('-') ? -docTien(v.slice(1)) : docTien(v); $('#sdChu', d).textContent = v && Number.isFinite(n) ? `= ${tien(n)}` : v ? 'Chưa đọc được số tiền' : ''; return v ? n : 0; };
+  $('#sd', d).oninput = xem; xem();
+  d.showModal();
+  $('#huy', d).onclick = () => d.close();
+  $('#ok', d).onclick = () => {
+    const ten = $('#ten', d).value.trim();
+    if (!ten) return bao('Nhập tên tài khoản');
+    const soDuDau = xem();
+    if (!Number.isFinite(soDuDau)) return bao('Số dư đầu chưa đọc được');
+    const tt = { ten, loai, nguoiGiu: $('#giu', d).value.trim(), soDuDau, ngayDau: $('#nd', d).value, ghiChu: $('#gc', d).value.trim(), choGiamSat: $('#gs', d).checked };
+    if (cu) suaTaiKhoan(db, cu, { ...tt, hoatDong: !$('#ngung', d).checked }); else themTaiKhoan(db, tt);
+    luu(); d.close(); bao('Đã lưu tài khoản'); route();
+  };
+}
+
+// Hôm nay (văn phòng): nợ nhà cung cấp đến hạn, khoản giám sát ghi chờ kiểm.
+function noHomNay(hn) {
+  const nn = congNoThau(db, hn, 'NCC');
+  const kiem = choKiem(db);
+  if (!nn.ds.length && !kiem.length) return '';
+  return `<h3>Nhà cung cấp, chi công trường</h3>
+    ${nn.ds.map(({ t, con, tt }) => `<button class="card" data-tra="${esc(t.id)}"><div class="row"><span class="name">Trả ${esc(t.thau)} · ${esc(t.dot)}</span><b>${tienGon(con)}</b></div>
+      <div class="muted">${esc(t.maCongTrinh)} · ${tt === 'QUA_HAN' ? `<span class="tre">quá hạn ${diffDays(t.hanTra, hn)} ngày</span>` : t.hanTra ? 'hạn ' + ddmm(t.hanTra) : 'chưa hẹn ngày'}</div></button>`).join('')}
+    ${kiem.length ? `<a class="card" href="#thu-chi"><div class="row"><span class="name">${kiem.length} khoản giám sát ghi chờ kiểm</span><b>${tienGon(kiem.reduce((s, e) => s + e.soTien, 0))}</b></div></a>` : ''}`;
+}
+
+// `loai` = 'NCC': nợ nhà cung cấp vật tư (mua chịu): không gắn việc mốc, không cần giám sát xác nhận.
+function moDotTra(maCt, cu, loai = 'THAU') {
   const d = $('#sheet');
   if (d.open) d.close();
   if (!db.congTrinh.length) return bao('Chưa có công trình');
-  const t0 = cu || { maCongTrinh: maCt || db.congTrinh[0].ma, thau: '', hangMuc: '', dot: '', soTien: '', dieuKien: '', viecMoc: '', hanTra: '' };
+  const ncc = cu ? loaiNo(cu) === 'NCC' : loai === 'NCC';
+  const t0 = cu || { maCongTrinh: maCt || db.congTrinh[0].ma, thau: '', hangMuc: '', dot: '', soTien: '', dieuKien: '', viecMoc: '', hanTra: '', ghiChu: '' };
   let suaMa = !!cu;
-  d.innerHTML = `<h2>${cu ? 'Sửa đợt trả thầu' : 'Thêm đợt trả thầu'}</h2>
+  d.innerHTML = `<h2>${ncc ? (cu ? 'Sửa nợ nhà cung cấp' : 'Ghi nợ nhà cung cấp (mua chịu)') : cu ? 'Sửa đợt trả thầu' : 'Thêm đợt trả thầu'}</h2>
     <label class="f">Công trình</label><select id="ct">${db.congTrinh.map((c) => `<option value="${esc(c.ma)}" ${c.ma === t0.maCongTrinh ? 'selected' : ''}>${esc(c.ma)} · ${esc(c.ten)}</option>`).join('')}</select>
-    <label class="f">Thầu / nhà cung cấp</label><input id="thau" list="dsThau4" value="${esc(t0.thau)}"><datalist id="dsThau4">${dsDoiTuong(db).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
+    <label class="f">${ncc ? 'Nhà cung cấp' : 'Thầu / nhà cung cấp'}</label><input id="thau" list="dsThau4" value="${esc(t0.thau)}"><datalist id="dsThau4">${dsDoiTuong(db).map((x) => `<option value="${esc(x)}">`).join('')}</datalist>
     <div class="hai-cot">
-      <div><label class="f">Hạng mục khoán</label><input id="hm" value="${esc(t0.hangMuc)}" placeholder="Vd: Điện nước"></div>
-      <div><label class="f">Mã đợt</label><input id="dot" value="${esc(t0.dot)}" placeholder="DN1"></div>
+      <div><label class="f">${ncc ? 'Vật tư' : 'Hạng mục khoán'}</label><input id="hm" value="${esc(t0.hangMuc)}" placeholder="${ncc ? 'Vd: Gạch ốp lát' : 'Vd: Điện nước'}"></div>
+      <div><label class="f">${ncc ? 'Mã / số hoá đơn' : 'Mã đợt'}</label><input id="dot" value="${esc(t0.dot)}" placeholder="${ncc ? 'GOL1' : 'DN1'}"></div>
     </div>
-    <label class="f">Số tiền đợt</label><input id="st" inputmode="decimal" value="${t0.soTien ? esc(t0.soTien) : ''}" placeholder="Vd: 12tr"><p id="stChu" class="muted"></p>
-    <label class="f">Xong việc nào thì nhắc giám sát xác nhận (không bắt buộc)</label><select id="moc"></select>
-    <label class="f">Điều kiện trả (giám sát đọc để xác nhận)</label><input id="dk" value="${esc(t0.dieuKien)}" placeholder="Vd: Đi ống xong toàn nhà">
-    <label class="f">Hạn trả dự kiến</label><input id="han" type="date" value="${esc(t0.hanTra)}">
-    <div class="actions">${cu ? '<button id="xoa" class="btn-do">Xoá đợt</button>' : ''}<button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
+    <label class="f">${ncc ? 'Số tiền còn nợ' : 'Số tiền đợt'}</label><input id="st" inputmode="decimal" value="${t0.soTien ? esc(t0.soTien) : ''}" placeholder="Vd: 12tr"><p id="stChu" class="muted"></p>
+    <div ${ncc ? 'hidden' : ''}><label class="f">Xong việc nào thì nhắc giám sát xác nhận (không bắt buộc)</label><select id="moc"></select>
+    <label class="f">Điều kiện trả (giám sát đọc để xác nhận)</label><input id="dk" value="${esc(t0.dieuKien)}" placeholder="Vd: Đi ống xong toàn nhà"></div>
+    <label class="f">${ncc ? 'Hẹn trả ngày' : 'Hạn trả dự kiến'}</label><input id="han" type="date" value="${esc(t0.hanTra)}">
+    ${ncc ? `<label class="f">Ghi chú (giám sát không thấy)</label><input id="gc" value="${esc(t0.ghiChu || '')}" placeholder="Vd: lấy hàng 3 lần, chiết khấu 5%">` : ''}
+    <div class="actions">${cu ? `<button id="xoa" class="btn-do">${ncc ? 'Xoá' : 'Xoá đợt'}</button>` : ''}<button id="huy">Huỷ</button><button id="ok" class="btn-chinh">Lưu</button></div>`;
   const veMoc = () => {
     const ct = db.congTrinh.find((c) => c.ma === $('#ct', d).value);
     $('#moc', d).innerHTML = `<option value="">Không gắn việc</option>${ct.viec.map((v, i) => `<option value="${esc(v.id)}" ${v.id === t0.viecMoc ? 'selected' : ''}>${i + 1}. ${esc(v.hangMuc)}${v.nhaThau ? ' · ' + esc(v.nhaThau) : ''}</option>`).join('')}`;
@@ -1953,12 +2192,13 @@ function moDotTra(maCt, cu) {
   $('#huy', d).onclick = () => d.close();
   $('#ok', d).onclick = () => {
     const soTien = docTien($('#st', d).value);
-    if (!$('#thau', d).value.trim()) return bao('Nhập tên thầu');
-    if (!(soTien > 0)) return bao('Nhập số tiền đợt, vd 12tr');
+    if (!$('#thau', d).value.trim()) return bao(ncc ? 'Nhập tên nhà cung cấp' : 'Nhập tên thầu');
+    if (!(soTien > 0)) return bao('Nhập số tiền, vd 12tr');
     const tt = { maCongTrinh: $('#ct', d).value, thau: $('#thau', d).value.trim(), hangMuc: $('#hm', d).value.trim(), dot: $('#dot', d).value.trim() || goiYMaDot(db, $('#ct', d).value, $('#hm', d).value),
-      soTien, dieuKien: $('#dk', d).value.trim(), viecMoc: $('#moc', d).value, hanTra: $('#han', d).value };
+      soTien, dieuKien: ncc ? '' : $('#dk', d).value.trim(), viecMoc: ncc ? '' : $('#moc', d).value, hanTra: $('#han', d).value, loaiNo: ncc ? 'NCC' : '' };
+    if (ncc) tt.ghiChu = $('#gc', d).value.trim();
     if (cu) suaDotTra(db, cu, tt); else themDotTra(db, tt, vaiTro);
-    luu(); d.close(); bao('Đã lưu đợt ' + tt.dot); route();
+    luu(); d.close(); bao(ncc ? 'Đã lưu nợ ' + tt.thau : 'Đã lưu đợt ' + tt.dot); route();
   };
   let bamXoa = false;
   if (cu) $('#xoa', d).onclick = () => {
@@ -1996,22 +2236,28 @@ function moXacNhanKL(t) {
 // Khối trên trang công trình: văn phòng thấy lãi gộp + đợt trả thầu; giám sát chỉ thấy đợt cần xác nhận KL.
 function khoiTienCongTrinh(ct) {
   const hn = homNay();
-  const ds = dsTraThau(db, ct.ma);
+  const ds = dsTraThau(db, ct.ma, laVanPhong() ? '' : 'THAU');
   if (!laVanPhong()) {
-    if (!ds.length) return '';
-    return `<h3>Khối lượng thầu</h3>${ds.map((t) => theDotTra(t, hn, false)).join('')}`;
+    // Giám sát: ghi chi ở công trình, xem lại khoản mình ghi (không có tổng tiền).
+    const cua = soConLai(db).filter((e) => e.ma === ct.ma && e.loai === 'CHI' && e.nguoi === vaiTro).sort((a, b) => (b.ngay + b.taoLuc).localeCompare(a.ngay + a.taoLuc)).slice(0, 15);
+    return `${ds.length ? `<h3>Khối lượng thầu</h3>${ds.map((t) => theDotTra(t, hn, false)).join('')}` : ''}
+      <h3>Chi ở công trình</h3><div class="actions"><button id="ctGhiChi" class="btn-chinh">− Ghi chi</button></div>
+      ${cua.length ? `<p class="muted">Khoản đã ghi (sửa được khi văn phòng chưa kiểm):</p>${cua.map(theKhoan).join('')}` : '<p class="muted">Mua lặt vặt, trả công nhật… bấm Ghi chi, chụp hoá đơn kèm theo.</p>'}`;
   }
   const lg = laiGop(db, ct.ma, laiToiThieu(), nguongPS());
   return `<h3>Thu chi</h3>${khoiLaiGop(lg)}
     ${ds.map((t) => theDotTra(t, hn, true)).join('')}
-    <div class="actions"><button id="ctGhiChi">− Ghi chi</button><button id="ctThemTT">+ Đợt trả thầu</button><a class="btn" href="#thu-chi&ma=${esc(ct.ma)}" style="text-align:center">Sổ thu chi</a></div>`;
+    <div class="actions"><button id="ctGhiChi">− Ghi chi</button><button id="ctThemTT">+ Đợt trả thầu</button><button id="ctNoNCC">+ Nợ nhà cung cấp</button><a class="btn" href="#thu-chi&ma=${esc(ct.ma)}" style="text-align:center">Sổ thu chi</a></div>`;
 }
 
 function ganNutTienCongTrinh(ct) {
   ganNutTraThau($('#view'));
+  $('#view').querySelectorAll('[data-tc]').forEach((b) => { b.onclick = () => moGhiKhoan(null, (db.thuChi || []).find((e) => e.id === b.dataset.tc)); });
   const a = $('#ctGhiChi'), b = $('#ctThemTT');
   if (a) a.onclick = () => moGhiKhoan({ loai: 'CHI', ma: ct.ma });
   if (b) b.onclick = () => moDotTra(ct.ma);
+  const c = $('#ctNoNCC');
+  if (c) c.onclick = () => moDotTra(ct.ma, null, 'NCC');
 }
 
 function thauHomNay(hn) {
@@ -3621,16 +3867,23 @@ function taoMau() {
   taoBuoiGSTG(db, ct, 4);
   // Thu chi mẫu: chi dự kiến, 3 đợt trả thầu (1 đã trả một phần, 1 chờ giám sát xác nhận, 1 chưa tới), vài khoản chi.
   suaHopDong(db, nt, { chiDuKien: 470000000 });
+  // Tài khoản mẫu: 1 tài khoản công ty nhận tiền khách, 1 tài khoản tiền mặt Kha giữ (tạm ứng).
+  const qMB = themTaiKhoan(db, { ten: 'Mẫu: MB công ty', loai: 'CONG_TY', soDuDau: 60000000, ngayDau: truoc(60) });
+  const qKha = themTaiKhoan(db, { ten: 'Mẫu: Tiền mặt Kha giữ', loai: 'TIEN_MAT', nguoiGiu: 'Kha', soDuDau: 0, ngayDau: truoc(60), choGiamSat: true });
+  for (const h of db.hopDong) for (const d of h.dot) for (const x of d.thu) x.taiKhoan = qMB.id;
+  ghiKhoan(db, { ngay: truoc(10), loai: 'CHUYEN', taiKhoan: qMB.id, toiTK: qKha.id, soTien: 5000000, noiDung: 'Tạm ứng Kha chi lặt vặt' }, 'THAY');
+  ghiKhoan(db, { ngay: truoc(2), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi nhân công lẻ', doiTuong: 'Phụ hồ', soTien: 450000, noiDung: 'Công nhật dọn phế thải', taiKhoan: qKha.id, hinhThuc: 'TM' }, 'KHA');
+  themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Gạch Hùng Phát', hangMuc: 'Gạch ốp lát', dot: 'HD1', soTien: 32000000, hanTra: truoc(-5), loaiNo: 'NCC' }, 'THAY');
   const vXay = ct.viec.find((v) => v.nhom.startsWith('Xây') && v.phanTram >= 100);
   const vDien = ct.viec.find((v) => v.nhom.startsWith('Điện nước'));
   const vPhaDo = ct.viec.find((v) => v.nhom.startsWith('Chuẩn bị') && v.phanTram >= 100 && v !== vXay);
   const t1 = themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Thầu thô Hưng', hangMuc: 'Phá dỡ', dot: 'PD1', soTien: 18000000, dieuKien: 'Phá dỡ, đục xong, dọn phế thải', viecMoc: vPhaDo ? vPhaDo.id : '', hanTra: truoc(30) }, 'THAY');
   xacNhanKL(db, t1, { ngay: truoc(30), ghiChu: 'Đủ' }, 'KHA');
-  ghiKhoan(db, { ngay: truoc(29), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi thầu phụ', thamChieu: t1.id, doiTuong: t1.thau, soTien: 10000000, noiDung: 'Phá dỡ đợt PD1' }, 'THAY');
+  ghiKhoan(db, { ngay: truoc(29), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi thầu phụ', thamChieu: t1.id, doiTuong: t1.thau, soTien: 10000000, noiDung: 'Phá dỡ đợt PD1', taiKhoan: qMB.id }, 'THAY');
   themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Thầu thô Hưng', hangMuc: 'Xây trát', dot: 'XT1', soTien: 45000000, dieuKien: 'Xây xong tường, trát xong', viecMoc: vXay ? vXay.id : '', hanTra: truoc(-2) }, 'THAY');
   themDotTra(db, { maCongTrinh: ct.ma, thau: 'Mẫu: Thầu điện nước Tâm', hangMuc: 'Điện nước', dot: 'DN1', soTien: 12000000, dieuKien: 'Đi ống xong toàn nhà', viecMoc: vDien ? vDien.id : '', hanTra: truoc(-15) }, 'THAY');
-  ghiKhoan(db, { ngay: truoc(3), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi vật tư', doiTuong: 'Mẫu: Cửa hàng VLXD', soTien: 8500000, noiDung: 'Xi măng, cát, gạch đợt 2' }, 'THAY');
-  ghiKhoan(db, { ngay: truoc(1), ma: CTY, loai: 'CHI', hangMuc: 'CTY - Marketing', doiTuong: 'Facebook', soTien: 1500000, noiDung: 'Chạy quảng cáo tuần' }, 'THAY');
+  ghiKhoan(db, { ngay: truoc(3), ma: ct.ma, loai: 'CHI', hangMuc: 'Chi vật tư', doiTuong: 'Mẫu: Cửa hàng VLXD', soTien: 8500000, noiDung: 'Xi măng, cát, gạch đợt 2', taiKhoan: qMB.id }, 'THAY');
+  ghiKhoan(db, { ngay: truoc(1), ma: CTY, loai: 'CHI', hangMuc: 'CTY - Marketing', doiTuong: 'Facebook', soTien: 1500000, noiDung: 'Chạy quảng cáo tuần', taiKhoan: qMB.id }, 'THAY');
   // Phát sinh mẫu: 1 đã duyệt trên link (được làm), 1 chờ khách, 1 giám sát mới báo 3 ngày chưa báo giá.
   const ps1 = baoPhatSinh(db, ct, { moTa: 'Thêm 2 ổ cắm + 1 đường nước máy lọc bếp', viTri: 'Bếp', viec: vDien ? vDien.id : '', ngay: truoc(8) }, 'KHA', true);
   baoGia(db, ps1, { giaBan: 3500000, chiGoc: 2200000, ngay: truoc(7) }, 'DUC');

@@ -26,9 +26,15 @@ const TAB = {
     'duyetQua', 'duyetLuc', 'phi', 'nguoiGui', 'capNhatLuc'],
   GSTG: ['id', 'maCongTrinh', 'lan', 'ten', 'viec', 'ngay', 'xong', 'ghiChu', 'nhacGiamSat', 'capNhatLuc'],
   // Sổ thu chi (chi công trình, chi công ty, thu ngoài HĐ). Thu theo HĐ nằm trong HopDong.dot. Xoá = ghi ngày vào cột xoa.
-  ThuChi: ['id', 'ngay', 'ma', 'loai', 'hangMuc', 'thamChieu', 'doiTuong', 'soTien', 'noiDung', 'hinhThuc', 'soAnh', 'nguoi', 'xoa', 'taoLuc', 'capNhatLuc'],
+  // loai: THU, CHI, CHUYEN (chuyển giữa 2 tài khoản: taiKhoan → toiTK). duyet: văn phòng đã kiểm khoản giám sát ghi.
+  ThuChi: ['id', 'ngay', 'ma', 'loai', 'hangMuc', 'thamChieu', 'doiTuong', 'soTien', 'noiDung', 'hinhThuc', 'soAnh', 'nguoi', 'xoa', 'taoLuc', 'capNhatLuc',
+    'taiKhoan', 'toiTK', 'duyet'],
+  // Tài khoản tiền: CONG_TY (doanh nghiệp) hoặc TIEN_MAT (tài khoản cá nhân dùng việc chung). Số dư = số dư đầu tại ngayDau + biến động.
+  // choGiamSat: giám sát được chọn tài khoản này khi ghi chi (chỉ thấy tên, không thấy số dư).
+  TaiKhoan: ['id', 'ten', 'loai', 'nguoiGiu', 'soDuDau', 'ngayDau', 'ghiChu', 'choGiamSat', 'hoatDong', 'taoLuc', 'capNhatLuc'],
   // Đợt trả thầu. Giám sát chỉ thấy phần không có tiền và chỉ ghi được klXacNhan.
-  TraThau: ['id', 'maCongTrinh', 'thau', 'hangMuc', 'dot', 'soTien', 'dieuKien', 'viecMoc', 'hanTra', 'klXacNhan', 'ghiChu', 'xoa', 'taoLuc', 'capNhatLuc'],
+  // loaiNo = NCC: nợ nhà cung cấp vật tư (mua chịu), giám sát không thấy.
+  TraThau: ['id', 'maCongTrinh', 'thau', 'hangMuc', 'dot', 'soTien', 'dieuKien', 'viecMoc', 'hanTra', 'klXacNhan', 'ghiChu', 'xoa', 'taoLuc', 'capNhatLuc', 'loaiNo'],
   // Phát sinh 4 bước. Giám sát thấy phiếu nhưng không thấy giá; chủ nhà thấy giá bán (không thấy chi gốc).
   PhatSinh: ['id', 'ma', 'maCongTrinh', 'viec', 'ngayBao', 'nguoiBao', 'moTa', 'viTri', 'giaBan', 'chiGoc', 'ngayBaoGia', 'trangThai', 'ngayKhach',
     'quaKhach', 'bangChung', 'yKien', 'daLam', 'xoa', 'capNhatLuc'],
@@ -60,7 +66,7 @@ const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
 const laKhach = (ma) => /^KH-/.test(String(ma));
 // Sổ khách (KH-), hợp đồng (HD-), thu chi (TC-, TT-) và chi công ty (CTY) chỉ văn phòng thấy, kể cả nhật ký của chúng.
-const laRieng = (ma) => /^(KH|HD|TC|TT|BD)-/.test(String(ma)) || String(ma) === 'CTY';
+const laRieng = (ma) => /^(KH|HD|TC|TT|BD|QUY)-/.test(String(ma)) || String(ma) === 'CTY';
 
 // ---------- Cài đặt: chạy 1 lần trong trình soạn thảo Apps Script ----------
 function setup() {
@@ -330,9 +336,14 @@ const HANH_DONG = {
       chiDuKien: Number(h.chiDuKien) || 0, khauTru: h.khauTru || { han: '', tyLe: 0 }, truTK: h.truTK || { maHD: '', phan: [], soTien: 0 } })) : [];
     const caiDat = vp ? Object.fromEntries(docBang('CaiDat').map((r) => [r.khoa, String(r.giaTri)])) : {};
     const phuongAn = vp ? docBang('PhuongAn').map((p) => ({ ...p, lan: Number(p.lan) || 0 })) : [];
-    const thuChi = vp ? docBang('ThuChi').map((e) => ({ ...e, soTien: Number(e.soTien) || 0, soAnh: Number(e.soAnh) || 0 })) : [];
-    // Giám sát: chỉ đợt của công trình được giao, bỏ tiền và ghi chú nội bộ.
-    const traThau = docBang('TraThau').filter((t) => duocXem(n, t.maCongTrinh)).map((t) => (vp ? { ...t, soTien: Number(t.soTien) || 0 }
+    // Giám sát: chỉ các khoản chính mình ghi ở công trình được giao (để sửa khi ghi nhầm), không thấy sổ chung.
+    const thuChi = docBang('ThuChi').filter((e) => vp || (e.nguoi === n.vaiTro && e.loai === 'CHI' && duocXem(n, e.ma)))
+      .map((e) => ({ ...e, soTien: Number(e.soTien) || 0, soAnh: Number(e.soAnh) || 0 }));
+    // Tài khoản: giám sát chỉ thấy tên các tài khoản được phép chọn.
+    const taiKhoan = docBang('TaiKhoan').filter((q) => vp || (q.choGiamSat === true && q.hoatDong !== false))
+      .map((q) => (vp ? { ...q, soDuDau: Number(q.soDuDau) || 0, choGiamSat: q.choGiamSat === true, hoatDong: q.hoatDong !== false } : { id: q.id, ten: q.ten, loai: q.loai, choGiamSat: true }));
+    // Giám sát: chỉ đợt trả thầu của công trình được giao, bỏ tiền và ghi chú nội bộ; không thấy nợ nhà cung cấp.
+    const traThau = docBang('TraThau').filter((t) => duocXem(n, t.maCongTrinh) && (vp || t.loaiNo !== 'NCC')).map((t) => (vp ? { ...t, soTien: Number(t.soTien) || 0 }
       : { id: t.id, maCongTrinh: t.maCongTrinh, thau: t.thau, hangMuc: t.hangMuc, dot: t.dot, dieuKien: t.dieuKien, viecMoc: t.viecMoc, hanTra: t.hanTra, klXacNhan: t.klXacNhan, xoa: t.xoa }));
     const chungTu = vp ? docBang('Anh').filter((a) => a.loai === 'CHUNG_TU').map((a) => ({ id: a.id, viec: a.viec, fileId: a.fileId, tenFile: a.tenFile })) : [];
     const phatSinh = docBang('PhatSinh').filter((p) => duocXem(n, p.maCongTrinh)).map((p) => {
@@ -352,7 +363,7 @@ const HANH_DONG = {
       .map((x) => ({ ...x, checklist: x.checklist || [], tonTai: x.tonTai || [], soAnh: Number(x.soAnh) || 0 }));
     const baiDang = vp ? docBang('BaiDang').map((b) => ({ ...b, kenh: b.kenh || [], dsAnh: b.dsAnh || [], baiViet: b.baiViet || {}, ketQua: b.ketQua || {}, lanViet: Number(b.lanViet) || 0 })) : [];
     const chiAI = vp ? docBang('ChiAI').map((r) => ({ luc: r.luc, viec: r.viec, model: r.model, usd: Number(r.usd) || 0 })) : [];
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI,
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan,
       nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
@@ -389,7 +400,8 @@ const HANH_DONG = {
   guiAnh: (n, data) => {
     const chungTu = data.loai === 'CHUNG_TU';
     const baiDang = data.loai === 'BAI_DANG';
-    if (chungTu || baiDang) canVanPhong(n);
+    // Giám sát gửi được chứng từ của khoản chi mình ghi ở công trình được giao.
+    if (baiDang || (chungTu && !(duocXem(n, data.ma) && !laRieng(data.ma)))) canVanPhong(n);
     else if (!duocXem(n, data.ma)) throw new Error('Không có quyền với công trình ' + data.ma);
     if (baiDang && !/^BD-/.test(String(data.ma))) throw new Error('Ảnh bài đăng cần mã bài BD-');
     const daCo = docBang('Anh').find((r) => r.id === data.id);
@@ -539,13 +551,25 @@ function apDung(n, op) {
     return;
   }
   if (op.loai === 'TC') {
-    canVanPhong(n);
     const e = Object.assign({}, op.e);
     if (!/^TC-/.test(String(e.id))) throw new Error('Mã thu chi phải bắt đầu bằng TC-');
-    if (e.loai !== 'THU' && e.loai !== 'CHI') throw new Error('Thu hay chi?');
+    if (['THU', 'CHI', 'CHUYEN'].indexOf(e.loai) < 0) throw new Error('Thu, chi hay chuyển tiền?');
+    if (!laVanPhong(n)) { apChiGiamSat(n, e, op.luc); return; }
     e.nguoi = e.nguoi || n.vaiTro;
     e.capNhatLuc = op.luc;
     capNhatDong('ThuChi', (r) => r.id === e.id, e);
+    return;
+  }
+  if (op.loai === 'QUY') {
+    canVanPhong(n);
+    const q = Object.assign({}, op.q);
+    if (!/^QUY-/.test(String(q.id))) throw new Error('Mã tài khoản phải bắt đầu bằng QUY-');
+    if (!String(q.ten || '').trim()) throw new Error('Tài khoản cần tên');
+    q.loai = q.loai === 'TIEN_MAT' ? 'TIEN_MAT' : 'CONG_TY';
+    q.choGiamSat = q.choGiamSat === true;
+    q.hoatDong = q.hoatDong !== false;
+    q.capNhatLuc = op.luc;
+    capNhatDong('TaiKhoan', (r) => r.id === q.id, q);
     return;
   }
   if (op.loai === 'TT') {
@@ -669,6 +693,25 @@ function apDung(n, op) {
     return;
   }
   throw new Error('Loại thay đổi lạ: ' + op.loai);
+}
+
+// Giám sát ghi chi ở công trình được giao: chỉ khoản chi, chỉ tài khoản văn phòng cho phép,
+// chỉ sửa / xoá khoản của chính mình khi văn phòng chưa kiểm.
+function apChiGiamSat(n, e, luc) {
+  if (e.loai !== 'CHI') throw new Error('Giám sát chỉ ghi được khoản chi');
+  if (laRieng(e.ma) || !duocXem(n, e.ma)) throw new Error('Không có quyền với công trình ' + e.ma);
+  if (e.taiKhoan && !docBang('TaiKhoan').some((q) => q.id === e.taiKhoan && q.choGiamSat === true && q.hoatDong !== false)) throw new Error('Tài khoản này giám sát không được dùng');
+  const cu = docBang('ThuChi').find((r) => r.id === e.id);
+  if (cu && cu.nguoi !== n.vaiTro) throw new Error('Chỉ sửa được khoản mình ghi');
+  if (cu && cu.duyet) throw new Error('Văn phòng đã kiểm khoản này, nhờ văn phòng sửa');
+  const soTien = Number(e.soTien) || 0;
+  if (!(soTien > 0)) throw new Error('Số tiền không hợp lệ');
+  capNhatDong('ThuChi', (r) => r.id === e.id, {
+    id: e.id, ngay: String(e.ngay || '').slice(0, 10), ma: e.ma, loai: 'CHI', hangMuc: String(e.hangMuc || '').slice(0, 100), thamChieu: '',
+    doiTuong: String(e.doiTuong || '').slice(0, 200), soTien: soTien, noiDung: String(e.noiDung || '').slice(0, 2000), hinhThuc: e.hinhThuc === 'TM' ? 'TM' : 'CK',
+    soAnh: Number(e.soAnh) || 0, nguoi: n.vaiTro, xoa: e.xoa ? String(e.xoa).slice(0, 10) : '', taoLuc: cu ? cu.taoLuc : String(e.taoLuc || luc),
+    capNhatLuc: luc, taiKhoan: e.taiKhoan || '', toiTK: '', duyet: '',
+  });
 }
 
 // ---------- Đăng bài: AI viết, Thầy duyệt, máy chủ đăng ----------

@@ -142,9 +142,10 @@ export function tinhDot(hd) {
 }
 
 // Ghi 1 lần khách chuyển tiền. Đủ tiền thì đợt tự đóng; thiếu thì Thầy chọn đóng tay (phần thiếu sang đợt sau).
-export function ghiThu(db, hd, idDot, { ngay, soTien, ghiChu }, nguoi) {
+// `taiKhoan` = id tài khoản nhận tiền (QUY-…), để tính số dư từng tài khoản.
+export function ghiThu(db, hd, idDot, { ngay, soTien, ghiChu, taiKhoan }, nguoi) {
   const d = hd.dot.find((x) => x.id === idDot);
-  d.thu.push({ id: taoMa(), ngay, soTien: Number(soTien) || 0, ghiChu: ghiChu || '' });
+  d.thu.push({ id: taoMa(), ngay, soTien: Number(soTien) || 0, ghiChu: ghiChu || '', taiKhoan: taiKhoan || '' });
   const t = tinhDot(hd).dot.find((x) => x.id === idDot);
   if (t.daThu >= t.phaiThu) { d.dong = ngay; d.chot = t.phaiThu; }
   ghiHD(db, hd);
