@@ -995,3 +995,69 @@ test('tài khoản tiền, giám sát ghi chi: chỉ chi, chỉ công trình đ�
   assert.equal(m.post(khoaKha, 'guiAnh', { id: 'a1', ma: 'NT-A', viec: 'TC-K1', tenFile: 'hd.jpg', base64: 'eA==', loai: 'CHUNG_TU' }).ok, true);
   assert.deepEqual(m.post(khoaKha, 'keoVe').data.chungTu, []);
 });
+
+// ---------- Đăng nhập bằng Gmail ----------
+const CLIENT = '123-abc.apps.googleusercontent.com';
+function caiGoogle(m, khoaThay) {
+  m.post(khoaThay, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'googleClientId', giaTri: CLIENT })] });
+}
+function googleTra(m, t) {
+  m.traLoi.fn = (url) => (url.startsWith('https://oauth2.googleapis.com/tokeninfo') ? { ma: 200, body: { aud: CLIENT, iss: 'https://accounts.google.com', email_verified: 'true', exp: String(Math.floor(Date.now() / 1000) + 600), ...t } } : null);
+}
+const dnG = (m) => JSON.parse(m.ctx.doPost({ postData: { contents: JSON.stringify({ action: 'dangNhapGoogle', data: { idToken: 'a.b.c' } }) } }).s);
+
+test('Gmail: chưa cài Client ID thì báo, cauHinh trả trống', () => {
+  const m = khoiDong();
+  assert.equal(m.get({ cauHinh: '1' }).data.googleClientId, '');
+  assert.match(dnG(m).loi, /Client ID/);
+});
+
+test('Gmail: đúng Gmail trong danh sách thì vào được, khoá phiên giữ nguyên, nhật ký có email', () => {
+  const m = khoiDong();
+  caiGoogle(m, m.khoaThay);
+  assert.equal(m.get({ cauHinh: '1' }).data.googleClientId, CLIENT);
+  m.post(m.khoaThay, 'capKhoa', { ten: 'Kha', email: 'Kha@Gmail.com', vaiTro: 'KHA', congTrinh: 'DA01' });
+  googleTra(m, { email: 'kha@gmail.com' });
+  const r = dnG(m);
+  assert.equal(r.ok, true);
+  const toi = m.post(r.data.khoa, 'toiLaAi').data;
+  assert.equal(toi.email, 'kha@gmail.com');
+  assert.equal(toi.cach, 'GMAIL');
+  assert.equal(dnG(m).data.khoa, r.data.khoa, 'đăng nhập máy khác dùng chung khoá phiên');
+  m.post(r.data.khoa, 'dayLen', { ops: [op({ loai: 'LICH_SU', e: { id: 'L1', luc: 'x', ma: 'DA01', viec: 'v', loai: 'CHAM' } })] });
+  const nk = m.ss.getSheetByName('NhatKy').rows;
+  assert.ok(nk.some((x) => x[1] === 'kha@gmail.com' && x[5] === 'dangNhap'));
+  assert.ok(nk.some((x) => x[1] === 'kha@gmail.com' && x[4] === 'GMAIL' && /LICH_SU/.test(x[5]) && x[6] === 'DA01'));
+  const u = m.post(m.khoaThay, 'dsNguoiDung').data.find((x) => x.email === 'kha@gmail.com');
+  assert.equal(u.daDangNhapGmail, true);
+  assert.equal(u.khoaGmail, undefined, 'không lộ khoá phiên trong danh sách');
+});
+
+test('Gmail: lạ, sai app, chưa xác minh, đã thu hồi đều bị từ chối', () => {
+  const m = khoiDong();
+  caiGoogle(m, m.khoaThay);
+  googleTra(m, { email: 'la@gmail.com' });
+  assert.match(dnG(m).loi, /chưa được thêm/);
+  const { khoa } = m.post(m.khoaThay, 'capKhoa', { ten: 'Đức', email: 'duc@gmail.com', vaiTro: 'DUC' }).data;
+  googleTra(m, { email: 'duc@gmail.com', aud: 'khac.apps.googleusercontent.com' });
+  assert.match(dnG(m).loi, /không phải của app KAS/);
+  googleTra(m, { email: 'duc@gmail.com', email_verified: 'false' });
+  assert.match(dnG(m).loi, /xác minh/);
+  googleTra(m, { email: 'duc@gmail.com' });
+  const kg = dnG(m).data.khoa;
+  m.post(m.khoaThay, 'thuHoi', { khoa });
+  assert.equal(m.post(kg, 'toiLaAi').ok, false);
+  assert.match(dnG(m).loi, /chưa được thêm/);
+});
+
+test('Gmail: bật chiGmail thì link khoá thôi dùng, khoá Gmail vẫn dùng; sửa Gmail của Thầy', () => {
+  const m = khoiDong();
+  caiGoogle(m, m.khoaThay);
+  const thay = m.post(m.khoaThay, 'dsNguoiDung').data[0];
+  assert.equal(m.post(m.khoaThay, 'suaGmail', { khoa: thay.khoa, email: 'Thay.That@gmail.com' }).ok, true);
+  googleTra(m, { email: 'thay.that@gmail.com' });
+  const kg = dnG(m).data.khoa;
+  m.post(kg, 'dayLen', { ops: [op({ loai: 'CAI_DAT', khoa: 'chiGmail', giaTri: '1' })] });
+  assert.match(m.post(m.khoaThay, 'toiLaAi').loi, /Gmail/);
+  assert.equal(m.post(kg, 'toiLaAi').data.vaiTro, 'THAY');
+});

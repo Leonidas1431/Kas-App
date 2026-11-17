@@ -22,6 +22,48 @@ export function maApi(api) {
   return m ? m[1] : String(api || '').trim();
 }
 
+// Máy chủ dùng gần nhất, giữ cả khi đăng xuất, để màn đăng nhập không phải hỏi lại link máy chủ.
+const API_CU = 'kas-api';
+export function apiDaBiet() {
+  const kn = ketNoi();
+  if (kn && kn.api) return kn.api;
+  try { return localStorage.getItem(API_CU) || ''; } catch { return ''; }
+}
+export function nhoApi(api) { try { if (api) localStorage.setItem(API_CU, maApi(api)); } catch { /* bị chặn bộ nhớ */ } }
+
+// Client ID Google (không bí mật) máy chủ đang dùng. Trống = Thầy chưa cài đăng nhập Google.
+export async function layCauHinh(api) {
+  const r = await fetch(`${apiUrl(api)}?cauHinh=1`);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.loi || 'Máy chủ báo lỗi');
+  return j.data || {};
+}
+
+// Đổi mã Google (ID token) lấy khoá phiên của app.
+export async function dangNhapGoogle(api, idToken) {
+  const r = await fetch(apiUrl(api), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'dangNhapGoogle', data: { idToken } }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.loi || 'Máy chủ báo lỗi');
+  return j.data;
+}
+
+// Nút "Đăng nhập bằng Google" (Google Identity Services). Gọi xong(idToken) khi người dùng chọn Gmail.
+let napGIS = null;
+export async function veNutGoogle(el, clientId, xong) {
+  napGIS = napGIS || new Promise((ok, loi) => {
+    if (window.google && window.google.accounts && window.google.accounts.id) return ok();
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true;
+    s.onload = ok;
+    s.onerror = () => { napGIS = null; loi(new Error('Không tải được nút Google, kiểm tra mạng')); };
+    document.head.appendChild(s);
+  });
+  await napGIS;
+  window.google.accounts.id.initialize({ client_id: clientId, callback: (r) => xong(r.credential), ux_mode: 'popup', auto_select: false });
+  window.google.accounts.id.renderButton(el, { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill', locale: 'vi', width: Math.min(320, el.clientWidth || 320) });
+}
+
 export async function goi(action, data, kn = ketNoi()) {
   if (!kn) throw new Error('Chưa kết nối máy chủ');
   const r = await fetch(apiUrl(kn.api), {
