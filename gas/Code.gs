@@ -2,15 +2,17 @@
  * KAS App – máy chủ Apps Script.
  * Dữ liệu nằm trong file Sheets "KAS App – Dữ liệu"; ảnh vào thư mục Drive của từng công trình.
  *
- * Đăng nhập: mỗi người có 1 "khoá" riêng, Thầy tạo trong app (màn Người dùng) và gửi link qua Zalo.
- * Mở link 1 lần là điện thoại nhớ. Thầy thu hồi khoá bất cứ lúc nào.
+ * Đăng nhập mặc định bằng Gmail (Google): Thầy thêm Gmail + vai trò ở màn Người dùng; người đó bấm
+ * "Đăng nhập bằng Google", máy chủ kiểm mã Google rồi cấp khoá phiên (khoaGmail) gắn với đúng Gmail đó.
+ * Dự phòng: link khoá riêng gửi qua Zalo (cột khoa). Bật cài đặt chiGmail = 1 thì link khoá thôi dùng được.
+ * Mọi thao tác ghi (và mỗi lần đăng nhập) được ghi vào tab NhatKy kèm Gmail người làm.
  *
  * App gửi POST dạng text/plain (tránh CORS preflight): { khoa, action, data }.
  * Link chủ nhà: GET ?xem=<mã link>, không cần khoá, chỉ trả phần chủ nhà được xem.
  */
 
 const TAB = {
-  NguoiDung: ['email', 'ten', 'vaiTro', 'congTrinh', 'khoa', 'hoatDong', 'taoLuc', 'hetHan'],
+  NguoiDung: ['email', 'ten', 'vaiTro', 'congTrinh', 'khoa', 'hoatDong', 'taoLuc', 'hetHan', 'khoaGmail', 'lanCuoi'],
   CongTrinh: ['ma', 'ten', 'loai', 'khoiCong', 'lich', 'chuNha', 'maLinkChuNha', 'thuMucDrive', 'taoLuc', 'maKhach', 'choDangAnh'],
   Khach: ['ma', 'ten', 'sdt', 'diaChi', 'nguon', 'nguoiGioiThieu', 'sdtGioiThieu', 'hoaHong', 'nhuCau', 'trangThai', 'lyDo',
     'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'ngayVao'],
@@ -48,6 +50,8 @@ const TAB = {
   ChiAI: ['luc', 'viec', 'model', 'vao', 'ra', 'timWeb', 'usd'],
   CaiDat: ['khoa', 'giaTri', 'capNhatLuc'],
   DaNhan: ['idGui', 'luc'],
+  // Ai làm gì, lúc nào: mỗi lần đăng nhập và mỗi thao tác ghi. cach = GMAIL hoặc LINK (khoá dự phòng).
+  NhatKy: ['luc', 'email', 'ten', 'vaiTro', 'cach', 'thaoTac', 'ma', 'chiTiet'],
 };
 // Cột lưu dạng JSON trong 1 ô
 const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe'];
@@ -92,10 +96,14 @@ function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
     if (req.action === 'chuNhaPhanHoi') return json({ ok: true, data: chuNhaPhanHoi(req.data || {}) });
+    if (req.action === 'dangNhapGoogle') return json({ ok: true, data: dangNhapGoogle(req.data || {}) });
     const nguoi = xacThuc(req.khoa);
     const fn = HANH_DONG[req.action];
     if (!fn) throw new Error('Không có thao tác ' + req.action);
-    return json({ ok: true, data: fn(nguoi, req.data || {}) });
+    const kq = fn(nguoi, req.data || {});
+    // dayLen tự ghi nhật ký từng thay đổi; thao tác chỉ đọc thì không ghi.
+    if (!CHI_DOC.includes(req.action) && req.action !== 'dayLen') ghiNhatKy(nguoi, req.action, (req.data || {}).ma || (req.data || {}).id || '', '');
+    return json({ ok: true, data: kq });
   } catch (err) {
     return json({ ok: false, loi: String((err && err.message) || err) });
   }
@@ -108,6 +116,8 @@ function doGet(e) {
     try { tb = canvaNhanMa(e); } catch (x) { tb = x.message; }
     return HtmlService.createHtmlOutput('<meta name="viewport" content="width=device-width"><p style="font:18px sans-serif;padding:24px">' + String(tb).replace(/</g, '&lt;') + '</p>');
   }
+  // Màn đăng nhập hỏi Client ID Google (không bí mật) để hiện nút Đăng nhập bằng Google.
+  if (e && e.parameter && e.parameter.cauHinh) return json({ ok: true, data: { googleClientId: caiDatMay().googleClientId || '' } });
   const maThau = e && e.parameter && e.parameter.thau;
   if (maThau) return json(xemChoThau(maThau));
   const ma = e && e.parameter && e.parameter.xem;
@@ -230,10 +240,65 @@ function chuNhaPhanHoi(data) {
 
 function xacThuc(khoa) {
   if (!khoa) throw new Error('Chưa đăng nhập');
-  const u = docBang('NguoiDung').find((x) => x.khoa === khoa);
-  if (!u || u.hoatDong !== true) throw new Error('Khoá không đúng hoặc đã bị thu hồi. Xin Thầy link mới.');
+  const u = docBang('NguoiDung').find((x) => x.khoa === khoa || (x.khoaGmail && x.khoaGmail === khoa));
+  if (!u || u.hoatDong !== true) throw new Error('Khoá không đúng hoặc đã bị thu hồi. Đăng nhập lại bằng Gmail.');
   if (u.hetHan && String(u.hetHan) < homNay()) throw new Error('Quyền tạm đã hết hạn ngày ' + u.hetHan + '. Xin Thầy cấp lại nếu cần.');
-  return { email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: String(u.congTrinh || '').split(/[,\s]+/).filter(String) };
+  const quaGmail = !!u.khoaGmail && u.khoaGmail === khoa;
+  if (!quaGmail && caiDatMay().chiGmail === '1') throw new Error('App đã chuyển sang đăng nhập bằng Gmail. Vào màn Kết nối, bấm "Đăng nhập bằng Google".');
+  return { email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: String(u.congTrinh || '').split(/[,\s]+/).filter(String), cach: quaGmail ? 'GMAIL' : 'LINK' };
+}
+
+const laEmail = (x) => String(x || '').trim().toLowerCase();
+
+// Đăng nhập bằng Google: app gửi mã (ID token) Google cấp; hỏi Google xem mã thật, đúng app KAS, đúng Gmail.
+// Gmail phải có trong danh sách người dùng còn hoạt động. Trả khoá phiên gắn với Gmail đó (giữ nguyên giữa các máy).
+function dangNhapGoogle(data) {
+  const clientId = caiDatMay().googleClientId;
+  if (!clientId) throw new Error('Máy chủ chưa cài đăng nhập Google. Thầy dán Client ID ở màn Người dùng.');
+  const tok = String(data.idToken || '');
+  if (!/^[\w-]+\.[\w-]+\.[\w-]+$/.test(tok)) throw new Error('Mã đăng nhập Google không hợp lệ');
+  const r = UrlFetchApp.fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(tok), { muteHttpExceptions: true });
+  if (r.getResponseCode() !== 200) throw new Error('Google không xác nhận được lần đăng nhập này. Thử lại.');
+  const t = JSON.parse(r.getContentText());
+  if (t.aud !== clientId) throw new Error('Mã đăng nhập không phải của app KAS');
+  if (!['accounts.google.com', 'https://accounts.google.com'].includes(t.iss)) throw new Error('Mã đăng nhập không do Google cấp');
+  if (String(t.email_verified) !== 'true') throw new Error('Gmail chưa được Google xác minh');
+  if (Number(t.exp) * 1000 < Date.now()) throw new Error('Lần đăng nhập đã hết hạn. Bấm đăng nhập lại.');
+  const email = laEmail(t.email);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const u = docBang('NguoiDung').find((x) => laEmail(x.email) === email && x.hoatDong === true);
+    if (!u) {
+      ghiNhatKy({ email, ten: '', vaiTro: '', cach: 'GMAIL' }, 'dangNhapTuChoi', '', 'Gmail chưa có trong danh sách');
+      throw new Error('Gmail ' + email + ' chưa được thêm vào app. Nhờ Thầy thêm đúng Gmail này ở màn Người dùng.');
+    }
+    if (u.hetHan && String(u.hetHan) < homNay()) throw new Error('Quyền tạm đã hết hạn ngày ' + u.hetHan + '. Xin Thầy cấp lại nếu cần.');
+    const khoaGmail = u.khoaGmail || taoKhoa();
+    capNhatDong('NguoiDung', (x) => x.khoa === u.khoa, { khoaGmail, lanCuoi: new Date().toISOString() }, true);
+    ghiNhatKy({ email: u.email, ten: u.ten, vaiTro: u.vaiTro, cach: 'GMAIL' }, 'dangNhap', '', '');
+    return { khoa: khoaGmail };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Thao tác chỉ đọc: không ghi nhật ký.
+const CHI_DOC = ['toiLaAi', 'keoVe', 'dsNguoiDung', 'anhThu', 'layAnh', 'thuVienPT', 'docTaiLieu', 'timDoanPT', 'canvaTrangThai', 'wpDanhMuc', 'kiemTraWP'];
+
+function dongNhatKy(n, thaoTac, ma, chiTiet) {
+  return { luc: new Date().toISOString(), email: n.email || '', ten: n.ten || '', vaiTro: n.vaiTro || '', cach: n.cach || '',
+    thaoTac: String(thaoTac).slice(0, 60), ma: String(ma || '').slice(0, 80), chiTiet: String(chiTiet || '').slice(0, 300) };
+}
+// Nhật ký không được làm hỏng thao tác chính.
+function ghiNhatKy(n, thaoTac, ma, chiTiet) {
+  try { themDong('NhatKy', dongNhatKy(n, thaoTac, ma, chiTiet)); } catch (e) { /* bỏ qua */ }
+}
+// Mã công trình/khách/hợp đồng và id của 1 thay đổi trong hàng chờ, để nhật ký đọc được.
+function tomTatOp(op) {
+  const con = Object.keys(op).filter((k) => op[k] && typeof op[k] === 'object' && !Array.isArray(op[k])).map((k) => op[k]);
+  const lay = (k) => op[k] || (con.find((o) => o[k]) || {})[k] || '';
+  return { ma: lay('ma') || lay('maCongTrinh') || (op.loai === 'CAI_DAT' ? op.khoa : ''), chiTiet: lay('id') };
 }
 
 const laVanPhong = (n) => VAN_PHONG.includes(n.vaiTro);
@@ -298,17 +363,22 @@ const HANH_DONG = {
     try {
       const daNhan = new Set(docBang('DaNhan').map((r) => r.idGui));
       const ketQua = [];
+      const nhatKy = [];
       (data.ops || []).forEach((op) => {
         if (daNhan.has(op.idGui)) { ketQua.push({ idGui: op.idGui, ok: true }); return; }
+        const tt = tomTatOp(op);
         try {
           apDung(n, op);
           themDong('DaNhan', { idGui: op.idGui, luc: new Date().toISOString() });
           ketQua.push({ idGui: op.idGui, ok: true });
+          nhatKy.push(dongNhatKy(n, op.loai, tt.ma, tt.chiTiet));
         } catch (err) {
           // Lỗi quyền hoặc dữ liệu hỏng: báo lại để máy bỏ mục này, không chặn cả hàng chờ.
           ketQua.push({ idGui: op.idGui, ok: false, loi: String(err.message || err) });
+          nhatKy.push(dongNhatKy(n, op.loai + ' (bị từ chối)', tt.ma, String(err.message || err)));
         }
       });
+      try { themNhieuDong('NhatKy', nhatKy); } catch (e) { /* nhật ký không chặn đồng bộ */ }
       return ketQua;
     } finally {
       lock.releaseLock();
@@ -336,18 +406,33 @@ const HANH_DONG = {
 
   dsNguoiDung: (n) => {
     canThay(n);
-    return docBang('NguoiDung').map((u) => ({ email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: u.congTrinh, khoa: u.khoa, hoatDong: u.hoatDong, hetHan: u.hetHan || '' }));
+    return docBang('NguoiDung').map((u) => ({ email: u.email, ten: u.ten, vaiTro: u.vaiTro, congTrinh: u.congTrinh, khoa: u.khoa, hoatDong: u.hoatDong, hetHan: u.hetHan || '',
+      daDangNhapGmail: !!u.khoaGmail, lanCuoi: u.lanCuoi || '' }));
+  },
+
+  // Sửa Gmail của 1 người (vd Thầy lúc cài chưa có Gmail). Khoá phiên Gmail cũ bị bỏ, người đó đăng nhập lại.
+  suaGmail: (n, data) => {
+    canThay(n);
+    const email = laEmail(data.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Gmail không hợp lệ');
+    const ds = docBang('NguoiDung');
+    const ai = ds.find((u) => u.khoa === data.khoa && u.hoatDong === true);
+    if (!ai) throw new Error('Không tìm thấy người này');
+    if (ai.vaiTro === 'THAY' && n.vaiTro !== 'THAY') throw new Error('Chỉ Thầy sửa được Gmail của Thầy');
+    if (ds.some((u) => u.hoatDong === true && u.khoa !== ai.khoa && laEmail(u.email) === email)) throw new Error('Gmail này đã gán cho người khác');
+    capNhatDong('NguoiDung', (r) => r.khoa === ai.khoa, { email, khoaGmail: '' }, true);
+    return { ok: true };
   },
 
   // Thêm người hoặc cấp lại khoá mới (khoá cũ bị thu hồi).
   capKhoa: (n, data) => {
     canThay(n);
     if (!VAI_TRO.includes(data.vaiTro)) throw new Error('Vai trò không hợp lệ');
-    const email = String(data.email || '').trim().toLowerCase();
-    if (!email) throw new Error('Cần Gmail');
+    const email = laEmail(data.email);
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Cần Gmail đúng dạng');
     if (data.vaiTro === 'TAM' && !data.hetHan) throw new Error('Quyền tạm cần ngày hết hạn');
     const khoa = taoKhoa();
-    const cu = docBang('NguoiDung').filter((u) => String(u.email).toLowerCase() === email && u.hoatDong === true);
+    const cu = docBang('NguoiDung').filter((u) => laEmail(u.email) === email && u.hoatDong === true);
     cu.forEach((u) => capNhatDong('NguoiDung', (r) => r.khoa === u.khoa, { hoatDong: false }));
     themDong('NguoiDung', { email, ten: data.ten || email, vaiTro: data.vaiTro, congTrinh: data.congTrinh || '', khoa, hoatDong: true, taoLuc: new Date().toISOString(), hetHan: data.vaiTro === 'TAM' ? data.hetHan : '' });
     return { khoa };

@@ -38,12 +38,26 @@ Làm trên **máy tính**, đăng nhập đúng Gmail của Thầy (tài khoản
 2. Màn hình **Kết nối máy chủ**: dán URL ở bước 3 và khoá ở bước 2 → **Kết nối**.
 3. Góc trên hiện tên **Thầy** và chữ **Đã lưu** là xong.
 
-## Bước 5. Thêm anh em
+## Bước 5. Bật đăng nhập bằng Gmail (mặc định, làm 1 lần, 0đ)
 
-1. Tab **Người dùng** → điền tên, Gmail, vai trò. Với Kha, tích các công trình được giao.
-2. Bấm **Tạo link** → điện thoại mở bảng chia sẻ, chọn Zalo (trên máy tính thì link được chép sẵn, dán vào Zalo). Người nhận mở link 1 lần là điện thoại nhớ luôn.
-3. Trên điện thoại: mở link bằng Chrome (Android) hoặc Safari (iPhone) → menu → **Thêm vào màn hình chính** để có biểu tượng như app thật.
-4. Mất máy hoặc nghỉ việc: bấm **Thu hồi** (bấm 2 lần để chắc), link cũ hết tác dụng ngay.
+Mỗi người đăng nhập bằng Gmail của mình, máy chủ ghi Gmail người làm vào tab `NhatKy` cho mọi thao tác ghi và mỗi lần đăng nhập. Cần 1 mã "Client ID" của Google (miễn phí, không bí mật):
+
+1. Vào **console.cloud.google.com** bằng Gmail của Thầy → chọn hoặc tạo dự án (vd "KAS App").
+2. Menu **Google Auth Platform** (hoặc *API và dịch vụ → Màn hình đồng ý OAuth*) → **Bắt đầu**: tên ứng dụng `KAS App`, email hỗ trợ là Gmail của Thầy, đối tượng **Bên ngoài (External)**, đồng ý điều khoản → **Tạo**.
+3. Mục **Đối tượng (Audience)** → **Xuất bản ứng dụng (Publish app)**. App chỉ xin tên + email nên Google không bắt xét duyệt. (Không muốn xuất bản thì thêm Gmail từng người vào **Người dùng thử**.)
+4. Mục **Ứng dụng khách (Clients)** → **Tạo ứng dụng khách** → loại **Ứng dụng web** → *Nguồn gốc JavaScript được phép* thêm `https://leonidas1431.github.io` (không có dấu / cuối, không có /Kas-App) → **Tạo**.
+5. Chép **Client ID** (đuôi `.apps.googleusercontent.com`). Mở app → tab **Người dùng** → **Cài đăng nhập Google** → dán → **Lưu Client ID**.
+6. Nếu dòng Gmail của Thầy trống: bấm **Sửa Gmail** ở thẻ của Thầy, điền Gmail. Rồi vào màn Đăng nhập (`#ket-noi`), bấm **Đăng nhập bằng Google** để thử.
+
+Tên mục trong Google Cloud có thể khác chút theo thời điểm.
+
+## Bước 6. Thêm anh em
+
+1. Tab **Người dùng** → điền tên, **Gmail người đó dùng**, vai trò. Với Kha, tích các công trình được giao.
+2. Bấm **Thêm và gửi link** → chọn Zalo. Link này không chứa khoá; người nhận mở bằng Chrome, bấm **Đăng nhập bằng Google**, chọn đúng Gmail đã thêm. Gmail khác bị từ chối.
+3. Trên điện thoại: menu → **Thêm vào màn hình chính** để có biểu tượng như app thật.
+4. Mất máy hoặc nghỉ việc: bấm **Thu hồi** (bấm 2 lần để chắc), cả đăng nhập Gmail lẫn link khoá cũ hết tác dụng ngay.
+5. Dự phòng: nút **Link khoá (dự phòng)** gửi link đăng nhập không cần Google (cho máy không có tài khoản Google). Khi ai cũng đã đăng nhập Gmail (thẻ hiện "Đã đăng nhập Gmail"), tích **Chỉ cho đăng nhập bằng Gmail** để tắt hết link khoá cũ. Thầy phải đang vào bằng Gmail mới tích được.
 
 ## Ảnh tiến độ đi đâu
 
@@ -164,7 +178,9 @@ Nghĩa là hosting đã bỏ mất phần mật khẩu (header `Authorization`) 
 
 | Hiện tượng | Cách xử lý |
 | --- | --- |
-| App báo "Khoá không đúng hoặc đã bị thu hồi" | Thầy vào Người dùng → Gửi lại link cho người đó |
+| App báo "Khoá không đúng hoặc đã bị thu hồi" | Người đó vào màn Đăng nhập, bấm **Đăng nhập bằng Google**. Nếu báo "Gmail chưa được thêm": Thầy kiểm Gmail ở tab Người dùng (Sửa Gmail) |
+| Bấm Đăng nhập bằng Google báo lỗi "origin" / không hiện nút | Kiểm bước 5 mục 4: nguồn gốc phải đúng `https://leonidas1431.github.io`. Client ID mới tạo có thể mất vài phút mới chạy |
+| Xem ai làm gì | Sheets **KAS App – Dữ liệu** → tab `NhatKy`: giờ, Gmail, vai trò, cách đăng nhập (GMAIL/LINK), thao tác, mã công trình/khách/HĐ |
 | Chữ **Mất mạng · chờ gửi N** không mất | Bình thường khi mất sóng. Có sóng lại app tự gửi; đừng xoá dữ liệu trình duyệt khi còn chờ |
 | Góc trên hiện **Cần cập nhật máy chủ** | Làm theo mục "Khi sửa code máy chủ" ở trên |
 | Đăng bài báo lỗi một kênh | Xem dòng lỗi đỏ trong bài. Sửa khoá rồi bấm **Đăng ngay**: chỉ đăng lại kênh còn thiếu. Hẹn giờ thử tối đa 3 lần |

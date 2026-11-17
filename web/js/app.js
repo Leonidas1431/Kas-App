@@ -27,7 +27,7 @@ import { TT_MAU, NGAY_DAT_HANG, mauCuaCongTrinh, hanChotMacDinh, themMau, suaMau
 import { LINH_VUC, TIEU_CHI, dsThau, timThauTheoTen, themThau, suaThau, viecCuaThau, danhGia, tongHopThau, canDanhGia, thieuAnh, ghiDaChupAnh, tinLinkThau } from './nhathau.js';
 import { HAN_SUA_MAC_DINH, checklistMacDinh, canNghiemThu, ntCuaViec, nghiemThu, daSuaTonTai, doiHanSua, ketQuaViec, choNghiemThu, tonTaiMo, dieuKienDo, canDoNoiThat } from './nghiemthu.js';
 import { HM_MKT, KENH_MKT, CHUA_GAN, MAC_DINH, goiYHoaHong, tienDoThang, ngayVao, khoangKy, baoCaoNguon, dsNguoiGioiThieu } from './marketing.js';
-import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPhanHoi } from './api.js';
+import { ketNoi, luuKetNoi, goi, dongBo, xemChuNha, xemChoThau, maApi, chuNhaPhanHoi, apiDaBiet, nhoApi, layCauHinh, dangNhapGoogle, veNutGoogle } from './api.js';
 import { xepAnh, xepAnhLayMa, xepAnhSan, anhCho, demCho, guiAnhCho } from './anh.js';
 import {
   KENH, KENH_TU_DONG, LOAI_BAI, TT_BAI, MAC_DINH_BD, MODEL, caiDatBD, timBai, taoBai, suaBai, xoaBai, nhanBai, boChoGui, kenhXong, kenhLoi, coLoi,
@@ -63,6 +63,8 @@ async function chayDongBo() {
   if (r.mayChuCu && !mayChuCu) bao('Máy chủ cần cập nhật bản mới để lưu tính năng mới. Dữ liệu vẫn giữ trên máy.');
   if (r.trangThai === 'xong') mayChuCu = !!r.mayChuCu;
   if (r.trangThai === 'loi') bao('Chưa gửi được: ' + r.loi);
+  // Khoá hết hiệu lực (bị thu hồi, hoặc app đã chuyển sang chỉ Gmail): mở màn Đăng nhập, việc chưa gửi vẫn giữ trên máy.
+  if (r.trangThai === 'loi' && /Đăng nhập|đăng nhập lại/.test(r.loi || '') && location.hash !== '#ket-noi') { location.hash = '#ket-noi'; return; }
   if (r.trangThai === 'xong' && db.toi) vaiTro = db.toi.vaiTro;
   if (navigator.onLine) await guiAnhCho(goi).catch((e) => bao('Ảnh chưa gửi được: ' + e.message));
   await capNhatTrangThai(r.trangThai);
@@ -110,10 +112,11 @@ function datTab(tab, title) {
 }
 
 function route() {
-  // #cong-trinh, #tao, #nguoi-dung, #ct-<mã DA>, #chu-nha-<mã link>[&api=<mã>], #k=<khoá>&api=<mã>
+  // #cong-trinh, #tao, #nguoi-dung, #ct-<mã DA>, #chu-nha-<mã link>[&api=<mã>], #k=<khoá>&api=<mã>, #dang-nhap&api=<mã>
   const [h, ...thamSo] = location.hash.slice(1).split('&');
   const ts = Object.fromEntries(thamSo.map((x) => x.split('=')));
   if (h.startsWith('k=')) return nhanLinhDangNhap(h.slice(2), ts.api);
+  if (h === 'dang-nhap') { if (ts.api) nhoApi(ts.api); history.replaceState(null, '', goc() + '#ket-noi'); return manKetNoi(); }
   const chuNha = h.startsWith('chu-nha-');
   const thau = h.startsWith('lich-thau-');
   $('#tabs').hidden = chuNha || thau;
@@ -885,7 +888,7 @@ async function nhanLinhDangNhap(khoa, api) {
     history.replaceState(null, '', goc() + '#hom-nay');
     route();
   } catch (e) {
-    $('#view').innerHTML = `<h2>Không đăng nhập được</h2><p>${esc(e.message)}</p><p class="muted">Xin Thầy gửi lại link mới qua Zalo.</p>`;
+    $('#view').innerHTML = `<h2>Không đăng nhập được</h2><p>${esc(e.message)}</p><p class="muted">Đăng nhập bằng Gmail: <a href="#ket-noi">mở màn Đăng nhập</a>.</p>`;
   }
 }
 
@@ -894,8 +897,11 @@ async function ketNoiVoi(api, khoa) {
   const toi = await goi('toiLaAi', {}, kn);
   const cu = ketNoi();
   // Đổi tài khoản hoặc chuyển từ bản thử: xoá dữ liệu cũ trên máy, lấy lại từ máy chủ.
-  if (!cu || cu.khoa !== khoa) { db = rong(); ghi(db); }
-  luuKetNoi({ ...kn, ten: toi.ten, vaiTro: toi.vaiTro });
+  // Cùng 1 người đổi từ link khoá sang Gmail thì giữ nguyên (còn việc chưa gửi).
+  const cungNguoi = cu && (cu.email ? cu.email === toi.email : cu.ten === toi.ten && cu.vaiTro === toi.vaiTro);
+  if (!cu || (cu.khoa !== khoa && !cungNguoi)) { db = rong(); ghi(db); }
+  luuKetNoi({ ...kn, ten: toi.ten, vaiTro: toi.vaiTro, email: toi.email, cach: toi.cach || 'LINK' });
+  nhoApi(kn.api);
   vaiTro = toi.vaiTro;
   khoiDongVaiTro();
   bao('Xin chào ' + toi.ten);
@@ -903,21 +909,54 @@ async function ketNoiVoi(api, khoa) {
 }
 
 function manKetNoi() {
-  datTab('', 'Kết nối');
+  datTab('', 'Đăng nhập');
   const kn = ketNoi();
-  $('#view').innerHTML = `<h2>Kết nối máy chủ KAS</h2>
-    <p class="muted">Anh em hiện trường chỉ cần mở link Thầy gửi qua Zalo, không cần màn này. Màn này để Thầy kết nối lần đầu.</p>
-    <label class="f">Link máy chủ (Web app URL trong Apps Script)</label>
-    <input id="api" value="${esc(kn ? kn.api : '')}" placeholder="https://script.google.com/macros/s/…/exec">
-    <label class="f">Khoá của Thầy (trong nhật ký khi chạy setup)</label>
-    <input id="khoa" value="" autocomplete="off">
-    <div class="actions"><button id="kn" class="btn-chinh">Kết nối</button></div>
+  const api = apiDaBiet();
+  $('#view').innerHTML = `<h2>Đăng nhập app KAS</h2>
+    ${kn ? `<p>Đang dùng: <b>${esc(kn.ten || '')}</b>${kn.email ? ' · ' + esc(kn.email) : ''}${kn.cach === 'GMAIL' ? ' (Gmail)' : ' (link khoá)'}</p>` : ''}
+    <div id="ggKhung"${api ? '' : ' hidden'}>
+      <p class="muted">Bấm nút dưới, chọn đúng Gmail Thầy đã thêm cho mình.</p>
+      <div id="ggNut" style="min-height:44px;margin:12px 0"></div>
+      <p class="muted" id="ggTT">${api ? 'Đang tải nút Google…' : ''}</p>
+    </div>
+    <details class="cham-ds" ${api ? '' : 'open'}><summary>Link máy chủ${api ? ' (đã có)' : ''}</summary>
+      <label class="f">Link máy chủ (Web app URL trong Apps Script)</label>
+      <input id="api" value="${esc(api)}" placeholder="https://script.google.com/macros/s/…/exec">
+      <div class="actions"><button id="luuApi">Dùng máy chủ này</button></div>
+    </details>
+    <details class="cham-ds" id="khoaKhung"><summary>Đăng nhập bằng khoá (dự phòng)</summary>
+      <p class="muted">Chỉ dùng khi không đăng nhập Google được. Khoá Thầy gửi riêng, hoặc khoá trong nhật ký khi chạy setup.</p>
+      <label class="f">Khoá</label><input id="khoa" value="" autocomplete="off">
+      <div class="actions"><button id="kn">Đăng nhập bằng khoá</button></div>
+    </details>
     ${kn ? '<div class="actions"><button id="thoat" class="btn-do">Đăng xuất khỏi máy này</button></div>' : '<div class="actions"><button id="demo">Dùng thử không kết nối</button></div>'}`;
+  const apiDangNhap = () => $('#api').value.trim() || api;
+  const veNut = async (a) => {
+    const tt = $('#ggTT');
+    if (!a) return;
+    $('#ggKhung').hidden = false;
+    tt.textContent = 'Đang tải nút Google…';
+    try {
+      const { googleClientId } = await layCauHinh(a);
+      if (!googleClientId) { tt.textContent = 'Máy chủ chưa cài đăng nhập Google (Thầy dán Client ID ở màn Người dùng). Tạm dùng khoá dự phòng bên dưới.'; $('#khoaKhung').open = true; return; }
+      await veNutGoogle($('#ggNut'), googleClientId, async (idToken) => {
+        tt.textContent = 'Đang kiểm tra Gmail…';
+        try {
+          const { khoa } = await dangNhapGoogle(a, idToken);
+          await ketNoiVoi(a, khoa);
+          location.hash = '#hom-nay';
+        } catch (e) { tt.textContent = e.message; bao(e.message); }
+      });
+      tt.textContent = '';
+    } catch (e) { tt.textContent = (navigator.onLine ? 'Không mở được đăng nhập Google: ' + e.message : 'Mất mạng, cần mạng để đăng nhập lần đầu.'); }
+  };
+  veNut(api);
+  $('#luuApi').onclick = () => { const a = $('#api').value.trim(); if (!a) return bao('Dán link máy chủ'); nhoApi(a); veNut(maApi(a)); };
   $('#kn').onclick = async () => {
-    const api = $('#api').value.trim(), khoa = $('#khoa').value.trim();
-    if (!api || !khoa) return bao('Cần cả link máy chủ và khoá');
+    const a = apiDangNhap(), khoa = $('#khoa').value.trim();
+    if (!a || !khoa) return bao('Cần cả link máy chủ và khoá');
     $('#kn').disabled = true;
-    try { await ketNoiVoi(api, khoa); location.hash = '#hom-nay'; } catch (e) { bao(e.message); $('#kn').disabled = false; }
+    try { await ketNoiVoi(a, khoa); location.hash = '#hom-nay'; } catch (e) { bao(e.message); $('#kn').disabled = false; }
   };
   const t = $('#thoat');
   if (t) t.onclick = () => { luuKetNoi(null); db = rong(); ghi(db); location.reload(); };
@@ -929,31 +968,74 @@ function manKetNoi() {
 function manNguoiDung() {
   datTab('nguoi-dung', 'Người dùng');
   const kn = ketNoi();
+  const cd = db.caiDat || {};
+  const toi = db.toi || {};
   const ds = (db.nguoiDung || []).filter((u) => u.hoatDong === true);
-  const linkCua = (khoa) => `${goc()}#k=${khoa}&api=${maApi(kn.api)}`;
+  const laToi = (u) => (toi.email ? String(u.email).toLowerCase() === String(toi.email).toLowerCase() : u.khoa === kn.khoa);
+  const coGoogle = !!cd.googleClientId;
+  const chiGmail = cd.chiGmail === '1';
+  const linkKhoa = (khoa) => `${goc()}#k=${khoa}&api=${maApi(kn.api)}`;
+  const linkGmail = `${goc()}#dang-nhap&api=${maApi(kn.api)}`;
+  const loiMoi = (ten, email) => `${ten} ơi, đây là link app KAS. Mở bằng Chrome, bấm "Đăng nhập bằng Google", chọn đúng Gmail ${email}. Xong bấm "Thêm vào màn hình chính":\n${linkGmail}`;
+  const loiMoiKhoa = (ten, khoa) => `${ten} ơi, đây là link app KAS của em. Mở 1 lần bằng Chrome, rồi bấm "Thêm vào màn hình chính":\n${linkKhoa(khoa)}`;
+  const gioPhut = (s) => (s ? new Date(s).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : '');
   $('#view').innerHTML = `<h2>Người dùng app</h2>
-    <p class="muted">Mỗi người 1 link riêng. Gửi qua Zalo, người đó mở 1 lần là điện thoại nhớ. Mất máy hoặc nghỉ việc thì bấm Thu hồi.</p>
+    <p class="muted">Mỗi người đăng nhập bằng Gmail của mình. Mọi thao tác ghi kèm Gmail vào tab NhatKy trong file Sheets dữ liệu. Nghỉ việc hoặc mất máy thì bấm Thu hồi.</p>
+    <details class="cham-ds" ${coGoogle ? '' : 'open'}><summary>Cài đăng nhập Google ${coGoogle ? '(đã cài)' : '(chưa cài)'}</summary>
+      <label class="f">Client ID Google (dạng …apps.googleusercontent.com)</label>
+      <input id="ggId" value="${esc(cd.googleClientId || '')}" placeholder="123…-abc.apps.googleusercontent.com" autocomplete="off">
+      <div class="actions"><button id="luuGg">Lưu Client ID</button></div>
+      <label class="cham-dong"><input type="checkbox" id="chiGmail" ${chiGmail ? 'checked' : ''} style="width:auto"> <span>Chỉ cho đăng nhập bằng Gmail (tắt hết link khoá cũ)</span></label>
+      <p class="muted">Bạn đang vào bằng ${toi.cach === 'GMAIL' ? 'Gmail' : 'link khoá'}. ${ds.filter((u) => !u.daDangNhapGmail).length ? 'Chưa đăng nhập Gmail: ' + ds.filter((u) => !u.daDangNhapGmail).map((u) => esc(u.ten)).join(', ') + '.' : ds.length ? 'Mọi người đã đăng nhập Gmail.' : ''}</p>
+    </details>
     ${ds.map((u) => `<div class="card"><div class="row"><span class="name">${esc(u.ten)}</span><span class="tag ${u.vaiTro === 'TAM' ? 'SAP' : 'XONG'}">${esc(VAI_TRO[u.vaiTro] || u.vaiTro)}</span></div>
-      <div class="muted">${esc(u.email)}${u.congTrinh ? ' · ' + esc(u.congTrinh) : ''}${u.hetHan ? ` · ${u.hetHan < homNay() ? '<span class="tre">đã hết hạn</span>' : 'đến ' + ddmm(u.hetHan)}` : ''}</div>
-      ${u.khoa === kn.khoa ? '<p class="muted">Đây là bạn</p>'
-        : u.vaiTro === 'THAY' && vaiTro !== 'THAY' ? ''
-        : `<div class="actions"><button data-gui="${esc(u.khoa)}" data-ten="${esc(u.ten)}">Gửi lại link</button><button class="btn-do" data-thu-hoi="${esc(u.khoa)}">Thu hồi</button></div>`}</div>`).join('')}
+      <div class="muted">${esc(u.email) || '<span class="tre">chưa có Gmail</span>'}${u.congTrinh ? ' · ' + esc(u.congTrinh) : ''}${u.hetHan ? ` · ${u.hetHan < homNay() ? '<span class="tre">đã hết hạn</span>' : 'đến ' + ddmm(u.hetHan)}` : ''}</div>
+      <div class="muted">${u.daDangNhapGmail ? 'Đã đăng nhập Gmail' + (u.lanCuoi ? ' · lần cuối ' + gioPhut(u.lanCuoi) : '') : 'Chưa đăng nhập Gmail'}</div>
+      ${u.vaiTro === 'THAY' && vaiTro !== 'THAY' ? ''
+        : `<div class="actions">${laToi(u) ? '<span class="muted">Đây là bạn</span>' : `<button data-moi="${esc(u.ten)}" data-email="${esc(u.email)}">Gửi link đăng nhập</button>`}
+          <button data-sua-gmail="${esc(u.khoa)}" data-email="${esc(u.email)}">Sửa Gmail</button>
+          ${!laToi(u) && !chiGmail ? `<button data-gui="${esc(u.khoa)}" data-ten="${esc(u.ten)}">Link khoá (dự phòng)</button>` : ''}
+          ${laToi(u) ? '' : `<button class="btn-do" data-thu-hoi="${esc(u.khoa)}">Thu hồi</button>`}</div>`}</div>`).join('')}
     <h3>Thêm người</h3>
     <label class="f">Tên</label><input id="ten" placeholder="Vd: Kha">
-    <label class="f">Gmail</label><input id="email" type="email" placeholder="kha@gmail.com">
+    <label class="f">Gmail (người này đăng nhập bằng Gmail này)</label><input id="email" type="email" placeholder="kha@gmail.com">
     <label class="f">Vai trò</label>
     <select id="vt">${Object.entries(VAI_TRO).filter(([k]) => k !== 'THAY').map(([k, v]) => `<option value="${k}" ${k === 'KHA' ? 'selected' : ''}>${v}</option>`).join('')}</select>
     <p class="muted" id="vtGiaiThich"></p>
     <div id="hanChon" hidden><label class="f">Hết hạn ngày</label><input id="hetHan" type="date" value="${new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10)}"></div>
     <div id="ctChon"><label class="f">Công trình được giao (chỉ thấy các công trình này, không thấy tiền và sổ khách)</label>
     ${db.congTrinh.map((c) => `<label class="cham-dong"><input type="checkbox" value="${esc(c.ma)}"> <span>${esc(c.ma)} · ${esc(c.ten)}</span></label>`).join('') || '<p class="muted">Chưa có công trình.</p>'}</div>
-    <div class="actions"><button id="them" class="btn-chinh">Tạo link</button></div>`;
+    <div class="actions"><button id="them" class="btn-chinh">Thêm và gửi link</button></div>`;
   const ctChon = $('#ctChon');
   const GIAI_THICH = { DUC: 'Toàn quyền như Thầy: sổ khách, tiền, người dùng.', KHA: 'Giám sát: cập nhật tiến độ, ảnh, báo chậm ở công trình được giao.', TAM: 'Cho người làm việc lẻ (thợ, cộng tác viên). Như giám sát nhưng tự khoá khi hết hạn.' };
   const doiVt = () => { const vt = $('#vt').value; ctChon.hidden = vt === 'DUC'; $('#hanChon').hidden = vt !== 'TAM'; $('#vtGiaiThich').textContent = GIAI_THICH[vt] || ''; };
   $('#vt').onchange = doiVt; doiVt();
-  $('#view').querySelectorAll('[data-gui]').forEach((b) => {
-    b.onclick = () => chiaSe(`${b.dataset.ten} ơi, đây là link app KAS của em. Mở 1 lần bằng Chrome, rồi bấm "Thêm vào màn hình chính":\n${linkCua(b.dataset.gui)}`);
+  $('#luuGg').onclick = () => {
+    const id = $('#ggId').value.trim();
+    if (id && !/^[\w-]+\.apps\.googleusercontent\.com$/.test(id)) return bao('Client ID phải có đuôi .apps.googleusercontent.com');
+    datCaiDat(db, 'googleClientId', id); luu(); bao('Đã lưu Client ID'); manNguoiDung();
+  };
+  $('#chiGmail').onchange = (e) => {
+    if (e.target.checked && toi.cach !== 'GMAIL') { e.target.checked = false; return bao('Thầy đăng nhập bằng Gmail trước, rồi mới tắt link khoá'); }
+    if (e.target.checked && !coGoogle) { e.target.checked = false; return bao('Cần lưu Client ID Google trước'); }
+    datCaiDat(db, 'chiGmail', e.target.checked ? '1' : ''); luu(); bao(e.target.checked ? 'Đã tắt link khoá, chỉ đăng nhập Gmail' : 'Đã bật lại link khoá dự phòng'); manNguoiDung();
+  };
+  $('#view').querySelectorAll('[data-moi]').forEach((b) => {
+    b.onclick = () => (coGoogle ? chiaSe(loiMoi(b.dataset.moi, b.dataset.email)) : bao('Cần lưu Client ID Google trước'));
+  });
+  $('#view').querySelectorAll('[data-gui]').forEach((b) => { b.onclick = () => chiaSe(loiMoiKhoa(b.dataset.ten, b.dataset.gui)); });
+  $('#view').querySelectorAll('[data-sua-gmail]').forEach((b) => {
+    b.onclick = async () => {
+      const the = b.closest('.actions');
+      if (the.querySelector('input')) return;
+      the.insertAdjacentHTML('beforeend', `<input type="email" value="${esc(b.dataset.email)}" placeholder="ten@gmail.com"><button class="btn-chinh">Lưu Gmail</button>`);
+      const [o, nut] = [the.querySelector('input'), the.querySelector('button:last-child')];
+      o.focus();
+      nut.onclick = async () => {
+        nut.disabled = true;
+        try { await goi('suaGmail', { khoa: b.dataset.suaGmail, email: o.value.trim() }); bao('Đã sửa Gmail'); await chayDongBo(); manNguoiDung(); } catch (err) { bao(err.message); nut.disabled = false; }
+      };
+    };
   });
   $('#view').querySelectorAll('[data-thu-hoi]').forEach((b) => {
     b.onclick = async () => {
@@ -972,7 +1054,7 @@ function manNguoiDung() {
       const { khoa } = await goi('capKhoa', { ten, email, vaiTro: vt, congTrinh, hetHan });
       await chayDongBo();
       manNguoiDung();
-      chiaSe(`${ten} ơi, đây là link app KAS của em. Mở 1 lần bằng Chrome, rồi bấm "Thêm vào màn hình chính":\n${linkCua(khoa)}`);
+      chiaSe(coGoogle ? loiMoi(ten, email.toLowerCase()) : loiMoiKhoa(ten, khoa));
     } catch (e) { bao(e.message); $('#them').disabled = false; }
   };
 }
