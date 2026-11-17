@@ -103,6 +103,7 @@ export function dongBo(db, luu) {
         if (d.nghiemThu) db.nghiemThu = d.nghiemThu;
         if (d.baiDang) thayDsBai(db, d.baiDang);
         if (d.chiAI) db.chiAI = d.chiAI;
+        if (d.taiKhoan) db.taiKhoan = d.taiKhoan;
         db.toi = d.toi;
         luu();
       }

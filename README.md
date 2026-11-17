@@ -41,6 +41,7 @@ Máy chủ Google: xem [docs/CAI-DAT.md](docs/CAI-DAT.md).
 - [x] Hợp đồng: số HĐ YYMM31/TÊN-KAS/dạng, đợt thu (thiếu dồn sang đợt sau), phụ lục, khấu trừ phí TK vào đợt cuối HĐ thi công, nhắc thu khi xong mốc, dừng/hoàn thành
 - [x] Tiến độ thiết kế: gửi phương án → khách đồng ý/cần sửa trên link chủ nhà, đếm lần sửa, phí sửa vượt 5%, nhắc khách sau 3 ngày, file xác nhận để ký, buổi giám sát tác giả
 - [x] Thu chi (theo Sổ cái): ghi chi công trình / chi công ty / thu ngoài HĐ, gõ nhanh "12tr", ảnh chứng từ để riêng; đợt trả thầu, giám sát xác nhận khối lượng (không thấy tiền), đến hạn trả; chi dự kiến, lãi gộp, cảnh báo vượt chi
+- [x] Công nợ và dòng tiền (17/11): nhiều tài khoản (tài khoản công ty / tài khoản tiền mặt), số dư từng tài khoản, chuyển tiền và tạm ứng; nợ nhà cung cấp (mua chịu); màn Công nợ gộp (khách quá hạn, thầu, nhà cung cấp) gửi Zalo nhắc / đối chiếu; dự báo dòng tiền 4–8 tuần; giám sát ghi chi ở công trường (chỉ khoản của mình, không thấy tổng), văn phòng kiểm
 - [x] Phát sinh 4 bước: giám sát báo (không thấy giá) → văn phòng báo giá → khách đồng ý trên link hoặc Zalo → giám sát thấy "Được làm"; thu phát sinh theo mã PS, cảnh báo phát sinh vượt ngưỡng % HĐ
 - [x] Duyệt mẫu vật liệu: tên mẫu, người bán, việc dùng mẫu, hạn chốt trước ngày làm, khách chốt hoặc đổi trên link
 - [x] Nhà thầu: danh bạ (giám sát thấy tên, số; không thấy ghi chú nội bộ), việc theo công trình, ngày chậm do thầu, chấm 1–5 (chất lượng, tiến độ, phối hợp) khi thầu xong việc; link riêng cho thầu xem lịch việc của mình + mẫu đã chốt, không tiền, không việc thầu khác
