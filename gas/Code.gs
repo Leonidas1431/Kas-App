@@ -43,7 +43,12 @@ const TAB = {
     'yKien', 'xoa', 'capNhatLuc'],
   // Cài đặt chung của văn phòng (vd tài khoản nhận tiền in vào đề nghị thanh toán). Không để trong mã nguồn.
   // Danh bạ nhà thầu. maLink = link riêng cho thầu xem lịch việc của mình (không cần đăng nhập), chỉ văn phòng thấy.
-  NhaThau: ['id', 'ten', 'linhVuc', 'sdt', 'ghiChu', 'maLink', 'hoatDong', 'taoLuc', 'capNhatLuc'],
+  // congNhat: thầu trả công theo ngày công thực tế → giám sát chấm công trong phiếu báo cáo ngày.
+  NhaThau: ['id', 'ten', 'linhVuc', 'sdt', 'ghiChu', 'maLink', 'hoatDong', 'taoLuc', 'capNhatLuc', 'congNhat'],
+  // Phiếu báo cáo ngày: 1 công trình 1 phiếu/ngày (id BC-<mã>-<ngày>). thauLam: [{ ten, lam, cong }]. nopLuc trống = mới chấm công, chưa nộp.
+  BaoCao: ['id', 'maCongTrinh', 'ngay', 'nguoi', 'thauLam', 'thieu', 'anhHuong', 'viecAnhHuong', 'ngayMai', 'doiKeHoach', 'soAnh', 'nopLuc', 'capNhatLuc', 'xoa', 'email'],
+  // Tổng hợp tuần gửi chủ nhà (id BCT-<mã>-<thứ 2>). Chỉ văn phòng ghi; chủ nhà thấy khi guiLuc có giá trị.
+  BaoCaoTuan: ['id', 'maCongTrinh', 'tuNgay', 'denNgay', 'tomTat', 'dsAnh', 'nguoi', 'guiLuc', 'capNhatLuc', 'xoa'],
   // Đánh giá thầu sau mỗi công trình, điểm 1–5. Mỗi người 1 phiếu cho 1 thầu ở 1 công trình.
   DanhGia: ['id', 'maThau', 'maCongTrinh', 'ngay', 'chatLuong', 'tienDo', 'phoiHop', 'ghiChu', 'nguoi', 'capNhatLuc'],
   // Phiếu nghiệm thu từng việc: checklist, tồn tại cần sửa (hạn, ngày sửa). Không có tiền: giám sát ghi được.
@@ -60,7 +65,7 @@ const TAB = {
   NhatKy: ['luc', 'email', 'ten', 'vaiTro', 'cach', 'thaoTac', 'ma', 'chiTiet'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -130,6 +135,7 @@ function doGet(e) {
   if (!ma) return json({ ok: true, data: { app: 'KAS App', chay: true } });
   const ct = docBang('CongTrinh').find((r) => r.maLinkChuNha === ma);
   if (!ct) return json({ ok: false, loi: 'Link không đúng hoặc đã hết hạn' });
+  if (e.parameter.anh) return json(anhChoChuNha(ct.ma, e.parameter.anh));
   // Chỉ trả phần chủ nhà được xem: không tên thầu, không ghi chú nội bộ, không tiền.
   const viec = docBang('KeHoach').filter((r) => r.ma === ct.ma).map((v) => ({
     id: v.id, thuTu: v.thuTu, nhom: v.nhom, hangMuc: v.hangMuc, soNgay: Number(v.soNgay), diSau: v.diSau,
@@ -140,7 +146,24 @@ function doGet(e) {
   const phuongAn = docBang('PhuongAn').filter((p) => p.maCongTrinh === ct.ma).map(paChoChuNha);
   const phatSinh = docBang('PhatSinh').filter((p) => p.maCongTrinh === ct.ma && !p.xoa && p.trangThai !== 'CHO_BAO_GIA').map(psChoChuNha);
   const mauVL = docBang('MauVL').filter((m) => m.maCongTrinh === ct.ma && !m.xoa).map(mauChoChuNha);
-  return json({ ok: true, data: { ct: { ma: ct.ma, ten: ct.ten, loai: ct.loai, khoiCong: ct.khoiCong, lich: ct.lich, maLinkChuNha: ct.maLinkChuNha, viec }, lichSu, phuongAn, phatSinh, mauVL } });
+  // Báo cáo tuần đã gửi: 8 tuần gần nhất. Ảnh tải riêng từng cái qua ?xem=<mã>&anh=<id>.
+  const baoCaoTuan = tuanDaGui(ct.ma).slice(0, 8).map((x) => ({ id: x.id, tuNgay: x.tuNgay, denNgay: x.denNgay, tomTat: x.tomTat, dsAnh: x.dsAnh || [] }));
+  return json({ ok: true, data: { ct: { ma: ct.ma, ten: ct.ten, loai: ct.loai, khoiCong: ct.khoiCong, lich: ct.lich, maLinkChuNha: ct.maLinkChuNha, viec }, lichSu, phuongAn, phatSinh, mauVL, baoCaoTuan } });
+}
+
+function tuanDaGui(ma) {
+  return docBang('BaoCaoTuan').filter((x) => x.maCongTrinh === ma && !x.xoa && x.guiLuc).sort((a, b) => String(b.tuNgay).localeCompare(String(a.tuNgay)));
+}
+
+// Chủ nhà chỉ xem được ảnh Thầy đã chọn vào báo cáo tuần đã gửi của đúng công trình đó.
+function anhChoChuNha(ma, id) {
+  if (!tuanDaGui(ma).some((x) => (x.dsAnh || []).indexOf(id) >= 0)) return { ok: false, loi: 'Không có ảnh này' };
+  const a = docBang('Anh').find((r) => r.id === id && r.ma === ma && r.loai !== 'CHUNG_TU');
+  if (!a) return { ok: false, loi: 'Không có ảnh này' };
+  try {
+    const blob = DriveApp.getFileById(a.fileId).getBlob();
+    return { ok: true, data: { loai: blob.getContentType() || 'image/jpeg', base64: Utilities.base64Encode(blob.getBytes()) } };
+  } catch (x) { return { ok: false, loi: 'Ảnh đã bị xoá khỏi Drive' }; }
 }
 
 // Link thầu: việc của thầu ở các công trình chưa xong, kèm mẫu đã chốt cho các việc đó. Không tiền, không tên chủ nhà, không việc của thầu khác.
@@ -354,16 +377,19 @@ const HANH_DONG = {
     const mauVL = docBang('MauVL').filter((m) => duocXem(n, m.maCongTrinh));
     const gstg = docBang('GSTG').filter((g) => duocXem(n, g.maCongTrinh)).map((g) => ({ ...g, lan: Number(g.lan) || 0, nhacGiamSat: g.nhacGiamSat === true }));
     // Danh bạ thầu: ai cũng thấy tên, lĩnh vực, số điện thoại; link riêng và ghi chú nội bộ chỉ văn phòng.
-    const nhaThau = docBang('NhaThau').map((t) => (vp ? { ...t, hoatDong: t.hoatDong !== false }
-      : { id: t.id, ten: t.ten, linhVuc: t.linhVuc, sdt: t.sdt, hoatDong: t.hoatDong !== false }));
+    const nhaThau = docBang('NhaThau').map((t) => (vp ? { ...t, hoatDong: t.hoatDong !== false, congNhat: t.congNhat === true }
+      : { id: t.id, ten: t.ten, linhVuc: t.linhVuc, sdt: t.sdt, hoatDong: t.hoatDong !== false, congNhat: t.congNhat === true }));
     const danhGia = docBang('DanhGia').filter((d) => duocXem(n, d.maCongTrinh))
       .map((d) => ({ ...d, chatLuong: Number(d.chatLuong) || 0, tienDo: Number(d.tienDo) || 0, phoiHop: Number(d.phoiHop) || 0 }));
     const anh = demAnh(n);
     const nghiemThu = docBang('NghiemThu').filter((x) => duocXem(n, x.maCongTrinh))
       .map((x) => ({ ...x, checklist: x.checklist || [], tonTai: x.tonTai || [], soAnh: Number(x.soAnh) || 0 }));
     const baiDang = vp ? docBang('BaiDang').map((b) => ({ ...b, kenh: b.kenh || [], dsAnh: b.dsAnh || [], baiViet: b.baiViet || {}, ketQua: b.ketQua || {}, lanViet: Number(b.lanViet) || 0 })) : [];
+    // Phiếu báo cáo ngày: ai được giao công trình đều xem (không có tiền). Tổng hợp tuần: văn phòng.
+    const baoCao = docBang('BaoCao').filter((b) => duocXem(n, b.maCongTrinh)).map((b) => ({ ...b, thauLam: b.thauLam || [], viecAnhHuong: b.viecAnhHuong || [], soAnh: Number(b.soAnh) || 0 }));
+    const baoCaoTuan = vp ? docBang('BaoCaoTuan').map((x) => ({ ...x, dsAnh: x.dsAnh || [] })) : [];
     const chiAI = vp ? docBang('ChiAI').map((r) => ({ luc: r.luc, viec: r.viec, model: r.model, usd: Number(r.usd) || 0 })) : [];
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan,
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan,
       nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
@@ -479,8 +505,8 @@ function apDung(n, op) {
   if (op.loai === 'VIEC') {
     if (!duocXem(n, op.ma)) throw new Error('Không có quyền với công trình ' + op.ma);
     const v = op.viec;
-    // Hiện trường chỉ được đổi tiến độ và số ngày (báo chậm); văn phòng sửa được mọi trường.
-    const doi = laVanPhong(n) ? { ...v, ma: op.ma } : { phanTram: v.phanTram, trangThai: v.trangThai, thucTe: v.thucTe, soNgay: v.soNgay };
+    // Hiện trường chỉ được đổi tiến độ, số ngày (báo chậm) và ghim ngày bắt đầu (báo chậm "chỉ lùi việc này"); văn phòng sửa được mọi trường.
+    const doi = laVanPhong(n) ? { ...v, ma: op.ma } : { phanTram: v.phanTram, trangThai: v.trangThai, thucTe: v.thucTe, soNgay: v.soNgay, batDauCoDinh: v.batDauCoDinh || '' };
     doi.capNhatLuc = op.luc;
     const timThay = capNhatDong('KeHoach', (r) => r.ma === op.ma && r.id === v.id, doi, true);
     if (!timThay) throw new Error('Không tìm thấy việc ' + v.id);
@@ -661,6 +687,29 @@ function apDung(n, op) {
     if (cu && cu.nguoi !== n.vaiTro) throw new Error('Chỉ người đánh giá được sửa phiếu này');
     capNhatDong('DanhGia', (r) => r.id === d.id, { id: d.id, maThau: d.maThau, maCongTrinh: d.maCongTrinh, ngay: d.ngay, chatLuong: diem(d.chatLuong),
       tienDo: diem(d.tienDo), phoiHop: diem(d.phoiHop), ghiChu: String(d.ghiChu || '').slice(0, 1000), nguoi: n.vaiTro, capNhatLuc: op.luc });
+    return;
+  }
+  if (op.loai === 'BC') {
+    const b = Object.assign({}, op.b);
+    if (!duocXem(n, b.maCongTrinh)) throw new Error('Không có quyền với công trình ' + b.maCongTrinh);
+    if (String(b.id) !== 'BC-' + b.maCongTrinh + '-' + b.ngay) throw new Error('Mã phiếu báo cáo không đúng');
+    // Hiện trường sửa phiếu trong ngày; ngày đã qua chỉ văn phòng sửa.
+    if (!laVanPhong(n) && b.ngay !== homNay()) throw new Error('Phiếu ngày ' + b.ngay + ' đã chốt, nhờ văn phòng sửa');
+    const cu = docBang('BaoCao').find((r) => r.id === b.id);
+    capNhatDong('BaoCao', (r) => r.id === b.id, { id: b.id, maCongTrinh: b.maCongTrinh, ngay: b.ngay, nguoi: cu && cu.nguoi ? cu.nguoi : n.vaiTro,
+      thauLam: (b.thauLam || []).slice(0, 40).map((x) => ({ ten: String(x.ten || '').slice(0, 100), lam: String(x.lam || '').slice(0, 2000), cong: x.cong === '' || x.cong == null ? null : Number(x.cong) || 0 })),
+      thieu: String(b.thieu || '').slice(0, 4000), anhHuong: String(b.anhHuong || '').slice(0, 4000), viecAnhHuong: b.viecAnhHuong || [],
+      ngayMai: String(b.ngayMai || '').slice(0, 4000), doiKeHoach: b.doiKeHoach === 'CO' ? 'CO' : 'KHONG', soAnh: Number(b.soAnh) || 0,
+      nopLuc: (cu && cu.nopLuc) || b.nopLuc || '', capNhatLuc: op.luc, xoa: b.xoa || '', email: n.email });
+    return;
+  }
+  if (op.loai === 'BCT') {
+    canVanPhong(n);
+    const x = Object.assign({}, op.x);
+    if (String(x.id) !== 'BCT-' + x.maCongTrinh + '-' + x.tuNgay) throw new Error('Mã báo cáo tuần không đúng');
+    const cu = docBang('BaoCaoTuan').find((r) => r.id === x.id);
+    capNhatDong('BaoCaoTuan', (r) => r.id === x.id, { id: x.id, maCongTrinh: x.maCongTrinh, tuNgay: x.tuNgay, denNgay: x.denNgay, tomTat: x.tomTat || {},
+      dsAnh: (x.dsAnh || []).slice(0, 9), nguoi: n.vaiTro, guiLuc: (cu && cu.guiLuc) || x.guiLuc || '', capNhatLuc: op.luc, xoa: x.xoa || '' });
     return;
   }
   if (op.loai === 'NGHIEM_THU') {

@@ -209,3 +209,17 @@ img.bia { display: block; width: 100%; max-width: 420px; height: auto; border-ra
 .grid-btn.ba button.on { background: var(--thanh); border-color: var(--thanh); color: #fff; }
 details.card > summary { cursor: pointer; list-style: none; gap: 8px; }
 details.card > summary::-webkit-details-marker { display: none; }
+
+/* Báo cáo công trường */
+.chon-thau { width: 100%; text-align: left; font-weight: 700; }
+.chon-thau.on { background: var(--dang); color: #fff; border-color: var(--dang); }
+.chips-chon { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chips-chon button { padding: 6px 10px; font-size: 13px; border-radius: 99px; min-height: 0; }
+.chips-chon button.on { background: var(--tre); color: #fff; border-color: var(--tre); }
+.grid-btn.doc { grid-template-columns: 1fr; }
+.luoi-anh { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+.luoi-anh img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--goc); cursor: pointer; border: 3px solid transparent; }
+.luoi-anh img.on { border-color: var(--dang); }
+details.card > summary { cursor: pointer; list-style: none; }
+.grid-btn.pct { grid-template-columns: repeat(5, 1fr); gap: 6px; } .grid-btn.pct button { padding-left: 0; padding-right: 0; }
+.note > a.btn, .canh-anh > a.btn { display: block; text-align: center; margin-top: 8px; }
