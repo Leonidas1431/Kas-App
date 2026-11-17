@@ -50,7 +50,7 @@ button, .btn { font: inherit; font-weight: 600; border-radius: 10px; border: 1px
 label.f { display: block; margin: 10px 0 4px; font-weight: 600; font-size: 14px; }
 input, select, textarea { font: inherit; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--vien); background: var(--the); color: var(--chu); }
 textarea { min-height: 84px; }
-.mic { display: flex; gap: 8px; } .mic textarea { flex: 1; } .mic button { min-width: 56px; }
+.mic { display: flex; gap: 8px; } .mic textarea { flex: 1; } .mic button { min-width: 56px; } .mic button.dang-nghe { background: #d33; color: #fff; animation: nhay 1s infinite; } @keyframes nhay { 50% { opacity: .6; } }
 dialog { border: none; border-radius: 16px 16px 0 0; padding: 18px 16px 24px; width: 100%; max-width: 640px; margin: auto auto 0; background: var(--the); color: var(--chu); max-height: 90vh; overflow: auto; }
 dialog::backdrop { background: rgba(0,0,0,.45); }
 @media (min-width: 760px) { dialog { border-radius: 16px; margin: auto; } }
@@ -75,7 +75,7 @@ td.so { text-align: right; font-variant-numeric: tabular-nums; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--mo); margin: 8px 0; }
 .legend i { display: inline-block; width: 18px; height: 8px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
 .note { background: var(--sap-nhat); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 10px 0; }
-#toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--chu); color: var(--nen); padding: 10px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast { z-index: 1000; position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--chu); color: var(--nen); padding: 10px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.on { opacity: 1; }
 .chi-van-phong[hidden] { display: none; }
 @media (max-width: 520px) { .an-dt { display: none; } }

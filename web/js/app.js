@@ -90,7 +90,15 @@ async function capNhatTrangThai(tt) {
   el.textContent = matMang ? `Mất mạng${cho ? ' · chờ gửi ' + cho : ''}` : mayChuCu ? 'Cần cập nhật máy chủ' : cho ? `Đang gửi ${cho}` : 'Đã lưu';
   el.className = 'sync ' + (matMang || mayChuCu ? 'off' : cho ? 'cho' : 'ok');
 }
-function bao(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('on'); setTimeout(() => t.classList.remove('on'), 2200); }
+// Phiếu (dialog) mở thì đưa thông báo vào trong phiếu, không thì bị phiếu che mất.
+function bao(msg, ms = 2200) {
+  const t = $('#toast');
+  const dlg = [...document.querySelectorAll('dialog[open]')].pop();
+  const cha = dlg || document.body;
+  if (t.parentElement !== cha) cha.appendChild(t);
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(bao.hen); bao.hen = setTimeout(() => t.classList.remove('on'), ms);
+}
 
 // ---------- Khung ----------
 function khoiDongVaiTro() {
@@ -204,7 +212,7 @@ function moViec(maCt, id) {
     ${mauCuaCongTrinh(db, maCt).filter((m) => m.viec === id).map((m) => `<p class="note">Mẫu ${esc(m.hangMuc)}: <b>${esc(m.tenMau)}</b> · ${m.trangThai === 'DUYET' ? 'khách đã chốt' : '<span class="tre">khách chưa chốt</span>'}${m.nguoiBan ? ' · người bán ' + esc(m.nguoiBan) : ''}</p>`).join('')}
     <label class="f">Tiến độ</label>
     <div class="grid-btn">${[0, 25, 50, 75, 100].map((p) => `<button data-pct="${p}" class="${x.phanTram === p ? 'on' : ''}">${p === 100 ? 'Xong' : p + '%'}</button>`).join('')}</div>
-    <label class="f">Ghi chú / phát sinh (bấm micro trên bàn phím để nói)</label>
+    <label class="f">Ghi chú / phát sinh (bấm 🎤 để nói)</label>
     <div class="mic"><textarea id="ghiChu" placeholder="Vd: chủ nhà muốn thêm 2 ổ cắm bếp"></textarea><button id="noi" title="Nói">🎤</button></div>
     <div class="actions">
       <button id="luuGhiChu">Lưu ghi chú</button>
@@ -293,14 +301,37 @@ function moBaoCham(ct, x) {
   };
 }
 
+// Nói thành chữ (vi-VN). Bấm 🎤: nút đỏ ⏹ = đang nghe; bấm lại để dừng. Mỗi lần nói nối thêm vào ô.
+const LOI_MIC = {
+  'not-allowed': 'Chưa cho phép micro. Bấm ổ khoá cạnh địa chỉ web → Quyền → Micro → Cho phép, rồi bấm 🎤 lại',
+  'service-not-allowed': 'Trình duyệt này chặn nhận giọng nói. Mở app bằng Chrome, hoặc dùng micro trên bàn phím',
+  'no-speech': 'Chưa nghe thấy gì, bấm 🎤 rồi nói luôn',
+  'audio-capture': 'Không thấy micro trên máy',
+  network: 'Nhận giọng nói cần mạng. Thử lại hoặc dùng micro trên bàn phím',
+  'language-not-supported': 'Máy chưa có tiếng Việt cho nhận giọng nói, dùng micro trên bàn phím',
+};
+let micDang = null;
 function noiThanhChu(o) {
+  const nut = o.parentElement && o.parentElement.querySelector('button');
+  if (micDang) { const r0 = micDang; micDang = null; try { r0.stop(); } catch {} return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) { o.focus(); return bao('Máy này chưa hỗ trợ, bấm micro trên bàn phím'); }
+  if (!SR) { o.focus(); return bao('Máy này chưa hỗ trợ nói thành chữ. Bấm micro trên bàn phím điện thoại để nói', 4000); }
   const r = new SR();
-  r.lang = 'vi-VN'; r.interimResults = false;
-  r.onresult = (e) => { o.value = (o.value + ' ' + e.results[0][0].transcript).trim(); };
-  r.onerror = () => bao('Không nghe được, thử lại hoặc dùng micro bàn phím');
-  r.start(); bao('Đang nghe…');
+  r.lang = 'vi-VN'; r.interimResults = true; r.continuous = false;
+  const goc = o.value;
+  let coChu = false;
+  const tat = () => { if (nut) { nut.textContent = '🎤'; nut.classList.remove('dang-nghe'); } if (micDang === r) micDang = null; };
+  r.onresult = (e) => {
+    const chu = [...e.results].map((x) => x[0].transcript).join(' ').trim();
+    if (chu) coChu = true;
+    o.value = (goc + ' ' + chu).trim();
+  };
+  r.onerror = (e) => { tat(); if (e.error !== 'aborted') bao(LOI_MIC[e.error] || 'Không nghe được (' + e.error + '), thử lại hoặc dùng micro bàn phím', 5000); };
+  r.onend = () => { tat(); if (coChu) bao('Đã ghi. Bấm 🎤 để nói tiếp'); };
+  try { r.start(); } catch (err) { tat(); return bao('Không mở được micro: ' + err.message, 4000); }
+  micDang = r;
+  if (nut) { nut.textContent = '⏹'; nut.classList.add('dang-nghe'); }
+  bao('Đang nghe… nói xong bấm ⏹');
 }
 
 async function chiaSe(text) {
