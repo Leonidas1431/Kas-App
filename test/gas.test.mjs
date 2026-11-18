@@ -1123,3 +1123,73 @@ test('thầu công nhật: giám sát thấy cờ công nhật', () => {
   const t = m.post(khoaKha, 'keoVe').data.nhaThau[0];
   assert.deepEqual([t.congNhat, t.ghiChu], [true, undefined]);
 });
+
+test('bàn giao: chủ nhà chỉ thấy biên bản đã gửi; đồng ý trên link không bị bản cũ ghi đè', () => {
+  const m = khoiDong();
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  const bg = { id: 'BG-NT-A', maCongTrinh: 'NT-A', ngay: '2026-11-10', hangMucBH: [{ nhom: 'Chống thấm', thang: 60 }, { nhom: 'Nội thất', thang: 12 }],
+    thietBi: [{ ten: 'Bình nóng lạnh', hang: 'Ariston', model: 'AN2 30', viTri: 'WC1', thang: 24 }], giaoNhan: [{ ten: 'Chìa khoá', soLuong: '3', da: true }],
+    tonTai: [], ghiChu: '', soAnh: 0, trangThai: 'NHAP', guiLuc: '', khachLuc: '', khachQua: '', khachYKien: '', nhacHet: [], thanhLy: '', xoa: '' };
+  assert.equal(m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BG', bg: { ...bg, id: 'BG-sai' } })] }).data[0].ok, false);
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BG', bg })] });
+  assert.equal(m.get({ xem: '0123456789' }).data.banGiao, null); // chưa gửi
+  // Chưa gửi thì chủ nhà chưa báo lỗi được
+  assert.equal(m.post(undefined, 'chuNhaBaoLoi', { maLink: '0123456789', id: 'BH-abcdef12', moTa: 'Thấm' }).ok, false);
+  const gui = { ...bg, trangThai: 'CHO_KHACH', guiLuc: '2026-11-10T03:00:00Z' };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BG', bg: gui })] });
+  const g = m.get({ xem: '0123456789' }).data;
+  assert.equal(g.banGiao.trangThai, 'CHO_KHACH');
+  assert.equal(g.banGiao.thietBi[0].model, 'AN2 30');
+  assert.equal(m.post(undefined, 'chuNhaPhanHoi', { maLink: '0123456789', loai: 'BG', id: 'BG-NT-A', ketQua: 'DUYET' }).data.trangThai, 'DONG_Y');
+  // Máy văn phòng chưa kéo về, sửa ghi chú, gửi lên bản cũ: vẫn giữ chủ nhà đồng ý
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BG', bg: { ...gui, ghiChu: 'Đã giao 3 chìa' } })] });
+  const kv = m.post(m.khoaThay, 'keoVe').data;
+  assert.equal(kv.banGiao[0].trangThai, 'DONG_Y');
+  assert.equal(kv.banGiao[0].khachQua, 'LINK');
+  assert.equal(kv.banGiao[0].ghiChu, 'Đã giao 3 chìa');
+  assert.deepEqual(kv.banGiao[0].hangMucBH[0], { nhom: 'Chống thấm', thang: 60 });
+});
+
+test('bảo hành: chủ nhà báo lỗi kèm ảnh trên link (gửi lại không trùng); giám sát không thấy và không sửa được phí', () => {
+  const m = khoiDong();
+  const ct = congTrinhMau('NT-A');
+  ct.viec.forEach((v) => { if (/^Chống thấm/.test(v.nhom)) v.nhaThau = 'Chống thấm Tùng'; });
+  const nhomCT = ct.viec.find((v) => /^Chống thấm/.test(v.nhom)).nhom.replace(/\s*\(.*\)$/, '');
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct })] });
+  const bg = { id: 'BG-NT-A', maCongTrinh: 'NT-A', ngay: '2026-01-10', hangMucBH: [{ nhom: nhomCT, thang: 60 }], thietBi: [], giaoNhan: [], tonTai: [],
+    trangThai: 'DONG_Y', guiLuc: '2026-01-10T03:00:00Z', khachLuc: '2026-01-10T04:00:00Z', khachQua: 'GIAY', nhacHet: [] };
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BG', bg })] });
+  const anh = Buffer.from('anh-loi').toString('base64');
+  const bao = { maLink: '0123456789', id: 'BH-chunha001', moTa: 'Chân tường WC bị thấm nước', viTri: 'WC1', nhom: nhomCT, anh: [anh, anh] };
+  assert.equal(m.post(undefined, 'chuNhaBaoLoi', { ...bao, maLink: 'sai' }).ok, false);
+  assert.equal(m.post(undefined, 'chuNhaBaoLoi', { ...bao, moTa: '  ' }).ok, false);
+  let r = m.post(undefined, 'chuNhaBaoLoi', bao);
+  assert.equal(r.ok, true);
+  assert.deepEqual([r.data.ma, r.data.khan, r.data.trongHan, r.data.coPhi], ['BH01', true, true, false]);
+  r = m.post(undefined, 'chuNhaBaoLoi', bao); // mất sóng, bấm lại
+  assert.equal(r.data.ma, 'BH01');
+  let kv = m.post(m.khoaThay, 'keoVe').data;
+  assert.equal(kv.baoHanh.length, 1);
+  const p = kv.baoHanh[0];
+  assert.deepEqual([p.nguoiBao, p.giaoCho, p.soAnh], ['CHU_NHA', 'Chống thấm Tùng', 2]);
+  assert.equal(kv.anh.length, 0); // ảnh chủ nhà không tính vào ảnh tiến độ hôm nay
+  assert.equal(m.post(m.khoaThay, 'anhThu', { ma: 'NT-A', viec: p.id }).data.length, 2);
+  // Văn phòng tính phí; giám sát nhận việc, báo xong, không đổi được phí
+  m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'BH', p: { ...p, coPhi: true, phi: 800000 } })] });
+  const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  kv = m.post(khoaKha, 'keoVe').data;
+  assert.equal(kv.baoHanh[0].phi, undefined);
+  assert.equal(kv.baoHanh[0].coPhi, true);
+  r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'BH', p: { ...kv.baoHanh[0], trangThai: 'XONG', ngayXong: '2026-03-02', soAnhXong: 1, coPhi: false, phi: 0, nguoiBao: 'KHA' } })] });
+  assert.equal(r.data[0].ok, true);
+  const sau = m.post(m.khoaThay, 'keoVe').data.baoHanh[0];
+  assert.deepEqual([sau.trangThai, sau.coPhi, sau.phi, sau.nguoiBao], ['XONG', true, 800000, 'CHU_NHA']);
+  // Chủ nhà thấy phiếu và phí (vì có tính phí)
+  const g = m.get({ xem: '0123456789' }).data;
+  assert.deepEqual([g.baoHanh[0].trangThai, g.baoHanh[0].phi], ['XONG', 800000]);
+  // Giám sát báo lỗi mới: không tự đặt phí; trùng mã thì lấy số tiếp
+  r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'BH', p: { id: 'BH-kha1', ma: 'BH01', maCongTrinh: 'NT-A', ngayBao: '2026-03-05', moTa: 'Ổ cắm lỏng', han: '2026-03-08', trangThai: 'MOI', coPhi: true, phi: 5e6 } })] });
+  assert.equal(r.data[0].ok, true);
+  const moi = m.post(m.khoaThay, 'keoVe').data.baoHanh.find((x) => x.id === 'BH-kha1');
+  assert.deepEqual([moi.ma, moi.phi, moi.nguoiBao], ['BH02', 0, 'KHA']);
+});

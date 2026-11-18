@@ -107,6 +107,14 @@ export async function chuNhaPhanHoi(api, data) {
   return j.data;
 }
 
+// Chủ nhà báo lỗi bảo hành trên link, kèm tối đa 3 ảnh đã nén (base64).
+export async function chuNhaBaoLoi(api, data) {
+  const r = await fetch(apiUrl(api), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'chuNhaBaoLoi', data }) });
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.loi || 'Máy chủ báo lỗi');
+  return j.data;
+}
+
 let dangChay = null;
 
 /**
@@ -156,6 +164,8 @@ export function dongBo(db, luu) {
         if (d.taiKhoan) db.taiKhoan = d.taiKhoan;
         if (d.baoCao) db.baoCao = d.baoCao;
         if (d.baoCaoTuan) db.baoCaoTuan = d.baoCaoTuan;
+        if (d.banGiao) db.banGiao = d.banGiao;
+        if (d.baoHanh) db.baoHanh = d.baoHanh;
         db.toi = d.toi;
         luu();
       }
