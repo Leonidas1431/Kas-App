@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1f3864">
+  <title>Đăng ký tư vấn – KAS Houzing</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <style>
+    :root { --mau: #1f3864; --nen: #f5f6f8; --chu: #1c1f24; --phu: #5d6470; --vien: #d5d9e0; --o: #fff; --loi: #b3261e; --tot: #1e7b45; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --mau: #8fb0ff; --nen: #15171b; --chu: #eceef2; --phu: #a4abb7; --vien: #343944; --o: #1f2228; --loi: #ff8a80; --tot: #6fd49a; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--nen); color: var(--chu); font: 17px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 440px; margin: 0 auto; padding: 24px 16px 40px; }
+    .the { background: var(--o); border: 1px solid var(--vien); border-radius: 14px; padding: 22px 18px; }
+    .ten-cty { font-weight: 700; letter-spacing: .04em; color: var(--mau); font-size: 15px; text-transform: uppercase; margin: 0 0 6px; }
+    h1 { font-size: 22px; line-height: 1.3; margin: 0 0 6px; }
+    p.phu { color: var(--phu); margin: 0 0 18px; font-size: 15px; }
+    label { display: block; font-weight: 600; margin: 14px 0 6px; font-size: 15px; }
+    input { width: 100%; font: inherit; padding: 13px 14px; border: 1px solid var(--vien); border-radius: 10px; background: var(--o); color: var(--chu); }
+    input:focus { outline: 2px solid var(--mau); outline-offset: 1px; border-color: transparent; }
+    .bay { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+    button { width: 100%; margin-top: 20px; font: inherit; font-weight: 700; padding: 14px; border: 0; border-radius: 10px; background: var(--mau); color: #fff; cursor: pointer; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button { color: #10131a; } }
+    button:disabled { opacity: .6; cursor: default; }
+    .bao { margin-top: 14px; font-size: 15px; min-height: 1.5em; }
+    .bao.loi { color: var(--loi); }
+    .xong { text-align: center; padding: 10px 0; }
+    .xong .dau { font-size: 40px; color: var(--tot); line-height: 1; }
+    .chan { color: var(--phu); font-size: 13px; text-align: center; margin-top: 16px; }
+  </style>
+</head>
+<body>
+<main>
+  <div class="the" id="the">
+    <p class="ten-cty">KAS Houzing</p>
+    <h1>Đăng ký tư vấn thiết kế, thi công nhà ở</h1>
+    <p class="phu">Anh/chị để lại tên và số điện thoại, KAS sẽ gọi lại để tư vấn.</p>
+    <form id="f" novalidate>
+      <label for="ten">Họ tên</label>
+      <input id="ten" name="ten" autocomplete="name" placeholder="Vd: Nguyễn Văn An" required maxlength="80">
+      <label for="sdt">Số điện thoại / Zalo</label>
+      <input id="sdt" name="sdt" type="tel" inputmode="tel" autocomplete="tel" placeholder="09…" required maxlength="16">
+      <div class="bay" aria-hidden="true"><label for="web">Website</label><input id="web" name="web" tabindex="-1" autocomplete="off"></div>
+      <button id="gui" type="submit">Gửi đăng ký</button>
+      <div id="bao" class="bao" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+  <p class="chan">Thông tin chỉ dùng để KAS liên hệ tư vấn cho anh/chị.</p>
+</main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var api = q.get('api') || '';
+  var url = /^https:\/\//.test(api) ? api : 'https://script.google.com/macros/s/' + api + '/exec';
+  var f = document.getElementById('f'), bao = document.getElementById('bao'), gui = document.getElementById('gui');
+  function loi(t) { bao.className = 'bao loi'; bao.textContent = t; }
+  if (!api) { loi('Link đăng ký thiếu thông tin, anh/chị liên hệ KAS qua Zalo giúp em ạ.'); gui.disabled = true; }
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var ten = document.getElementById('ten').value.trim();
+    var sdt = document.getElementById('sdt').value.trim();
+    if (ten.length < 2) return loi('Anh/chị ghi giúp họ tên.');
+    if (!/^(?:\+?84|0)\d{9}$/.test(sdt.replace(/[\s.()-]/g, ''))) return loi('Số điện thoại chưa đúng, anh/chị ghi giúp 10 số, bắt đầu bằng 0.');
+    gui.disabled = true; bao.className = 'bao'; bao.textContent = 'Đang gửi…';
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'dangKyTuVan', data: { l: q.get('l') || '', ten: ten, sdt: sdt, web: document.getElementById('web').value } }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) { gui.disabled = false; return loi(j.loi || 'Chưa gửi được, anh/chị thử lại giúp em.'); }
+        document.getElementById('the').innerHTML = '<div class="xong"><div class="dau">✓</div><h1>KAS đã nhận thông tin</h1>'
+          + '<p class="phu">Cảm ơn anh/chị. KAS sẽ gọi lại trong giờ làm việc.</p></div>';
+      })
+      .catch(function () { gui.disabled = false; loi('Mạng chập chờn, chưa gửi được. Anh/chị bấm gửi lại giúp em.'); });
+  });
+})();
+</script>
+</body>
+</html>
