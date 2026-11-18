@@ -10,7 +10,7 @@ export const VAI_TRO = { THAY: 'Thầy', DUC: 'Đức', KHA: 'Giám sát', TAM: 
 // Văn phòng: toàn quyền, thấy tiền và sổ khách. Giám sát, quyền tạm: chỉ công trình được giao.
 export const VAN_PHONG = ['THAY', 'DUC'];
 
-export const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [], khach: [], hopDong: [], phuongAn: [], gstg: [], caiDat: {}, thuChi: [], traThau: [], chungTu: [], phatSinh: [], mauVL: [], nhaThau: [], danhGia: [], anh: [], nghiemThu: [], baiDang: [], chiAI: [], taiKhoan: [] });
+export const rong = () => ({ congTrinh: [], lichSu: [], outbox: [], nguoiDung: [], khach: [], hopDong: [], phuongAn: [], gstg: [], caiDat: {}, thuChi: [], traThau: [], chungTu: [], phatSinh: [], mauVL: [], nhaThau: [], danhGia: [], anh: [], nghiemThu: [], baiDang: [], chiAI: [], taiKhoan: [], baoCao: [], baoCaoTuan: [] });
 
 export function doc() {
   try { return { ...rong(), ...JSON.parse(localStorage.getItem(KEY)) }; } catch { return rong(); }
@@ -65,12 +65,22 @@ export function capNhatTienDo(db, ct, viecId, phanTram, nguoi, homNay) {
 }
 
 // Báo chậm: kéo dài việc thêm `soNgay`, các việc sau tự lùi. Giữ nguyên ngày gốc để so.
-export function baoCham(db, ct, viecId, { soNgay, nguyenNhan, ghiChu }, nguoi) {
+// chiViecNay: chỉ lùi việc này (làm song song được) → các việc sau giữ ngày bắt đầu cũ (ghim batDauCoDinh).
+export function baoCham(db, ct, viecId, { soNgay, nguyenNhan, ghiChu, chiViecNay = false }, nguoi) {
   const v = ct.viec.find((x) => x.id === viecId);
+  const truoc = chiViecNay ? lichHienTai(ct) : null;
   const cu = v.soNgay;
   v.soNgay = cu + Number(soNgay);
   day(db, { loai: 'VIEC', ma: ct.ma, viec: v });
-  ghiLichSu(db, ct, v, nguoi, { loai: 'CHAM', cu, moi: v.soNgay, nguyenNhan, ghiChu, congKhai: false });
+  if (chiViecNay) {
+    const sau = lichHienTai(ct);
+    for (const x of ct.viec) {
+      if (x.id === viecId || x.phanTram >= 100 || (x.thucTe && x.thucTe.batDau)) continue;
+      if (sau.get(x.id).batDau !== truoc.get(x.id).batDau) { x.batDauCoDinh = truoc.get(x.id).batDau; day(db, { loai: 'VIEC', ma: ct.ma, viec: x }); }
+    }
+  }
+  const gc = chiViecNay ? [ghiChu, 'Chỉ lùi việc này, việc sau giữ lịch'].filter(Boolean).join('. ') : ghiChu;
+  ghiLichSu(db, ct, v, nguoi, { loai: 'CHAM', cu, moi: v.soNgay, nguyenNhan, ghiChu: gc, congKhai: false });
 }
 
 export function ghiChu(db, ct, viecId, noiDung, nguoi, phatSinh) {

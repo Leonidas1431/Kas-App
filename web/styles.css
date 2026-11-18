@@ -50,7 +50,7 @@ button, .btn { font: inherit; font-weight: 600; border-radius: 10px; border: 1px
 label.f { display: block; margin: 10px 0 4px; font-weight: 600; font-size: 14px; }
 input, select, textarea { font: inherit; width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--vien); background: var(--the); color: var(--chu); }
 textarea { min-height: 84px; }
-.mic { display: flex; gap: 8px; } .mic textarea { flex: 1; } .mic button { min-width: 56px; }
+.mic { display: flex; gap: 8px; } .mic textarea { flex: 1; } .mic button { min-width: 56px; } .mic button.dang-nghe { background: #d33; color: #fff; animation: nhay 1s infinite; } @keyframes nhay { 50% { opacity: .6; } }
 dialog { border: none; border-radius: 16px 16px 0 0; padding: 18px 16px 24px; width: 100%; max-width: 640px; margin: auto auto 0; background: var(--the); color: var(--chu); max-height: 90vh; overflow: auto; }
 dialog::backdrop { background: rgba(0,0,0,.45); }
 @media (min-width: 760px) { dialog { border-radius: 16px; margin: auto; } }
@@ -75,7 +75,7 @@ td.so { text-align: right; font-variant-numeric: tabular-nums; }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--mo); margin: 8px 0; }
 .legend i { display: inline-block; width: 18px; height: 8px; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
 .note { background: var(--sap-nhat); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin: 10px 0; }
-#toast { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--chu); color: var(--nen); padding: 10px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast { z-index: 1000; position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); background: var(--chu); color: var(--nen); padding: 10px 16px; border-radius: 99px; font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none; }
 #toast.on { opacity: 1; }
 .chi-van-phong[hidden] { display: none; }
 @media (max-width: 520px) { .an-dt { display: none; } }
@@ -209,3 +209,17 @@ img.bia { display: block; width: 100%; max-width: 420px; height: auto; border-ra
 .grid-btn.ba button.on { background: var(--thanh); border-color: var(--thanh); color: #fff; }
 details.card > summary { cursor: pointer; list-style: none; gap: 8px; }
 details.card > summary::-webkit-details-marker { display: none; }
+
+/* Báo cáo công trường */
+.chon-thau { width: 100%; text-align: left; font-weight: 700; }
+.chon-thau.on { background: var(--dang); color: #fff; border-color: var(--dang); }
+.chips-chon { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chips-chon button { padding: 6px 10px; font-size: 13px; border-radius: 99px; min-height: 0; }
+.chips-chon button.on { background: var(--tre); color: #fff; border-color: var(--tre); }
+.grid-btn.doc { grid-template-columns: 1fr; }
+.luoi-anh { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 8px 0; }
+.luoi-anh img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--goc); cursor: pointer; border: 3px solid transparent; }
+.luoi-anh img.on { border-color: var(--dang); }
+details.card > summary { cursor: pointer; list-style: none; }
+.grid-btn.pct { grid-template-columns: repeat(5, 1fr); gap: 6px; } .grid-btn.pct button { padding-left: 0; padding-right: 0; }
+.note > a.btn, .canh-anh > a.btn { display: block; text-align: center; margin-top: 8px; }

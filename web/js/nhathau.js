@@ -14,7 +14,7 @@ export const timThauTheoTen = (db, ten) => (db.nhaThau || []).find((t) => t.ten.
 
 export function themThau(db, du) {
   db.nhaThau = db.nhaThau || [];
-  const t = { id: 'NT-' + taoMa(), ten: du.ten.trim(), linhVuc: du.linhVuc || '', sdt: du.sdt || '', ghiChu: du.ghiChu || '', maLink: taoMa() + taoMa(), hoatDong: true, taoLuc: new Date().toISOString() };
+  const t = { id: 'NT-' + taoMa(), ten: du.ten.trim(), linhVuc: du.linhVuc || '', sdt: du.sdt || '', ghiChu: du.ghiChu || '', maLink: taoMa() + taoMa(), hoatDong: true, congNhat: !!du.congNhat, taoLuc: new Date().toISOString() };
   db.nhaThau.push(t);
   ghiNT(db, t);
   return t;

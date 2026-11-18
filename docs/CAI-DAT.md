@@ -65,6 +65,14 @@ Tên mục trong Google Cloud có thể khác chút theo thời điểm.
 - Không dán thì ảnh vào `KAS App – Ảnh/<Mã công trình>` trong Drive của Thầy.
 - Tên ảnh: `MãCT_NămThángNgày_GiờPhút_MãViệc_01.jpg`. Ảnh được nén ~1600px trên điện thoại trước khi gửi, mất sóng thì nằm chờ trên máy, có sóng tự gửi.
 
+## Báo cáo công trường
+
+- Giám sát làm **phiếu báo cáo ngày** ở màn Hôm nay (hoặc nút 📋 trong màn công trình): thầu nào làm, xong gì (bấm % là cập nhật kế hoạch), thiếu/phát sinh, ảnh hưởng hạng mục khác, ngày mai có đổi kế hoạch không, tối thiểu 6 ảnh. Nộp xong có nút gửi nhóm Zalo nội bộ. Sửa được trong ngày; ngày đã qua chỉ Thầy/Đức sửa.
+- Chưa nộp thì màn Hôm nay báo đỏ lúc 16h, 17h, 17h30 (chỉ trong app, không email).
+- Thầu **công nhật**: tick ô "Công nhật" ở hồ sơ thầu → mỗi ngày thầu có việc theo lịch, màn Hôm nay hiện nút chấm công. Bảng công theo tháng nằm trong hồ sơ thầu.
+- Thầy/Đức báo chậm = **đề xuất**; giám sát bấm xác nhận / sửa / không lùi thì lịch mới đổi. Tick "Đã thống nhất với giám sát" để lùi ngay.
+- **Tổng hợp tuần**: từ trưa thứ 7, màn Hôm nay của Thầy/Đức nhắc từng công trình. App gom sẵn tiến độ, việc xong, việc tuần sau, vướng mắc cần chủ nhà, chọn sẵn 9 ảnh mới nhất; Thầy sửa rồi bấm **Gửi chủ nhà** → hiện trên link chủ nhà và mở Zalo gửi tin. Chủ nhà chỉ xem được đúng ảnh đã chọn, không cần chia sẻ thư mục Drive.
+
 ## Khi sửa code máy chủ
 
 Dán `Code.gs` mới → **Lưu** → **Triển khai** → **Quản lý triển khai** → bút chì → Phiên bản: **Phiên bản mới** → **Triển khai**. Giữ nguyên URL, anh em không phải làm lại gì. Tab mới trong Sheets (vd `HopDong`) máy chủ tự tạo, không cần chạy lại setup.

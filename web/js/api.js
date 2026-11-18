@@ -83,6 +83,14 @@ export async function xemChuNha(api, maLink) {
   return j.data;
 }
 
+// Ảnh trong báo cáo tuần trên link chủ nhà (tải từng ảnh, không cần khoá).
+export async function anhChuNha(api, maLink, id) {
+  const r = await fetch(`${apiUrl(api)}?xem=${encodeURIComponent(maLink)}&anh=${encodeURIComponent(id)}`);
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.loi);
+  return j.data;
+}
+
 // Thầu mở link riêng: lịch việc của mình ở các công trình (không cần khoá).
 export async function xemChoThau(api, maLink) {
   const r = await fetch(`${apiUrl(api)}?thau=${encodeURIComponent(maLink)}`);
@@ -146,6 +154,8 @@ export function dongBo(db, luu) {
         if (d.baiDang) thayDsBai(db, d.baiDang);
         if (d.chiAI) db.chiAI = d.chiAI;
         if (d.taiKhoan) db.taiKhoan = d.taiKhoan;
+        if (d.baoCao) db.baoCao = d.baoCao;
+        if (d.baoCaoTuan) db.baoCaoTuan = d.baoCaoTuan;
         db.toi = d.toi;
         luu();
       }
