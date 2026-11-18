@@ -49,6 +49,13 @@ const TAB = {
   BaoCao: ['id', 'maCongTrinh', 'ngay', 'nguoi', 'thauLam', 'thieu', 'anhHuong', 'viecAnhHuong', 'ngayMai', 'doiKeHoach', 'soAnh', 'nopLuc', 'capNhatLuc', 'xoa', 'email'],
   // Tổng hợp tuần gửi chủ nhà (id BCT-<mã>-<thứ 2>). Chỉ văn phòng ghi; chủ nhà thấy khi guiLuc có giá trị.
   BaoCaoTuan: ['id', 'maCongTrinh', 'tuNgay', 'denNgay', 'tomTat', 'dsAnh', 'nguoi', 'guiLuc', 'capNhatLuc', 'xoa'],
+  // Biên bản bàn giao: 1 công trình 1 biên bản (id BG-<mã>). Không có tiền: giám sát lập được. Chủ nhà xác nhận trên link (khachQua LINK) hoặc ký giấy.
+  // hangMucBH: [{ nhom, thang }] bảo hành từng hạng mục; thietBi: [{ ten, hang, model, viTri, thang }]; giaoNhan: [{ ten, soLuong, da }]; tonTai: chụp lúc gửi.
+  BanGiao: ['id', 'maCongTrinh', 'ngay', 'nguoi', 'hangMucBH', 'thietBi', 'giaoNhan', 'tonTai', 'ghiChu', 'soAnh', 'trangThai', 'guiLuc', 'khachLuc', 'khachQua',
+    'khachYKien', 'nhacHet', 'thanhLy', 'xoa', 'capNhatLuc'],
+  // Phiếu lỗi bảo hành. nguoiBao CHU_NHA = chủ nhà tự báo trên link. coPhi, phi chỉ văn phòng ghi và thấy (chủ nhà thấy phí khi coPhi).
+  BaoHanh: ['id', 'ma', 'maCongTrinh', 'ngayBao', 'nguoiBao', 'moTa', 'viTri', 'nhom', 'khan', 'han', 'giaoCho', 'trangThai', 'trongHan', 'coPhi', 'phi',
+    'ketQua', 'ngayXong', 'soAnh', 'soAnhXong', 'xoa', 'capNhatLuc'],
   // Đánh giá thầu sau mỗi công trình, điểm 1–5. Mỗi người 1 phiếu cho 1 thầu ở 1 công trình.
   DanhGia: ['id', 'maThau', 'maCongTrinh', 'ngay', 'chatLuong', 'tienDo', 'phoiHop', 'ghiChu', 'nguoi', 'capNhatLuc'],
   // Phiếu nghiệm thu từng việc: checklist, tồn tại cần sửa (hạn, ngày sửa). Không có tiền: giám sát ghi được.
@@ -65,7 +72,7 @@ const TAB = {
   NhatKy: ['luc', 'email', 'ten', 'vaiTro', 'cach', 'thaoTac', 'ma', 'chiTiet'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -107,6 +114,7 @@ function doPost(e) {
   try {
     const req = JSON.parse(e.postData.contents);
     if (req.action === 'chuNhaPhanHoi') return json({ ok: true, data: chuNhaPhanHoi(req.data || {}) });
+    if (req.action === 'chuNhaBaoLoi') return json({ ok: true, data: chuNhaBaoLoi(req.data || {}) });
     if (req.action === 'dangNhapGoogle') return json({ ok: true, data: dangNhapGoogle(req.data || {}) });
     const nguoi = xacThuc(req.khoa);
     const fn = HANH_DONG[req.action];
@@ -148,7 +156,11 @@ function doGet(e) {
   const mauVL = docBang('MauVL').filter((m) => m.maCongTrinh === ct.ma && !m.xoa).map(mauChoChuNha);
   // Báo cáo tuần đã gửi: 8 tuần gần nhất. Ảnh tải riêng từng cái qua ?xem=<mã>&anh=<id>.
   const baoCaoTuan = tuanDaGui(ct.ma).slice(0, 8).map((x) => ({ id: x.id, tuNgay: x.tuNgay, denNgay: x.denNgay, tomTat: x.tomTat, dsAnh: x.dsAnh || [] }));
-  return json({ ok: true, data: { ct: { ma: ct.ma, ten: ct.ten, loai: ct.loai, khoiCong: ct.khoiCong, lich: ct.lich, maLinkChuNha: ct.maLinkChuNha, viec }, lichSu, phuongAn, phatSinh, mauVL, baoCaoTuan } });
+  // Biên bản bàn giao: chủ nhà thấy khi văn phòng đã gửi. Phiếu bảo hành của công trình (phí chỉ hiện khi có tính phí).
+  const bg = docBang('BanGiao').find((b) => b.maCongTrinh === ct.ma && !b.xoa && b.guiLuc);
+  const banGiao = bg ? bgChoChuNha(bg) : null;
+  const baoHanh = banGiao ? docBang('BaoHanh').filter((p) => p.maCongTrinh === ct.ma && !p.xoa).map(bhChoChuNha) : [];
+  return json({ ok: true, data: { ct: { ma: ct.ma, ten: ct.ten, loai: ct.loai, khoiCong: ct.khoiCong, lich: ct.lich, maLinkChuNha: ct.maLinkChuNha, viec }, lichSu, phuongAn, phatSinh, mauVL, baoCaoTuan, banGiao, baoHanh } });
 }
 
 function tuanDaGui(ma) {
@@ -196,7 +208,7 @@ function demAnh(n) {
   const tu = Utilities.formatDate(new Date(Date.now() - 14 * 864e5), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd');
   const dem = {};
   docBang('Anh').forEach((a) => {
-    if (a.loai === 'CHUNG_TU' || a.loai === 'BAI_DANG' || !duocXem(n, a.ma)) return;
+    if (a.loai === 'CHUNG_TU' || a.loai === 'BAI_DANG' || a.loai === 'BAO_HANH' || !duocXem(n, a.ma)) return;
     const d = a.luc instanceof Date ? a.luc : new Date(a.luc);
     if (isNaN(d)) return;
     const ngay = Utilities.formatDate(d, 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd');
@@ -217,6 +229,83 @@ function paChoChuNha(p) {
 function psChoChuNha(p) {
   return { id: p.id, ma: p.ma, moTa: p.moTa, viTri: p.viTri, giaBan: Number(p.giaBan) || 0, ngayBaoGia: p.ngayBaoGia, trangThai: p.trangThai,
     ngayKhach: p.ngayKhach, quaKhach: p.quaKhach, yKien: p.yKien };
+}
+
+function bgChoChuNha(b) {
+  return { id: b.id, ngay: b.ngay, hangMucBH: b.hangMucBH || [], thietBi: b.thietBi || [], giaoNhan: b.giaoNhan || [], tonTai: b.tonTai || [], ghiChu: b.ghiChu,
+    trangThai: b.trangThai, guiLuc: b.guiLuc, khachLuc: b.khachLuc, khachQua: b.khachQua, khachYKien: b.khachYKien };
+}
+
+function bhChoChuNha(p) {
+  const co = p.coPhi === true;
+  return { id: p.id, ma: p.ma, ngayBao: p.ngayBao, moTa: p.moTa, viTri: p.viTri, nhom: p.nhom, khan: p.khan === true, han: p.han, trangThai: p.trangThai,
+    trongHan: p.trongHan === true, coPhi: co, phi: co ? Number(p.phi) || 0 : 0, ketQua: p.ketQua, ngayXong: p.ngayXong };
+}
+
+// Bảo hành mặc định 12 tháng (Thầy chốt 18/11); từng hạng mục sửa riêng trong biên bản.
+function themThang(ngay, n) {
+  const p = String(ngay).split('-').map(Number);
+  const t = new Date(Date.UTC(p[0], p[1] - 1 + n, 1));
+  const cuoi = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(p[2], cuoi));
+  return t.toISOString().slice(0, 10);
+}
+function themNgay(ngay, n) { return new Date(Date.parse(ngay + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10); }
+function hanBHMay(bg, nhom) {
+  const h = (bg.hangMucBH || []).find((x) => x.nhom === nhom);
+  const thang = h ? Number(h.thang) || 0 : 12;
+  return thang > 0 ? themThang(bg.ngay, thang) : '';
+}
+const KHAN_MAY = /rò|rỉ|thấm|tràn|ngập|vỡ ống|chập|cháy|giật|mất điện|nổ|sập|nứt kết cấu/i;
+
+// Chủ nhà báo lỗi bảo hành trên link (không cần khoá). Chỉ khi biên bản bàn giao đã gửi; tối đa 3 ảnh, 10 phiếu/ngày mỗi công trình.
+function chuNhaBaoLoi(data) {
+  const ct = docBang('CongTrinh').find((r) => r.maLinkChuNha && r.maLinkChuNha === data.maLink);
+  if (!ct) throw new Error('Link không đúng hoặc đã hết hạn');
+  const moTa = String(data.moTa || '').trim().slice(0, 2000);
+  if (!moTa) throw new Error('Anh/chị ghi giúp lỗi gì');
+  if (!/^BH-[\w-]{6,40}$/.test(String(data.id))) throw new Error('Mã phiếu không hợp lệ');
+  const anh = (data.anh || []).slice(0, 3);
+  if (anh.some((a) => typeof a !== 'string' || a.length > 3e6)) throw new Error('Ảnh quá lớn');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const bg = docBang('BanGiao').find((b) => b.maCongTrinh === ct.ma && !b.xoa && b.guiLuc);
+    if (!bg) throw new Error('Công trình chưa bàn giao');
+    const ds = docBang('BaoHanh').filter((p) => p.maCongTrinh === ct.ma);
+    const daCo = ds.find((p) => p.id === data.id);
+    if (daCo) return bhChoChuNha(daCo); // mất sóng bấm gửi lại
+    const hn = homNay();
+    if (ds.filter((p) => p.nguoiBao === 'CHU_NHA' && p.ngayBao === hn).length >= 10) throw new Error('Hôm nay anh/chị đã gửi nhiều phiếu, KAS sẽ gọi lại ạ');
+    const so = ds.map((p) => Number(String(p.ma).replace(/\D/g, '')) || 0);
+    const ma = 'BH' + String((so.length ? Math.max.apply(null, so) : 0) + 1).padStart(2, '0');
+    const nhom = (bg.hangMucBH || []).some((h) => h.nhom === data.nhom) ? data.nhom : '';
+    const den = nhom ? hanBHMay(bg, nhom) : themThang(bg.ngay, 12);
+    const trong = !!den && hn <= den;
+    const khan = data.khan === true || KHAN_MAY.test(moTa);
+    // Giao: thầu làm nhiều việc nhất trong hạng mục đó, không có thì giám sát.
+    const dem = {};
+    docBang('KeHoach').filter((v) => v.ma === ct.ma && v.nhaThau && String(v.nhom || '').replace(/\s*\(.*\)$/, '') === nhom).forEach((v) => { dem[v.nhaThau] = (dem[v.nhaThau] || 0) + 1; });
+    const giao = Object.keys(dem).sort((a, b) => dem[b] - dem[a])[0] || 'Giám sát';
+    const luc = new Date().toISOString();
+    const p = { id: data.id, ma, maCongTrinh: ct.ma, ngayBao: hn, nguoiBao: 'CHU_NHA', moTa, viTri: String(data.viTri || '').slice(0, 200), nhom, khan,
+      han: themNgay(hn, khan ? 1 : 3), giaoCho: giao, trangThai: 'MOI', trongHan: trong, coPhi: !trong, phi: 0, ketQua: '', ngayXong: '', soAnh: anh.length, soAnhXong: 0, xoa: '', capNhatLuc: luc };
+    themDong('BaoHanh', p);
+    if (anh.length) {
+      const thuMuc = thuMucAnh(ct.ma);
+      const ngay = hn.replace(/-/g, '');
+      anh.forEach((b64, i) => {
+        const tenFile = ct.ma + '_' + ngay + '_' + ma + '_chu-nha_' + String(i + 1).padStart(2, '0') + '.jpg';
+        const f = thuMuc.createFile(Utilities.newBlob(Utilities.base64Decode(b64), 'image/jpeg', tenFile));
+        themDong('Anh', { id: Utilities.getUuid(), ma: ct.ma, viec: p.id, luc, tenFile, fileId: f.getId(), nguoi: 'CHU_NHA', loai: 'BAO_HANH' });
+      });
+    }
+    themDong('LichSu', { id: Utilities.getUuid(), luc, ma: ct.ma, viec: p.id, tenViec: 'Bảo hành ' + ma, nguoi: 'CHU_NHA', loai: 'BAN_GIAO',
+      ghiChu: 'Chủ nhà báo lỗi' + (khan ? ' KHẨN' : '') + ' trên link: ' + moTa + (anh.length ? ' (' + anh.length + ' ảnh)' : ''), congKhai: false });
+    return bhChoChuNha(p);
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function mauChoChuNha(m) {
@@ -242,6 +331,17 @@ function chuNhaPhanHoi(data) {
       themDong('LichSu', { id: Utilities.getUuid(), luc: moiPs.capNhatLuc, ma: ct.ma, viec: ps.viec, tenViec: 'Phát sinh ' + ps.ma, nguoi: 'CHU_NHA', loai: 'PHAT_SINH',
         ghiChu: kq === 'DUYET' ? 'Chủ nhà đồng ý trên link → được làm' : 'Chủ nhà không làm' + (moiPs.yKien ? ': ' + moiPs.yKien : ''), congKhai: false });
       return psChoChuNha(Object.assign(ps, moiPs));
+    }
+    if (data.loai === 'BG') {
+      const b = docBang('BanGiao').find((r) => r.id === data.id && r.maCongTrinh === ct.ma && !r.xoa);
+      if (!b) throw new Error('Không tìm thấy biên bản bàn giao');
+      if (b.trangThai !== 'CHO_KHACH') return bgChoChuNha(b);
+      const dongY = data.ketQua === 'DUYET';
+      const moiB = { trangThai: dongY ? 'DONG_Y' : 'NHAP', khachLuc: new Date().toISOString(), khachQua: 'LINK', khachYKien: String(data.yKien || '').slice(0, 2000), capNhatLuc: new Date().toISOString() };
+      capNhatDong('BanGiao', (r) => r.id === b.id, moiB, true);
+      themDong('LichSu', { id: Utilities.getUuid(), luc: moiB.khachLuc, ma: ct.ma, viec: '', tenViec: 'Bàn giao', nguoi: 'CHU_NHA', loai: 'BAN_GIAO',
+        ghiChu: dongY ? 'Chủ nhà đồng ý bàn giao trên link' : 'Chủ nhà cần trao đổi thêm về biên bản' + (moiB.khachYKien ? ': ' + moiB.khachYKien : ''), congKhai: false });
+      return bgChoChuNha(Object.assign(b, moiB));
     }
     if (data.loai === 'MAU') {
       const m = docBang('MauVL').find((r) => r.id === data.id && r.maCongTrinh === ct.ma && !r.xoa);
@@ -388,8 +488,16 @@ const HANH_DONG = {
     // Phiếu báo cáo ngày: ai được giao công trình đều xem (không có tiền). Tổng hợp tuần: văn phòng.
     const baoCao = docBang('BaoCao').filter((b) => duocXem(n, b.maCongTrinh)).map((b) => ({ ...b, thauLam: b.thauLam || [], viecAnhHuong: b.viecAnhHuong || [], soAnh: Number(b.soAnh) || 0 }));
     const baoCaoTuan = vp ? docBang('BaoCaoTuan').map((x) => ({ ...x, dsAnh: x.dsAnh || [] })) : [];
+    // Bàn giao, bảo hành: ai được giao công trình đều xem; phí bảo hành chỉ văn phòng.
+    const banGiao = docBang('BanGiao').filter((b) => duocXem(n, b.maCongTrinh)).map((b) => ({ ...b, hangMucBH: b.hangMucBH || [], thietBi: b.thietBi || [], giaoNhan: b.giaoNhan || [],
+      tonTai: b.tonTai || [], nhacHet: b.nhacHet || [], soAnh: Number(b.soAnh) || 0 }));
+    const baoHanh = docBang('BaoHanh').filter((p) => duocXem(n, p.maCongTrinh)).map((p) => {
+      const o = { ...p, khan: p.khan === true, trongHan: p.trongHan === true, coPhi: p.coPhi === true, phi: Number(p.phi) || 0, soAnh: Number(p.soAnh) || 0, soAnhXong: Number(p.soAnhXong) || 0 };
+      if (!vp) delete o.phi;
+      return o;
+    });
     const chiAI = vp ? docBang('ChiAI').map((r) => ({ luc: r.luc, viec: r.viec, model: r.model, usd: Number(r.usd) || 0 })) : [];
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan,
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan, banGiao, baoHanh,
       nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
@@ -710,6 +818,47 @@ function apDung(n, op) {
     const cu = docBang('BaoCaoTuan').find((r) => r.id === x.id);
     capNhatDong('BaoCaoTuan', (r) => r.id === x.id, { id: x.id, maCongTrinh: x.maCongTrinh, tuNgay: x.tuNgay, denNgay: x.denNgay, tomTat: x.tomTat || {},
       dsAnh: (x.dsAnh || []).slice(0, 9), nguoi: n.vaiTro, guiLuc: (cu && cu.guiLuc) || x.guiLuc || '', capNhatLuc: op.luc, xoa: x.xoa || '' });
+    return;
+  }
+  if (op.loai === 'BG') {
+    const b = Object.assign({}, op.bg);
+    if (!duocXem(n, b.maCongTrinh)) throw new Error('Không có quyền với công trình ' + b.maCongTrinh);
+    if (String(b.id) !== 'BG-' + b.maCongTrinh) throw new Error('Mã biên bản bàn giao không đúng');
+    const cu = docBang('BanGiao').find((r) => r.id === b.id);
+    // Chủ nhà đã trả lời trên link mà máy gửi bản cũ (cùng lần gửi): giữ câu trả lời của chủ nhà.
+    if (cu && cu.khachQua === 'LINK' && cu.khachLuc && !b.khachLuc && String(b.guiLuc || '') === String(cu.guiLuc || '')) {
+      ['trangThai', 'khachLuc', 'khachQua', 'khachYKien'].forEach((k) => { b[k] = cu[k]; });
+    }
+    const ds = (x, max) => (Array.isArray(x) ? x.slice(0, max) : []);
+    capNhatDong('BanGiao', (r) => r.id === b.id, { id: b.id, maCongTrinh: b.maCongTrinh, ngay: b.ngay, nguoi: cu && cu.nguoi ? cu.nguoi : n.vaiTro,
+      hangMucBH: ds(b.hangMucBH, 60).map((h) => ({ nhom: String(h.nhom || '').slice(0, 200), thang: Math.max(0, Math.min(600, Number(h.thang) || 0)) })),
+      thietBi: ds(b.thietBi, 200), giaoNhan: ds(b.giaoNhan, 100), tonTai: ds(b.tonTai, 200), ghiChu: String(b.ghiChu || '').slice(0, 4000), soAnh: Number(b.soAnh) || 0,
+      trangThai: ['NHAP', 'CHO_KHACH', 'DONG_Y'].indexOf(b.trangThai) >= 0 ? b.trangThai : 'NHAP', guiLuc: b.guiLuc || '', khachLuc: b.khachLuc || '', khachQua: b.khachQua || '',
+      khachYKien: String(b.khachYKien || '').slice(0, 2000), nhacHet: ds(b.nhacHet, 50), thanhLy: b.thanhLy || '', xoa: b.xoa || '', capNhatLuc: op.luc });
+    return;
+  }
+  if (op.loai === 'BH') {
+    const p = Object.assign({}, op.p);
+    if (!duocXem(n, p.maCongTrinh)) throw new Error('Không có quyền với công trình ' + p.maCongTrinh);
+    if (!/^BH-/.test(String(p.id))) throw new Error('Mã phiếu bảo hành phải bắt đầu bằng BH-');
+    const ds = docBang('BaoHanh');
+    const cu = ds.find((r) => r.id === p.id);
+    if (cu) {
+      // Giữ người báo, ngày báo, mã; giám sát không đổi được phí.
+      ['ma', 'nguoiBao', 'ngayBao'].forEach((k) => { p[k] = cu[k]; });
+      if (!laVanPhong(n)) { p.coPhi = cu.coPhi === true; p.phi = Number(cu.phi) || 0; }
+    } else {
+      if (!laVanPhong(n)) { p.phi = 0; p.nguoiBao = n.vaiTro; }
+      // Hai người báo cùng lúc trùng số: lấy số tiếp theo.
+      if (!/^BH\d+$/.test(String(p.ma)) || ds.some((r) => r.maCongTrinh === p.maCongTrinh && r.ma === p.ma)) {
+        const so = ds.filter((r) => r.maCongTrinh === p.maCongTrinh).map((r) => Number(String(r.ma).replace(/\D/g, '')) || 0);
+        p.ma = 'BH' + String((so.length ? Math.max.apply(null, so) : 0) + 1).padStart(2, '0');
+      }
+    }
+    capNhatDong('BaoHanh', (r) => r.id === p.id, { id: p.id, ma: p.ma, maCongTrinh: p.maCongTrinh, ngayBao: p.ngayBao, nguoiBao: p.nguoiBao, moTa: String(p.moTa || '').slice(0, 2000),
+      viTri: String(p.viTri || '').slice(0, 200), nhom: String(p.nhom || '').slice(0, 200), khan: p.khan === true, han: p.han, giaoCho: String(p.giaoCho || '').slice(0, 100),
+      trangThai: ['MOI', 'DANG', 'XONG', 'KHONG'].indexOf(p.trangThai) >= 0 ? p.trangThai : 'MOI', trongHan: p.trongHan === true, coPhi: p.coPhi === true, phi: Number(p.phi) || 0,
+      ketQua: String(p.ketQua || '').slice(0, 2000), ngayXong: p.ngayXong || '', soAnh: Number(p.soAnh) || 0, soAnhXong: Number(p.soAnhXong) || 0, xoa: p.xoa || '', capNhatLuc: op.luc });
     return;
   }
   if (op.loai === 'NGHIEM_THU') {
@@ -1037,7 +1186,7 @@ Object.assign(HANH_DONG, {
   // Ảnh nhỏ để chọn: theo công trình / bài (ma) hoặc theo danh sách mã ảnh (ids). Không trả chứng từ.
   anhThu: (n, data) => {
     canVanPhong(n);
-    const ds = docBang('Anh').filter((a) => a.loai !== 'CHUNG_TU' && (data.ma ? a.ma === data.ma : (data.ids || []).indexOf(a.id) >= 0))
+    const ds = docBang('Anh').filter((a) => a.loai !== 'CHUNG_TU' && (data.ma ? a.ma === data.ma && (!data.viec || a.viec === data.viec) : (data.ids || []).indexOf(a.id) >= 0))
       .sort((a, b) => String(b.luc).localeCompare(String(a.luc))).slice(0, 80);
     return ds.map((a) => {
       let thu = '';

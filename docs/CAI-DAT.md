@@ -73,6 +73,14 @@ Tên mục trong Google Cloud có thể khác chút theo thời điểm.
 - Thầy/Đức báo chậm = **đề xuất**; giám sát bấm xác nhận / sửa / không lùi thì lịch mới đổi. Tick "Đã thống nhất với giám sát" để lùi ngay.
 - **Tổng hợp tuần**: từ trưa thứ 7, màn Hôm nay của Thầy/Đức nhắc từng công trình. App gom sẵn tiến độ, việc xong, việc tuần sau, vướng mắc cần chủ nhà, chọn sẵn 9 ảnh mới nhất; Thầy sửa rồi bấm **Gửi chủ nhà** → hiện trên link chủ nhà và mở Zalo gửi tin. Chủ nhà chỉ xem được đúng ảnh đã chọn, không cần chia sẻ thư mục Drive.
 
+## Bàn giao, bảo hành
+
+- Trang công trình → mục **Bàn giao, bảo hành** → **Lập biên bản bàn giao**. App lấy sẵn hạng mục theo kế hoạch (bảo hành 12 tháng, sửa từng hạng mục), danh mục chìa khoá, giấy tờ mẫu và tồn tại còn mở. Giám sát lập được (không có tiền).
+- **Gửi chủ nhà xác nhận**: chủ nhà bấm "Đồng ý bàn giao" trên link theo dõi, hoặc in **Bản in để ký** rồi bấm "Chủ nhà đã ký giấy".
+- Chủ nhà báo lỗi bảo hành ngay trên link (tối đa 3 ảnh). Ảnh vào thư mục Drive công trình, tên có mã phiếu `BH01`.
+- Văn phòng: **Quyết toán, thanh lý** gom nghiệm thu, phát sinh, hợp đồng → biên bản quyết toán in được, gửi Zalo đề nghị thanh toán cuối, bấm **Thanh lý xong** thì hợp đồng chuyển Hoàn thành (bảo hành vẫn theo dõi).
+- Máy chủ tự tạo 2 tab mới `BanGiao`, `BaoHanh`.
+
 ## Khi sửa code máy chủ
 
 Dán `Code.gs` mới → **Lưu** → **Triển khai** → **Quản lý triển khai** → bút chì → Phiên bản: **Phiên bản mới** → **Triển khai**. Giữ nguyên URL, anh em không phải làm lại gì. Tab mới trong Sheets (vd `HopDong`) máy chủ tự tạo, không cần chạy lại setup.
