@@ -9,7 +9,7 @@ import { tongPS, NGUONG_MAC_DINH } from './phatsinh.js';
 export const CTY = 'CTY';
 // Hạng mục giữ đúng tên trong Sổ cái (tab Danh mục). Thu HĐ thiết kế / thi công ghi ở màn Hợp đồng.
 export const HM_CHI = ['Chi thầu phụ', 'Chi vật tư', 'Chi nhân công lẻ', 'Chi vận chuyển', 'Chi khác dự án'];
-export const HM_CTY = ['CTY - Văn phòng', 'CTY - Lương, thù lao', 'CTY - Marketing', 'CTY - Thuế, phí', 'CTY - Khác'];
+export const HM_CTY = ['CTY - Văn phòng', 'CTY - Lương, thù lao', 'CTY - Marketing', 'CTY - Hoa hồng giới thiệu', 'CTY - Thuế, phí', 'CTY - Khác'];
 export const HM_THU = ['Thu phát sinh', 'Thu bảo hành', 'Thu dịch vụ phong thủy', 'Thu khác'];
 export const HINH_THUC = { CK: 'Chuyển khoản', TM: 'Tiền mặt' };
 export const TT_TRA = { DU: 'Đã trả đủ', DEN_HAN: 'Đến hạn trả', QUA: 'Quá ngày, chưa nghiệm thu KL', CHUA: 'Chưa nghiệm thu KL', QUA_HAN: 'Quá hạn trả', CHUA_DEN: 'Chưa đến hạn' };

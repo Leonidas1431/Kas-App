@@ -166,6 +166,7 @@ export function dongBo(db, luu) {
         if (d.baoCaoTuan) db.baoCaoTuan = d.baoCaoTuan;
         if (d.banGiao) db.banGiao = d.banGiao;
         if (d.baoHanh) db.baoHanh = d.baoHanh;
+        if (d.linkDK) db.linkDK = d.linkDK;
         db.toi = d.toi;
         luu();
       }

@@ -97,6 +97,12 @@ export function taoKhach(db, du, nguoi, homNay) {
     nguoiTao: nguoi,
     taoLuc: new Date().toISOString(),
     ngayVao: du.ngayVao || homNay,
+    // Lead (19/11): Thầy phụ trách; Đức tham gia khi cần tư vấn chuyên môn.
+    phuTrach: du.phuTrach || 'THAY',
+    nhietDo: '',
+    buoc: {},
+    phongThuy: null,
+    linkDK: du.linkDK || '',
   };
   db.khach.push(kh);
   ghiKhach(db, kh, homNay);
@@ -119,6 +125,7 @@ export function suaKhach(db, kh, thayDoi, homNay) {
 export function doiTrangThai(db, kh, tt, nguoi, homNay, { lyDo = '', henLai = '', ghiChu = '' } = {}) {
   const cu = kh.trangThai;
   kh.trangThai = tt;
+  if (kh.leadLuc && !kh.goiDauLuc && tt !== 'MOI') kh.goiDauLuc = new Date().toISOString();
   kh.soLanNhac = 0;
   kh.lyDo = tt === 'MAT' || tt === 'TAM_HOAN' ? lyDo : '';
   if (tt === 'KY' || tt === 'MAT') kh.nhacGoi = '';
@@ -132,6 +139,8 @@ export function doiTrangThai(db, kh, tt, nguoi, homNay, { lyDo = '', henLai = ''
 // Đã gọi/nhắn khách. Có tiến triển: đổi trạng thái riêng. Chưa: nhắc lần 2 sau 1 tuần, lần nữa thì Tạm hoãn.
 export function daGoi(db, kh, coTienTrien, ghiChu, nguoi, homNay) {
   nhatKy(db, kh, nguoi, 'KH_GOI', ghiChu, { moi: coTienTrien ? 'CO' : 'CHUA' });
+  // Lead từ form: lần gọi đầu tiên (dù khách nghe máy hay không) là đã gọi trong hạn 2 giờ.
+  if (kh.leadLuc && !kh.goiDauLuc) kh.goiDauLuc = new Date().toISOString();
   if (coTienTrien) {
     kh.soLanNhac = 0;
     kh.nhacGoi = addDays(homNay, NHAC_LAN_1);

@@ -15,7 +15,12 @@ const TAB = {
   NguoiDung: ['email', 'ten', 'vaiTro', 'congTrinh', 'khoa', 'hoatDong', 'taoLuc', 'hetHan', 'khoaGmail', 'lanCuoi'],
   CongTrinh: ['ma', 'ten', 'loai', 'khoiCong', 'lich', 'chuNha', 'maLinkChuNha', 'thuMucDrive', 'taoLuc', 'maKhach', 'choDangAnh'],
   Khach: ['ma', 'ten', 'sdt', 'diaChi', 'nguon', 'nguoiGioiThieu', 'sdtGioiThieu', 'hoaHong', 'nhuCau', 'trangThai', 'lyDo',
-    'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'ngayVao'],
+    'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'ngayVao',
+    // Lead (19/11): phuTrach THAY/DUC; nhietDo NONG/AM/LANH (Thầy chọn tay); buoc: { mã bước: ngày xong }; phongThuy: chỉ lưu, app không luận.
+    // leadLuc, hanGoi: khách tự đăng ký qua form, phải gọi trong 2 giờ làm việc; goiDauLuc: lần gọi đầu; linkDK: mã link khách đăng ký qua.
+    'phuTrach', 'nhietDo', 'buoc', 'phongThuy', 'leadLuc', 'hanGoi', 'goiDauLuc', 'linkDK'],
+  // Link form đăng ký tư vấn. loai KENH: theo nguồn (website, fanpage, sự kiện); GIOI_THIEU: gắn sẵn người giới thiệu.
+  LinkDK: ['ma', 'ten', 'nguon', 'loai', 'nguoiGioiThieu', 'sdtGioiThieu', 'maKhachGT', 'hoatDong', 'taoLuc', 'capNhatLuc'],
   KeHoach: ['ma', 'id', 'thuTu', 'nhom', 'hangMuc', 'dauViec', 'dvt', 'khoiLuong', 'soNgay', 'diSau', 'moc',
     'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc', 'batDauCoDinh'],
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
@@ -72,7 +77,7 @@ const TAB = {
   NhatKy: ['luc', 'email', 'ten', 'vaiTro', 'cach', 'thaoTac', 'ma', 'chiTiet'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet', 'buoc', 'phongThuy'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -115,6 +120,7 @@ function doPost(e) {
     const req = JSON.parse(e.postData.contents);
     if (req.action === 'chuNhaPhanHoi') return json({ ok: true, data: chuNhaPhanHoi(req.data || {}) });
     if (req.action === 'chuNhaBaoLoi') return json({ ok: true, data: chuNhaBaoLoi(req.data || {}) });
+    if (req.action === 'dangKyTuVan') return json({ ok: true, data: dangKyTuVan(req.data || {}) });
     if (req.action === 'dangNhapGoogle') return json({ ok: true, data: dangNhapGoogle(req.data || {}) });
     const nguoi = xacThuc(req.khoa);
     const fn = HANH_DONG[req.action];
@@ -308,6 +314,81 @@ function chuNhaBaoLoi(data) {
   }
 }
 
+// ---------- Form đăng ký tư vấn (khách tự điền, không cần khoá) ----------
+// Thầy chốt 19/11: form chỉ hỏi Tên + SĐT. Khách vào thẳng Sổ khách, nguồn theo link khách bấm; Thầy gọi trong 2 giờ làm việc (8h–20h).
+const VN_MS = 7 * 3600e3;
+function hanGoiMay(luc) {
+  const t = new Date(Date.parse(luc) + VN_MS);
+  const gio = t.getUTCHours() + t.getUTCMinutes() / 60 + t.getUTCSeconds() / 3600;
+  const ngay = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  let han;
+  if (gio < 8) han = ngay + 10 * 3600e3;
+  else if (gio >= 20) han = ngay + 864e5 + 10 * 3600e3;
+  else if (gio + 2 <= 20) han = t.getTime() + 2 * 3600e3;
+  else han = ngay + 864e5 + (8 + gio + 2 - 20) * 3600e3;
+  return new Date(han - VN_MS).toISOString();
+}
+function chuanSdt(s) {
+  const t = String(s || '').replace(/[\s.()-]/g, '');
+  const m = t.match(/^(?:\+?84|0)(\d{9})$/);
+  return m ? '0' + m[1] : '';
+}
+const XUNG_HO_MAY = ['ANH', 'CHI', 'CO', 'CHU', 'BAC', 'ONG', 'BA', 'EM', 'A', 'C'];
+// Giống taoMaKhach trên máy: KH-YYMM-TÊN không dấu (tối đa 10 ký tự), trùng thì thêm -2, -3…
+function taoMaKhachMay(ds, ten, hn) {
+  const boDau = String(ten || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+  const chu = boDau.toUpperCase().split(/[^A-Z0-9]+/).filter((w) => w && XUNG_HO_MAY.indexOf(w) < 0);
+  const goc = 'KH-' + hn.slice(2, 4) + hn.slice(5, 7) + '-' + ((chu.join('') || 'KHACH').slice(0, 10));
+  let ma = goc;
+  for (let i = 2; ds.some((k) => k.ma === ma); i++) ma = goc + '-' + i;
+  return ma;
+}
+function dangKyTuVan(data) {
+  if (String(data.web || '').trim()) return { ok: true }; // ô bẫy máy spam: người thật không thấy ô này
+  const ten = String(data.ten || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (ten.length < 2) throw new Error('Anh/chị ghi giúp họ tên');
+  const sdt = chuanSdt(data.sdt);
+  if (!sdt) throw new Error('Số điện thoại chưa đúng, anh/chị ghi giúp 10 số, bắt đầu bằng 0');
+  const cache = CacheService.getScriptCache();
+  const kGio = 'dk-' + Math.floor(Date.now() / 3600e3);
+  const soGio = Number(cache.get(kGio)) || 0;
+  if (soGio >= 40) throw new Error('Hệ thống đang bận, anh/chị thử lại sau ít phút');
+  cache.put(kGio, String(soGio + 1), 3700);
+  if (cache.get('dk-' + sdt)) return { ok: true }; // bấm gửi 2 lần
+  cache.put('dk-' + sdt, '1', 600);
+  const lock = LockService.getScriptLock();
+  lock.waitLock(25000);
+  try {
+    const link = data.l ? docBang('LinkDK').find((r) => r.ma === String(data.l) && r.hoatDong !== false) : null;
+    const qua = link ? link.ten : 'form đăng ký';
+    const luc = new Date().toISOString();
+    const hn = homNay();
+    const ds = docBang('Khach');
+    const cu = ds.find((k) => String(k.sdt).replace(/\D/g, '').slice(-9) === sdt.slice(-9));
+    const ghi = (ma, ghiChu) => themDong('LichSu', { id: Utilities.getUuid(), luc, ma, viec: '', tenViec: ten, nguoi: 'FORM', loai: 'KH_GHI', ghiChu, congKhai: false });
+    if (cu) {
+      // Khách cũ đăng ký lại: không tạo trùng. Đang tạm hoãn / đã mất thì mở lại như lead mới.
+      const moLai = cu.trangThai === 'TAM_HOAN' || cu.trangThai === 'MAT';
+      if (cu.trangThai !== 'KY') {
+        const sua = { nhacGoi: hn, capNhatLuc: luc };
+        if (moLai) Object.assign(sua, { trangThai: 'MOI', lyDo: '', soLanNhac: 0, leadLuc: luc, hanGoi: hanGoiMay(luc), goiDauLuc: '' });
+        capNhatDong('Khach', (r) => r.ma === cu.ma, sua, true);
+      }
+      ghi(cu.ma, 'Khách đăng ký lại qua ' + qua + (ten !== cu.ten ? ' (ghi tên: ' + ten + ')' : '') + (moLai ? '. Mở lại thành khách mới.' : ''));
+      return { ok: true };
+    }
+    const k = { ma: taoMaKhachMay(ds, ten, hn), ten, sdt, diaChi: '', nguon: link ? link.nguon : 'Website', nguoiGioiThieu: link ? link.nguoiGioiThieu || '' : '',
+      sdtGioiThieu: link ? link.sdtGioiThieu || '' : '', hoaHong: { soTien: 0, daTra: false, ghiChu: '' }, nhuCau: { loai: '', tomTat: '' }, trangThai: 'MOI', lyDo: '',
+      nhacGoi: hn, soLanNhac: 0, baoGia: [], maCongTrinh: '', banGiao: '', chamSoc: [], baoHanhDen: '', nguoiTao: 'FORM', taoLuc: luc, capNhatLuc: luc, ngayVao: hn,
+      phuTrach: 'THAY', nhietDo: '', buoc: {}, phongThuy: null, leadLuc: luc, hanGoi: hanGoiMay(luc), goiDauLuc: '', linkDK: link ? link.ma : '' };
+    themDong('Khach', k);
+    ghi(k.ma, 'Khách tự đăng ký tư vấn qua ' + qua);
+    return { ok: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function mauChoChuNha(m) {
   return { id: m.id, hangMuc: m.hangMuc, tenMau: m.tenMau, nguoiBan: m.nguoiBan, link: m.link, hanChot: m.hanChot, ngayGui: m.ngayGui, trangThai: m.trangThai,
     ngayKhach: m.ngayKhach, quaKhach: m.quaKhach, yKien: m.yKien };
@@ -413,7 +494,7 @@ function dangNhapGoogle(data) {
 }
 
 // Thao tác chỉ đọc: không ghi nhật ký.
-const CHI_DOC = ['toiLaAi', 'keoVe', 'dsNguoiDung', 'anhThu', 'layAnh', 'thuVienPT', 'docTaiLieu', 'timDoanPT', 'canvaTrangThai', 'wpDanhMuc', 'kiemTraWP'];
+const CHI_DOC = ['tachKhach', 'toiLaAi', 'keoVe', 'dsNguoiDung', 'anhThu', 'layAnh', 'thuVienPT', 'docTaiLieu', 'timDoanPT', 'canvaTrangThai', 'wpDanhMuc', 'kiemTraWP'];
 
 function dongNhatKy(n, thaoTac, ma, chiTiet) {
   return { luc: new Date().toISOString(), email: n.email || '', ten: n.ten || '', vaiTro: n.vaiTro || '', cach: n.cach || '',
@@ -496,8 +577,9 @@ const HANH_DONG = {
       if (!vp) delete o.phi;
       return o;
     });
+    const linkDK = vp ? docBang('LinkDK').map((l) => ({ ...l, hoatDong: l.hoatDong !== false })) : [];
     const chiAI = vp ? docBang('ChiAI').map((r) => ({ luc: r.luc, viec: r.viec, model: r.model, usd: Number(r.usd) || 0 })) : [];
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan, banGiao, baoHanh,
+    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan, banGiao, baoHanh, linkDK,
       nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
@@ -877,6 +959,15 @@ function apDung(n, op) {
   if (op.loai === 'BD') {
     canVanPhong(n);
     apBai(n, op.b, op.luc);
+    return;
+  }
+  if (op.loai === 'LINK_DK') {
+    canVanPhong(n);
+    const l = Object.assign({}, op.l);
+    if (!/^L[a-z0-9]{4,20}$/.test(String(l.ma))) throw new Error('Mã link đăng ký không hợp lệ');
+    if (['KENH', 'GIOI_THIEU'].indexOf(l.loai) < 0) l.loai = 'KENH';
+    l.capNhatLuc = op.luc;
+    capNhatDong('LinkDK', (r) => r.ma === l.ma, l);
     return;
   }
   if (op.loai === 'CAI_DAT') {
@@ -1281,6 +1372,27 @@ Object.assign(HANH_DONG, {
   },
 
   // AI tìm trong tài liệu các đoạn liên quan chủ đề. AI chỉ được chép nguyên văn; đoạn nào không có trong tài liệu thì máy chủ bỏ.
+  // Dán đoạn chat Zalo/Messenger hoặc lời nói: AI tách thông tin khách, Thầy xem lại rồi mới lưu. Không đoán thông tin không có.
+  tachKhach: (n, data) => {
+    canVanPhong(n);
+    const chu = String(data.chu || '').trim().slice(0, 6000);
+    if (!chu) throw new Error('Dán đoạn tin nhắn trước');
+    const s = (o) => ({ type: 'string', description: o });
+    const truong = { ten: s('Tên kèm xưng hô, vd "Chị Lan"'), sdt: s('Số điện thoại'), loai: { type: 'string', enum: ['', 'TK', 'XM', 'CT', 'NTCT', 'NT', 'CHI_TC'] },
+      diaDiem: s('Địa điểm công trình'), dienTich: s('Diện tích, số tầng, số phòng'), hienTrang: s('Hiện trạng'), phongCach: s('Phong cách, sở thích'),
+      nganSach: s('Ngân sách khách nói'), thoiGian: s('Thời gian mong muốn'), dacBiet: s('Yếu tố đặc biệt'), tomTat: s('Tóm tắt nhu cầu 1-2 câu'),
+      thoiDiem: { type: 'string', enum: ['', '3T', '6T', 'XA'] }, matBang: { type: 'string', enum: ['', 'CO', 'CHUA'] } };
+    const j = goiClaude('Tách thông tin khách', {
+      model: MODEL_MAC_DINH, max_tokens: 1500,
+      system: 'Bạn tách thông tin khách hàng từ đoạn tin nhắn cho công ty thiết kế thi công nhà ở. CHỈ lấy thông tin có trong đoạn, không suy đoán, không bịa; không có thì để chuỗi rỗng. '
+        + 'loai: TK chỉ thiết kế, XM xây mới, CT cải tạo, NTCT nội thất có cải tạo thô, NT nội thất riêng, CHI_TC chỉ thi công đã có bản vẽ. '
+        + 'thoiDiem: 3T muốn làm trong 3 tháng, 6T 3-6 tháng, XA trên 6 tháng. matBang: CO nếu đã có nhà/mặt bằng/đã nhận nhà, CHUA nếu chưa.',
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: { type: 'object', additionalProperties: false, required: Object.keys(truong), properties: truong } } },
+      messages: [{ role: 'user', content: 'ĐOẠN TIN NHẮN:\n---\n' + chu + '\n---' }],
+    });
+    try { return JSON.parse(chuCua(j)); } catch (e) { throw new Error('AI trả lời sai dạng, thử lại'); }
+  },
+
   timDoanPT: (n, data) => {
     canVanPhong(n);
     const t = chuTaiLieu(data.id);
