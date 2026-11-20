@@ -116,6 +116,7 @@ export async function chuNhaBaoLoi(api, data) {
 }
 
 let dangChay = null;
+let vetCu = ''; // dữ liệu lần kéo trước: giống hệt thì không vẽ lại màn
 
 /**
  * Gửi hàng chờ lên, rồi kéo dữ liệu mới về (chỉ khi đã gửi hết, để không ghi đè việc chưa gửi).
@@ -140,7 +141,11 @@ export function dongBo(db, luu) {
         luu();
       }
       const d = await goi('keoVe');
+      let doi = false;
       if (!chuaGui().length) {
+        const vet = JSON.stringify({ ...d, luc: '' });
+        doi = vet !== vetCu;
+        vetCu = vet;
         db.congTrinh = d.congTrinh;
         db.lichSu = d.lichSu;
         db.nguoiDung = d.nguoiDung;
@@ -168,9 +173,16 @@ export function dongBo(db, luu) {
         if (d.baoHanh) db.baoHanh = d.baoHanh;
         if (d.linkDK) db.linkDK = d.linkDK;
         db.toi = d.toi;
+        // Ghi giờ kéo về vào từng việc, khách, hợp đồng: lần sửa sau máy chủ biết máy này đang cầm bản lúc nào,
+        // để không ghi đè cột người khác vừa đổi (vd % tiến độ giám sát vừa cập nhật).
+        if (d.luc) {
+          db.congTrinh.forEach((c) => (c.viec || []).forEach((v) => { v.coSo = d.luc; }));
+          db.khach.forEach((k) => { k.coSo = d.luc; });
+          (db.hopDong || []).forEach((h) => { h.coSo = d.luc; });
+        }
         luu();
       }
-      return { trangThai: 'xong', biTuChoi, mayChuCu: giu.size > 0 };
+      return { trangThai: 'xong', biTuChoi, mayChuCu: giu.size > 0, doi };
     } catch (e) {
       return { trangThai: navigator.onLine ? 'loi' : 'mat-mang', loi: e.message, biTuChoi };
     } finally {

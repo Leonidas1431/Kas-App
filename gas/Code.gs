@@ -18,15 +18,15 @@ const TAB = {
     'nhacGoi', 'soLanNhac', 'baoGia', 'maCongTrinh', 'banGiao', 'chamSoc', 'baoHanhDen', 'thuMucDrive', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'ngayVao',
     // Lead (19/11): phuTrach THAY/DUC; nhietDo NONG/AM/LANH (Thầy chọn tay); buoc: { mã bước: ngày xong }; phongThuy: chỉ lưu, app không luận.
     // leadLuc, hanGoi: khách tự đăng ký qua form, phải gọi trong 2 giờ làm việc; goiDauLuc: lần gọi đầu; linkDK: mã link khách đăng ký qua.
-    'phuTrach', 'nhietDo', 'buoc', 'phongThuy', 'leadLuc', 'hanGoi', 'goiDauLuc', 'linkDK'],
+    'phuTrach', 'nhietDo', 'buoc', 'phongThuy', 'leadLuc', 'hanGoi', 'goiDauLuc', 'linkDK', 'doiLuc'],
   // Link form đăng ký tư vấn. loai KENH: theo nguồn (website, fanpage, sự kiện); GIOI_THIEU: gắn sẵn người giới thiệu.
   LinkDK: ['ma', 'ten', 'nguon', 'loai', 'nguoiGioiThieu', 'sdtGioiThieu', 'maKhachGT', 'hoatDong', 'taoLuc', 'capNhatLuc'],
   KeHoach: ['ma', 'id', 'thuTu', 'nhom', 'hangMuc', 'dauViec', 'dvt', 'khoiLuong', 'soNgay', 'diSau', 'moc',
-    'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc', 'batDauCoDinh'],
+    'phanTram', 'trangThai', 'goc', 'thucTe', 'nhaThau', 'capNhatLuc', 'batDauCoDinh', 'doiLuc'],
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
   Anh: ['id', 'ma', 'viec', 'luc', 'tenFile', 'fileId', 'nguoi', 'loai'],
   HopDong: ['ma', 'soHD', 'dang', 'nguyenTac', 'tenHD', 'maKhach', 'maCongTrinh', 'ngayKy', 'giaTri', 'dot', 'phuLuc', 'soLanSua',
-    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT', 'chiDuKien'],
+    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT', 'chiDuKien', 'doiLuc'],
   PhuongAn: ['id', 'maCongTrinh', 'hangMuc', 'lan', 'viec', 'ngayGui', 'link', 'ghiChu', 'trangThai', 'ngayPhanHoi', 'yKien',
     'duyetQua', 'duyetLuc', 'phi', 'nguoiGui', 'capNhatLuc'],
   GSTG: ['id', 'maCongTrinh', 'lan', 'ten', 'viec', 'ngay', 'xong', 'ghiChu', 'nhacGiamSat', 'capNhatLuc'],
@@ -77,7 +77,7 @@ const TAB = {
   NhatKy: ['luc', 'email', 'ten', 'vaiTro', 'cach', 'thaoTac', 'ma', 'chiTiet'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet', 'buoc', 'phongThuy'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet', 'buoc', 'phongThuy', 'doiLuc'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -372,7 +372,7 @@ function dangKyTuVan(data) {
       if (cu.trangThai !== 'KY') {
         const sua = { nhacGoi: hn, capNhatLuc: luc };
         if (moLai) Object.assign(sua, { trangThai: 'MOI', lyDo: '', soLanNhac: 0, leadLuc: luc, hanGoi: hanGoiMay(luc), goiDauLuc: '' });
-        capNhatDong('Khach', (r) => r.ma === cu.ma, sua, true);
+        capNhatDong('Khach', (r) => r.ma === cu.ma, danhDau(cu, sua, 'FORM'), true);
       }
       ghi(cu.ma, 'Khách đăng ký lại qua ' + qua + (ten !== cu.ten ? ' (ghi tên: ' + ten + ')' : '') + (moLai ? '. Mở lại thành khách mới.' : ''));
       return { ok: true };
@@ -518,12 +518,42 @@ function canVanPhong(n) { if (!laVanPhong(n)) throw new Error('Chỉ Thầy và 
 const canThay = canVanPhong;
 function homNay() { return Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd'); }
 
+// ---------- Hai người cùng sửa 1 dòng (việc, khách, hợp đồng) ----------
+// doiLuc: { cột: '<giờ máy chủ> <vai trò>' } lần cuối cột đó đổi. Máy gửi kèm coSo = giờ máy chủ lúc kéo dữ liệu về lần cuối.
+// Cột nào người KHÁC đã đổi sau coSo thì máy này đang cầm bản cũ: giữ giá trị của người kia, không ghi đè.
+const KHONG_TRON = ['capNhatLuc', 'doiLuc', 'coSo', 'ma', 'id'];
+const chuanO = (k, x) => String(giaTriVao(k, x)).replace(/^'/, '');
+function tronSua(cu, moi, coSo, n) {
+  const doiLuc = Object.assign({}, (cu && cu.doiLuc) || {});
+  const luc = new Date().toISOString() + ' ' + n.vaiTro;
+  if (cu) {
+    Object.keys(moi).forEach((k) => {
+      if (KHONG_TRON.indexOf(k) >= 0 || !(k in cu) || chuanO(k, cu[k]) === chuanO(k, moi[k])) return;
+      const d = String(doiLuc[k] || '');
+      if (coSo && d.slice(0, 24) > coSo && d.slice(25) !== n.vaiTro) { moi[k] = cu[k]; return; }
+      doiLuc[k] = luc;
+    });
+  }
+  delete moi.coSo;
+  moi.doiLuc = doiLuc;
+  return moi;
+}
+// Máy chủ tự sửa vài cột (form đăng ký...): đánh dấu để máy cầm bản cũ không ghi đè.
+function danhDau(cu, sua, vaiTro) {
+  const doiLuc = Object.assign({}, (cu && cu.doiLuc) || {});
+  const luc = new Date().toISOString() + ' ' + vaiTro;
+  Object.keys(sua).forEach((k) => { if (KHONG_TRON.indexOf(k) < 0) doiLuc[k] = luc; });
+  sua.doiLuc = doiLuc;
+  return sua;
+}
+
 // ---------- Thao tác ----------
 const HANH_DONG = {
   toiLaAi: (n) => n,
 
   // Toàn bộ dữ liệu người này được xem, đã ghép thành từng công trình.
   keoVe: (n) => {
+    const lucKeo = new Date().toISOString(); // máy ghi lại làm coSo cho các lần sửa sau
     const keHoach = docBang('KeHoach');
     const congTrinh = docBang('CongTrinh').filter((c) => duocXem(n, c.ma)).map((c) => ({
       ...c,
@@ -579,7 +609,7 @@ const HANH_DONG = {
     });
     const linkDK = vp ? docBang('LinkDK').map((l) => ({ ...l, hoatDong: l.hoatDong !== false })) : [];
     const chiAI = vp ? docBang('ChiAI').map((r) => ({ luc: r.luc, viec: r.viec, model: r.model, usd: Number(r.usd) || 0 })) : [];
-    return { toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan, banGiao, baoHanh, linkDK,
+    return { luc: lucKeo, toi: n, congTrinh, lichSu, khach, hopDong, phuongAn, gstg, caiDat, thuChi, traThau, chungTu, phatSinh, mauVL, nhaThau, danhGia, anh, nghiemThu, baiDang, chiAI, taiKhoan, baoCao, baoCaoTuan, banGiao, baoHanh, linkDK,
       nguoiDung: vp ? HANH_DONG.dsNguoiDung(n) : [] };
   },
 
@@ -698,7 +728,10 @@ function apDung(n, op) {
     // Hiện trường chỉ được đổi tiến độ, số ngày (báo chậm) và ghim ngày bắt đầu (báo chậm "chỉ lùi việc này"); văn phòng sửa được mọi trường.
     const doi = laVanPhong(n) ? { ...v, ma: op.ma } : { phanTram: v.phanTram, trangThai: v.trangThai, thucTe: v.thucTe, soNgay: v.soNgay, batDauCoDinh: v.batDauCoDinh || '' };
     doi.capNhatLuc = op.luc;
-    const timThay = capNhatDong('KeHoach', (r) => r.ma === op.ma && r.id === v.id, doi, true);
+    const cu = docBang('KeHoach').find((r) => r.ma === op.ma && r.id === v.id);
+    if (cu) tronSua(cu, doi, String(v.coSo || ''), n);
+    delete doi.coSo;
+    const timThay = cu && capNhatDong('KeHoach', (r) => r.ma === op.ma && r.id === v.id, doi, true);
     if (!timThay) throw new Error('Không tìm thấy việc ' + v.id);
     return;
   }
@@ -706,7 +739,7 @@ function apDung(n, op) {
     canVanPhong(n);
     if (!docBang('CongTrinh').some((r) => r.ma === op.ma)) throw new Error('Không có công trình ' + op.ma);
     // Gửi lại (mất sóng) thì ghi đè đúng dòng, không thêm trùng.
-    capNhatDong('KeHoach', (r) => r.ma === op.ma && r.id === op.viec.id, { ...op.viec, ma: op.ma, capNhatLuc: op.luc });
+    capNhatDong('KeHoach', (r) => r.ma === op.ma && r.id === op.viec.id, { ...op.viec, ma: op.ma, capNhatLuc: op.luc, coSo: undefined });
     return;
   }
   if (op.loai === 'XOA_VIEC') {
@@ -734,6 +767,7 @@ function apDung(n, op) {
     if (!laKhach(k.ma)) throw new Error('Mã khách phải bắt đầu bằng KH-');
     delete k.thuMucDrive; // máy chủ tự quản lý thư mục
     k.capNhatLuc = op.luc;
+    tronSua(docBang('Khach').find((r) => r.ma === k.ma), k, String(k.coSo || ''), n);
     capNhatDong('Khach', (r) => r.ma === k.ma, k);
     return;
   }
@@ -742,6 +776,7 @@ function apDung(n, op) {
     const h = Object.assign({}, op.hd);
     if (!/^HD-/.test(String(h.ma))) throw new Error('Mã hợp đồng phải bắt đầu bằng HD-');
     h.capNhatLuc = op.luc;
+    tronSua(docBang('HopDong').find((r) => r.ma === h.ma), h, String(h.coSo || ''), n);
     capNhatDong('HopDong', (r) => r.ma === h.ma, h);
     return;
   }
@@ -884,7 +919,10 @@ function apDung(n, op) {
     if (!duocXem(n, b.maCongTrinh)) throw new Error('Không có quyền với công trình ' + b.maCongTrinh);
     if (String(b.id) !== 'BC-' + b.maCongTrinh + '-' + b.ngay) throw new Error('Mã phiếu báo cáo không đúng');
     // Hiện trường sửa phiếu trong ngày; ngày đã qua chỉ văn phòng sửa.
-    if (!laVanPhong(n) && b.ngay !== homNay()) throw new Error('Phiếu ngày ' + b.ngay + ' đã chốt, nhờ văn phòng sửa');
+    // Phiếu làm trong ngày lúc mất sóng, qua 0h mới gửi được: vẫn nhận (ngày làm trên máy = ngày phiếu, gửi trễ tối đa 3 ngày).
+    const ngayLam = op.luc ? Utilities.formatDate(new Date(op.luc), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd') : '';
+    const guiTre = ngayLam === b.ngay && b.ngay >= themNgay(homNay(), -3) && b.ngay < homNay();
+    if (!laVanPhong(n) && b.ngay !== homNay() && !guiTre) throw new Error('Phiếu ngày ' + b.ngay + ' đã chốt, nhờ văn phòng sửa');
     const cu = docBang('BaoCao').find((r) => r.id === b.id);
     capNhatDong('BaoCao', (r) => r.id === b.id, { id: b.id, maCongTrinh: b.maCongTrinh, ngay: b.ngay, nguoi: cu && cu.nguoi ? cu.nguoi : n.vaiTro,
       thauLam: (b.thauLam || []).slice(0, 40).map((x) => ({ ten: String(x.ten || '').slice(0, 100), lam: String(x.lam || '').slice(0, 2000), cong: x.cong === '' || x.cong == null ? null : Number(x.cong) || 0 })),
