@@ -530,7 +530,7 @@ function tronSua(cu, moi, coSo, n) {
     Object.keys(moi).forEach((k) => {
       if (KHONG_TRON.indexOf(k) >= 0 || !(k in cu) || chuanO(k, cu[k]) === chuanO(k, moi[k])) return;
       const d = String(doiLuc[k] || '');
-      if (coSo && d.slice(0, 24) > coSo && d.slice(25) !== n.vaiTro) { moi[k] = cu[k]; return; }
+      if (coSo && d.slice(0, 24) >= coSo && d.slice(25) !== n.vaiTro) { moi[k] = cu[k]; return; }
       doiLuc[k] = luc;
     });
   }

@@ -1195,58 +1195,88 @@ test('bảo hành: chủ nhà báo lỗi kèm ảnh trên link (gửi lại khô
 });
 
 // ---------- Hai người cùng sửa, phiếu gửi trễ (20/11) ----------
+// Máy chủ so giờ tới mili giây: chờ 2 ms giữa các bước để thứ tự kéo / ghi rõ ràng như thật.
+const cho = () => { const t = Date.now() + 2; while (Date.now() < t); };
 test('văn phòng cầm bản cũ sửa số ngày: không ghi đè % giám sát vừa cập nhật', () => {
   const m = khoiDong();
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  cho();
   const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
+  cho();
   const kvThay = m.post(m.khoaThay, 'keoVe').data;
   const banThay = { ...kvThay.congTrinh[0].viec[0], coSo: kvThay.luc };
+  cho();
   const kvKha = m.post(khoaKha, 'keoVe').data;
   const vKha = { ...kvKha.congTrinh[0].viec[0], coSo: kvKha.luc, phanTram: 80, trangThai: 'DANG' };
+  cho();
   assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'VIEC', ma: 'NT-A', viec: vKha })] }).data[0].ok, true);
+  cho();
   assert.equal(m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'VIEC', ma: 'NT-A', viec: { ...banThay, soNgay: 9 } })] }).data[0].ok, true);
+  cho();
   const sau = m.post(m.khoaThay, 'keoVe').data.congTrinh[0].viec[0];
   assert.equal(sau.phanTram, 80); // giữ của giám sát
   assert.equal(sau.soNgay, 9); // nhận của Thầy
   // Thầy kéo bản mới rồi mới sửa %: được sửa.
+  cho();
   const kv2 = m.post(m.khoaThay, 'keoVe').data;
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'VIEC', ma: 'NT-A', viec: { ...kv2.congTrinh[0].viec[0], coSo: kv2.luc, phanTram: 100 } })] });
+  cho();
   assert.equal(m.post(m.khoaThay, 'keoVe').data.congTrinh[0].viec[0].phanTram, 100);
 });
 
 test('Thầy và Đức cùng sửa 1 khách: mỗi người giữ cột mình đổi; máy cũ không gửi coSo thì như trước', () => {
   const m = khoiDong();
+  cho();
   const khoaDuc = m.post(m.khoaThay, 'capKhoa', { email: 'duc@example.com', ten: 'Đức', vaiTro: 'DUC' }).data.khoa;
   const kh = { ma: 'KH-2611-AN', ten: 'Anh An', sdt: '0900000009', trangThai: 'MOI', diaChi: '', nhacGoi: '2026-11-20' };
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: kh })] });
+  cho();
   const kvT = m.post(m.khoaThay, 'keoVe').data;
+  cho();
   const kvD = m.post(khoaDuc, 'keoVe').data;
   const cuaThay = { ...kvT.khach[0], coSo: kvT.luc };
   const cuaDuc = { ...kvD.khach[0], coSo: kvD.luc };
+  cho();
   m.post(khoaDuc, 'dayLen', { ops: [op({ loai: 'KHACH', khach: { ...cuaDuc, diaChi: 'Long Biên' } })] });
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: { ...cuaThay, trangThai: 'KHAO_SAT' } })] });
+  cho();
   let k = m.post(m.khoaThay, 'keoVe').data.khach[0];
   assert.equal(k.diaChi, 'Long Biên');
   assert.equal(k.trangThai, 'KHAO_SAT');
   // Thầy sửa tiếp chính cột mình vừa đổi khi chưa kéo về: vẫn được.
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: { ...cuaThay, trangThai: 'BAO_GIA' } })] });
+  cho();
   k = m.post(m.khoaThay, 'keoVe').data.khach[0];
   assert.equal(k.trangThai, 'BAO_GIA');
   assert.equal(k.diaChi, 'Long Biên');
   // Máy chưa cập nhật (không có coSo): ghi đè như cũ.
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'KHACH', khach: { ...kh, diaChi: 'Cầu Giấy' } })] });
+  cho();
   assert.equal(m.post(m.khoaThay, 'keoVe').data.khach[0].diaChi, 'Cầu Giấy');
 });
 
 test('hai người cùng sửa 1 hợp đồng: không mất cột của người kia', () => {
   const m = khoiDong();
+  cho();
   const khoaDuc = m.post(m.khoaThay, 'capKhoa', { email: 'duc@example.com', ten: 'Đức', vaiTro: 'DUC' }).data.khoa;
   const hd = { ma: 'HD-abc', soHD: '261101/AN-KAS/TK', giaTri: 100000000, linkFile: '', trangThai: 'DANG', dot: [] };
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'HD', hd })] });
+  cho();
   const kvT = m.post(m.khoaThay, 'keoVe').data;
+  cho();
   const kvD = m.post(khoaDuc, 'keoVe').data;
+  cho();
   m.post(khoaDuc, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...kvD.hopDong[0], coSo: kvD.luc, linkFile: 'https://drive/x' } })] });
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'HD', hd: { ...kvT.hopDong[0], coSo: kvT.luc, giaTri: 120000000 } })] });
+  cho();
   const h = m.post(m.khoaThay, 'keoVe').data.hopDong[0];
   assert.equal(h.linkFile, 'https://drive/x');
   assert.equal(h.giaTri, 120000000);
@@ -1254,14 +1284,19 @@ test('hai người cùng sửa 1 hợp đồng: không mất cột của ngườ
 
 test('phiếu báo cáo làm hôm qua lúc mất sóng, sáng nay mới gửi: vẫn nhận; phiếu cũ sửa lại thì không', () => {
   const m = khoiDong();
+  cho();
   m.post(m.khoaThay, 'dayLen', { ops: [op({ loai: 'TAO_CT', ct: congTrinhMau('NT-A') })] });
+  cho();
   const khoaKha = m.post(m.khoaThay, 'capKhoa', { email: 'kha@example.com', ten: 'Kha', vaiTro: 'KHA', congTrinh: 'NT-A' }).data.khoa;
   const hn = m.ctx.homNay();
   const homQua = new Date(Date.parse(hn) - 864e5).toISOString().slice(0, 10);
   const b = { id: 'BC-NT-A-' + homQua, maCongTrinh: 'NT-A', ngay: homQua, thauLam: [], soAnh: 6, nopLuc: homQua + 'T11:00:00Z' };
+  cho();
   assert.equal(m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'BC', b, luc: homQua + 'T11:00:00Z' })] }).data[0].ok, true);
+  cho();
   assert.equal(m.post(m.khoaThay, 'keoVe').data.baoCao.length, 1);
   // Sửa phiếu hôm qua bằng thao tác làm hôm nay: vẫn phải nhờ văn phòng.
+  cho();
   const r = m.post(khoaKha, 'dayLen', { ops: [op({ loai: 'BC', b: { ...b, thieu: 'sửa' }, luc: hn + 'T02:00:00Z' })] });
   assert.match(r.data[0].loi, /đã chốt/);
 });
