@@ -85,7 +85,19 @@ async function chayDongBo() {
   if (navigator.onLine) await guiAnhCho(goi).catch((e) => bao('Ảnh chưa gửi được: ' + e.message));
   await capNhatTrangThai(r.trangThai);
   // Vẽ lại màn đang xem bằng dữ liệu mới, trừ khi đang mở hộp nhập liệu.
-  if (r.trangThai === 'xong' && !$('#sheet').open && !dangGo()) route();
+  if (r.trangThai === 'xong' && r.doi && !$('#sheet').open && !dangGo() && !manDangSua) veLaiGiuMo();
+}
+
+// Đã gõ / chọn trên màn mà chưa lưu: đồng bộ nền không được vẽ lại màn (sẽ mất chữ). Mở màn mới hoặc lưu thì hết.
+let manDangSua = false;
+// Vẽ lại sau đồng bộ: giữ các mục đang mở xổ và vị trí cuộn.
+function veLaiGiuMo() {
+  const mo = [...$('#view').querySelectorAll('details')].map((d) => d.open);
+  const y = window.scrollY;
+  route();
+  const ds = [...$('#view').querySelectorAll('details')];
+  if (ds.length === mo.length) ds.forEach((d, i) => { d.open = mo[i]; });
+  window.scrollTo(0, y);
 }
 
 // Đang gõ trong ô nhập của màn hình, hoặc đang chờ AI: không vẽ lại, kẻo mất chữ đang gõ.
@@ -138,6 +150,7 @@ function datTab(tab, title) {
 }
 
 function route() {
+  manDangSua = false;
   // #cong-trinh, #tao, #nguoi-dung, #ct-<mã DA>, #chu-nha-<mã link>[&api=<mã>], #k=<khoá>&api=<mã>, #dang-nhap&api=<mã>
   const [h, ...thamSo] = location.hash.slice(1).split('&');
   const ts = Object.fromEntries(thamSo.map((x) => x.split('=')));
@@ -5175,6 +5188,10 @@ async function main() {
   try { thuVien = await (await fetch('data/thu-vien-v1.json')).json(); } catch { bao('Không tải được thư viện'); }
   if (!db.congTrinh.length && !daKetNoi() && window.KAS_DEMO && thuVien.length) taoMau();
   window.addEventListener('hashchange', route);
+  // Ô trên màn (không phải hộp bật lên) có chữ chưa lưu: chặn vẽ lại khi đồng bộ.
+  const danhDauSua = (e) => { if (e.isTrusted && e.target.isConnected && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) manDangSua = true; };
+  $('#view').addEventListener('input', danhDauSua);
+  $('#view').addEventListener('change', danhDauSua);
   window.addEventListener('online', chayDongBo);
   window.addEventListener('offline', () => capNhatTrangThai('mat-mang'));
   setInterval(chayDongBo, 60000);
