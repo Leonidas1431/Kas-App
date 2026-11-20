@@ -223,3 +223,25 @@ details.card > summary::-webkit-details-marker { display: none; }
 details.card > summary { cursor: pointer; list-style: none; }
 .grid-btn.pct { grid-template-columns: repeat(5, 1fr); gap: 6px; } .grid-btn.pct button { padding-left: 0; padding-right: 0; }
 .note > a.btn, .canh-anh > a.btn { display: block; text-align: center; margin-top: 8px; }
+
+/* Hôm nay gọn (21/11): mỗi mục 1 dòng bấm mở */
+details.khoi { background: var(--the); border: 1px solid var(--vien); border-radius: 12px; margin: 8px 0; }
+details.khoi > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 14px; font-weight: 600; cursor: pointer; list-style: none; }
+details.khoi > summary::-webkit-details-marker { display: none; }
+details.khoi > summary > span { flex: 1; min-width: 0; }
+details.khoi > summary::after { content: '▸'; color: var(--mo); transition: transform .15s; }
+details.khoi[open] > summary::after { transform: rotate(90deg); }
+details.khoi .dem { min-width: 26px; padding: 2px 8px; border-radius: 99px; background: var(--nen); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
+details.khoi .dem.gap { background: var(--tre); color: #fff; }
+details.khoi .khoi-nd { padding: 0 10px 10px; }
+details.khoi .khoi-nd > h3:first-child { margin-top: 4px; }
+ul.tu-choi { margin: 0; padding-left: 18px; font-size: 14px; }
+ul.tu-choi li { margin: 6px 0; }
+@media (max-width: 400px) {
+  .topbar { gap: 8px; padding: 10px 12px; }
+  .topbar .role { font-size: 0; }
+  .topbar .role select, .topbar .role .ten-nguoi { font-size: 14px; }
+  .topbar .role .ten-nguoi { max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+.hai-cot > div { min-width: 0; }
+.hai-cot input[type=date] { min-width: 0; max-width: 100%; }

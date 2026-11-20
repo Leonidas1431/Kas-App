@@ -75,7 +75,7 @@ function luu() { ghi(db); clearTimeout(henGui); henGui = setTimeout(chayDongBo, 
 async function chayDongBo() {
   if (!daKetNoi()) return;
   const r = await dongBo(db, () => ghi(db));
-  if (r.biTuChoi && r.biTuChoi.length) bao('Máy chủ từ chối: ' + r.biTuChoi[0]);
+  if (r.biTuChoi && r.biTuChoi.length) { ghiTuChoi(r.biTuChoi); bao('Máy chủ không nhận: ' + r.biTuChoi[0], 6000); }
   if (r.mayChuCu && !mayChuCu) bao('Máy chủ cần cập nhật bản mới để lưu tính năng mới. Dữ liệu vẫn giữ trên máy.');
   if (r.trangThai === 'xong') mayChuCu = !!r.mayChuCu;
   if (r.trangThai === 'loi') bao('Chưa gửi được: ' + r.loi);
@@ -86,6 +86,23 @@ async function chayDongBo() {
   await capNhatTrangThai(r.trangThai);
   // Vẽ lại màn đang xem bằng dữ liệu mới, trừ khi đang mở hộp nhập liệu.
   if (r.trangThai === 'xong' && r.doi && !$('#sheet').open && !dangGo() && !manDangSua) veLaiGiuMo();
+}
+
+// Máy chủ không nhận (sai quyền, phiếu đã chốt…): giữ lại trên máy để xem ở đầu màn Hôm nay, không chỉ báo 2 giây.
+const TU_CHOI = 'kas-tu-choi';
+function dsTuChoi() { try { return JSON.parse(localStorage.getItem(TU_CHOI)) || []; } catch { return []; } }
+function ghiTuChoi(ds) {
+  const luc = new Date().toISOString();
+  const moi = [...ds.map((loi) => ({ luc, loi: String(loi || '') })), ...dsTuChoi()].slice(0, 20);
+  try { localStorage.setItem(TU_CHOI, JSON.stringify(moi)); } catch { /* bị chặn bộ nhớ */ }
+}
+function tuChoiHomNay() {
+  const ds = dsTuChoi();
+  if (!ds.length) return '';
+  return `<div class="canh-anh"><b>Máy chủ không nhận ${ds.length} thay đổi</b>
+    <ul class="tu-choi">${ds.map((x) => `<li><span class="muted">${new Date(x.luc).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span><br>${esc(x.loi)}</li>`).join('')}</ul>
+    <p class="muted">Thay đổi này chưa lên máy chủ. Báo Thầy hoặc nhờ văn phòng ghi lại.</p>
+    <div class="actions"><button id="xemTuChoi">Đã xem, ẩn đi</button></div></div>`;
 }
 
 // Đã gõ / chọn trên màn mà chưa lưu: đồng bộ nền không được vẽ lại màn (sẽ mất chữ). Mở màn mới hoặc lưu thì hết.
@@ -202,10 +219,12 @@ function manHomNay() {
   const v = $('#view');
   const hn = homNay();
   const nutChi = !laVanPhong() && db.congTrinh.length ? '<div class="actions"><button id="hnGhiChi">− Ghi chi công trình</button></div>' : '';
-  const khoiKhach = nutChi + baoCaoHomNay(hn) + baoHanhHomNay(hn) + (laVanPhong() ? chiAIHomNay(hn) + khachHomNay(hn) + tienHomNay(hn) + noHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
+  const khoiKhach = tuChoiHomNay() + nutChi + baoCaoHomNay(hn) + baoHanhHomNay(hn) + (laVanPhong() ? chiAIHomNay(hn) + khachHomNay(hn) + tienHomNay(hn) + noHomNay(hn) + baiHomNay(hn) : '') + phatSinhHomNay(hn) + mauHomNay(hn) + nghiemThuHomNay(hn) + thauHomNay(hn) + danhGiaHomNay() + thietKeHomNay(hn);
   const dangLam = db.congTrinh.filter((ct) => !congTrinhDaXong(db, ct.ma));
   if (!dangLam.length) {
     v.innerHTML = `${khoiKhach}<h2>Chưa có công trình nào</h2><p class="muted">${laVanPhong() ? 'Vào <b>Công trình</b> → <b>Tạo công trình</b>, hoặc tạo từ hồ sơ khách đã ký.' : 'Văn phòng chưa tạo công trình.'}</p>`;
+    gomKhoiHomNay(v);
+    ganTuChoi(v);
     ganNutTraThau(v);
     ganNutBaoCao(v);
     ganNutBH(v);
@@ -218,6 +237,8 @@ function manHomNay() {
       <p class="muted">Thực tế ${th.pctThucTe}% · kế hoạch ${th.pctKeHoach}%${th.viecTre ? ` · <span class="tre">${th.viecTre} việc trễ</span>` : ''}</p>
       ${ds.length ? ds.map(({ v: x, t, nhan }) => theViec(ct, x, t, nhan)).join('') : '<p class="muted">Không có việc nào trong 3 ngày tới.</p>'}`;
   }).join('');
+  gomKhoiHomNay(v);
+  ganTuChoi(v);
   v.querySelectorAll('[data-viec]').forEach((b) => { b.onclick = () => moViec(b.dataset.ct, b.dataset.viec); });
   ganNutTraThau(v);
   const hnChi = $('#hnGhiChi');
@@ -228,6 +249,59 @@ function manHomNay() {
   ganNutBaoCao(v);
   ganNutNghiemThu(v);
   ganNutBH(v);
+}
+
+// Màn Hôm nay dài nhiều màn điện thoại: mỗi mục (có tiêu đề) gom thành 1 dòng bấm mở, kèm số việc; mục có việc trễ / quá hạn đếm đỏ.
+// Nhắc gấp (báo cáo 16h, chi AI, ghi chi) giữ trên đầu. Giám sát: việc công trình (cập nhật %) lên trước, các mục khác sau.
+// Mục nào Thầy mở thì lần sau vẫn mở (nhớ trên máy).
+const MO_HN = 'kas-mo-hn';
+const GAP_HN = /Trễ|trễ|Quá hạn|quá hạn|KHẨN|Khẩn|chưa làm|chưa nộp/;
+function ganTuChoi(v) {
+  const b = v.querySelector('#xemTuChoi');
+  if (b) b.onclick = () => { try { localStorage.removeItem(TU_CHOI); } catch { /* bị chặn */ } route(); };
+}
+function gomKhoiHomNay(v) {
+  let mo = [];
+  try { mo = JSON.parse(localStorage.getItem(MO_HN)) || []; } catch { /* bị chặn bộ nhớ */ }
+  const con = [...v.children];
+  const iViec = con.findIndex((e) => e.classList.contains('dau-ct'));
+  const truoc = iViec < 0 ? con : con.slice(0, iViec);
+  const phanViec = iViec < 0 ? [] : con.slice(iViec);
+  const dau = [];
+  const khoi = [];
+  let cur = null;
+  for (const e of truoc) {
+    if (e.tagName === 'H3') { cur = { h: e, ds: [] }; khoi.push(cur); } else if (cur) cur.ds.push(e); else dau.push(e);
+  }
+  if (!khoi.length) return;
+  const vo = document.createElement('div');
+  vo.className = 'khoi-hn';
+  for (const k of khoi) {
+    const ten = k.h.textContent.replace(/\s*\(\d+\)\s*$/, '').trim();
+    const the = k.ds.reduce((n, e) => n + (e.matches('.card') ? 1 : 0) + e.querySelectorAll('.card').length, 0);
+    const dem = the || k.ds.filter((e) => !e.matches('p.muted, .actions')).length;
+    const gap = k.ds.some((e) => GAP_HN.test(e.textContent) || e.matches('.tre') || !!e.querySelector('.tre, .tag.TRE'));
+    const d = document.createElement('details');
+    d.className = 'khoi';
+    d.dataset.k = ten;
+    // Lead mới (phải gọi trong 2 giờ) thì luôn mở sẵn.
+    d.open = mo.includes(ten) || k.ds.some((e) => e.textContent.includes('Lead mới'));
+    d.innerHTML = `<summary><span>${esc(ten)}</span><b class="dem${gap ? ' gap' : ''}">${dem}</b></summary><div class="khoi-nd"></div>`;
+    const nd = d.querySelector('.khoi-nd');
+    k.ds.forEach((e) => nd.appendChild(e));
+    d.ontoggle = () => {
+      let m = [];
+      try { m = JSON.parse(localStorage.getItem(MO_HN)) || []; } catch { /* bị chặn */ }
+      m = m.filter((x) => x !== ten);
+      if (d.open) m.push(ten);
+      try { localStorage.setItem(MO_HN, JSON.stringify(m)); } catch { /* bị chặn */ }
+    };
+    vo.appendChild(d);
+    k.h.remove();
+  }
+  const thuTu = laVanPhong() ? [...dau, vo, ...phanViec] : [...dau, ...phanViec, vo];
+  if (!laVanPhong() && phanViec.length) vo.insertAdjacentHTML('afterbegin', '<h3>Việc khác</h3>');
+  thuTu.forEach((e) => v.appendChild(e));
 }
 
 function theViec(ct, x, t, nhan) {
@@ -5195,6 +5269,8 @@ async function main() {
   window.addEventListener('online', chayDongBo);
   window.addEventListener('offline', () => capNhatTrangThai('mat-mang'));
   setInterval(chayDongBo, 60000);
+  // Mở lại app từ nền (điện thoại tạm dừng đồng hồ khi app ẩn): lấy dữ liệu mới ngay, không chờ tới 1 phút.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') chayDongBo(); });
   // Màn Hôm nay tự vẽ lại khi tới mốc nhắc báo cáo (16h, 17h, 17h30) và trưa thứ 7.
   let mocCu = mocNhacHienTai();
   setInterval(() => {
