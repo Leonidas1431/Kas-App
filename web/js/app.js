@@ -1133,7 +1133,7 @@ function manKetNoi() {
       <div id="ggNut" style="min-height:44px;margin:12px 0"></div>
       <p class="muted" id="ggTT">${api ? 'Đang tải nút Google…' : ''}</p>
     </div>
-    <details class="cham-ds" ${api ? '' : 'open'}><summary>Link máy chủ${api ? ' (đã có)' : ''}</summary>
+    <details class="cham-ds" ${api ? '' : 'open'}><summary>${api ? 'Đổi máy chủ (nâng cao)' : 'Link máy chủ'}</summary>
       <label class="f">Link máy chủ (Web app URL trong Apps Script)</label>
       <input id="api" value="${esc(api)}" placeholder="https://script.google.com/macros/s/…/exec">
       <div class="actions"><button id="luuApi">Dùng máy chủ này</button></div>
