@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { rong, datCaiDat } from '../web/js/store.js';
 import { taoKhach, themBaoGia } from '../web/js/khach.js';
-import { bangGia, donGiaGoiY, tinhBaoGia, phamViTuBaoGia, viecBaoGiaHomNay, docSoTien, ghiChuThanhToan, hetHanBG } from '../web/js/baogia.js';
+import { bangGia, bangGiaPT, donGiaGoiY, tinhBaoGia, phamViTuBaoGia, viecBaoGiaHomNay, docSoTien, ghiChuThanhToan, hetHanBG } from '../web/js/baogia.js';
 
 const HN = '2026-11-21';
 
@@ -11,9 +11,12 @@ test('đơn giá theo bảng giá KAS 2026, Thầy sửa được trong cài đ�
   assert.equal(donGiaGoiY(db, 'NP', 'HD', 'KT'), 300000);
   assert.equal(donGiaGoiY(db, 'NP', 'CD', 'NT'), 350000);
   assert.equal(donGiaGoiY(db, 'CC', 'HD', 'KT'), null); // chung cư không có kiến trúc
-  assert.equal(donGiaGoiY(db, 'BT', 'CD', 'KT'), null); // ô trống trong file
+  assert.equal(donGiaGoiY(db, 'BT', 'CD', 'KT'), 350000); // Thầy chốt 21/11
   datCaiDat(db, 'bangGiaTK', JSON.stringify({ BT: { CD: { KT: 500000 } } }));
   assert.equal(bangGia(db).BT.CD.KT, 500000);
+  datCaiDat(db, 'bangGiaPT', JSON.stringify({ TRACH_NHAT: [600000, 450000] }));
+  assert.deepEqual(bangGiaPT(db).TRACH_NHAT.gia, [600000, 450000]);
+  assert.deepEqual(bangGiaPT(db).KICH_HOAT.gia, [2000000, 1600000]);
   assert.equal(bangGia(db).BT.HD.KT, 400000);
 });
 
@@ -36,8 +39,13 @@ test('tính theo m² từng phần, giảm giá chia theo tỷ lệ, cảnh báo
   const re = tinhBaoGia({ phan: [{ ma: 'NT', donGia: 280000, dong: [{ dt: 80 }] }], giam: { kieu: 'TIEN', giaTri: 4e6 } });
   assert.equal(re.tong, 18.4e6);
   assert.equal(re.canhBao.length, 1); // 230k/m² sau giảm
-  // Cảnh quan không áp mức tối thiểu
-  assert.deepEqual(tinhBaoGia({ phan: [{ ma: 'CQ', donGia: 120000, dong: [{ dt: 50 }] }] }).canhBao, []);
+  // Phong thủy: mỗi dòng 1 giá, không áp mức tối thiểu m²
+  const pt = tinhBaoGia({ phan: [{ ma: 'PT', dong: [{ ten: 'Trạch nhật', dt: 2, donGia: 500000 }, { ten: 'Thiết kế phong thủy', dt: 120, donGia: 30000 }] }] });
+  assert.equal(pt.tong, 4.6e6);
+  assert.deepEqual(pt.canhBao, []);
+  assert.equal(pt.giaTriKT, 0);
+  // Phần không còn dùng (cảnh quan cũ) bị bỏ qua
+  assert.equal(tinhBaoGia({ phan: [{ ma: 'CQ', donGia: 120000, dong: [{ dt: 50 }] }] }).tong, 0);
 });
 
 test('báo giá hết hiệu lực sau 30 ngày, nhắc khi còn ≤3 ngày', () => {

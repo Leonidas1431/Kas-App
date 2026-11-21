@@ -1416,8 +1416,9 @@ Object.assign(HANH_DONG, {
     canVanPhong(n);
     const kh = docBang('Khach').find((r) => r.ma === data.maKhach);
     if (!kh) throw new Error('Không có khách ' + data.maKhach);
-    const mau = layIdThuMuc(caiDatMay().mauBaoGia);
+    const mau = timMau('mauBaoGia');
     if (!mau) throw new Error('Chưa có file mẫu báo giá. Vào Hợp đồng → Mẫu file, dán link file mẫu.');
+    if (DriveApp.getFileById(mau).getMimeType() !== MimeType.GOOGLE_SHEETS) throw new Error('File mẫu báo giá đang là file Excel. Mở file trên Drive, chọn Tệp → Lưu dưới dạng Google Trang tính, rồi dán link bản mới.');
     const thuMuc = thuMucKhach(kh);
     const f = DriveApp.getFileById(mau).makeCopy(String(data.tenFile || 'Báo giá thiết kế').slice(0, 150), thuMuc);
     const ss = SpreadsheetApp.openById(f.getId());
@@ -1431,9 +1432,9 @@ Object.assign(HANH_DONG, {
     canVanPhong(n);
     const hd = docBang('HopDong').find((r) => r.ma === data.maHD);
     if (!hd) throw new Error('Không có hợp đồng ' + data.maHD + ' (đợi đồng bộ xong rồi thử lại)');
-    const khoa = hd.dang === 'TK' ? 'mauHDTK' : hd.dang === 'TG' ? 'mauHDTG' : '';
-    if (!khoa) throw new Error('Chưa có mẫu hợp đồng cho dạng ' + hd.dang + '. Hiện chỉ có mẫu HĐ thiết kế và HĐ thiết kế + thi công nội thất.');
-    const mau = layIdThuMuc(caiDatMay()[khoa]);
+    const khoa = { TK: 'mauHDTK', TG: 'mauHDTG', XD: 'mauHDXD' }[hd.dang];
+    if (!khoa) throw new Error('Chưa có mẫu hợp đồng cho dạng ' + hd.dang + '.');
+    const mau = timMau(khoa);
     if (!mau) throw new Error('Chưa có file mẫu hợp đồng. Vào Hợp đồng → Mẫu file, dán link file mẫu.');
     const kh = hd.maKhach ? docBang('Khach').find((r) => r.ma === hd.maKhach) : null;
     const ct = hd.maCongTrinh ? docBang('CongTrinh').find((r) => r.ma === hd.maCongTrinh) : null;
@@ -2061,6 +2062,15 @@ function timHoacTao(cha, ten) {
 }
 
 // ---------- Báo giá, hợp đồng: điền file mẫu ----------
+// File mẫu: link Thầy dán ở màn Hợp đồng (caiDat), không có thì tìm theo tên trong thư mục Drive "KAS App – Mẫu".
+const TEN_MAU = { mauBaoGia: 'KAS Mau Bao gia thiet ke', mauHDTK: 'KAS Mau HD thiet ke', mauHDTG: 'KAS Mau HD TK-TC noi that', mauHDXD: 'KAS Mau HD thi cong xay dung' };
+function timMau(khoa) {
+  const id = layIdThuMuc(caiDatMay()[khoa]);
+  if (id) return id;
+  const tm = DriveApp.getRootFolder().getFoldersByName('KAS App – Mẫu');
+  if (tm.hasNext()) { const it = tm.next().getFilesByName(TEN_MAU[khoa]); while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) return f.getId(); } }
+  return '';
+}
 function thuMucKhach(kh) {
   if (kh.thuMucDrive) return DriveApp.getFolderById(kh.thuMucDrive);
   const g = timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Khách'), kh.ma);
@@ -2079,7 +2089,7 @@ function oCanh(sh, chu, dx, dy) {
 /**
  * Điền sheet "Báo giá thiết kế" theo mẫu của Thầy: giữ dòng tiêu đề, khung chữ, logo, ghi chú.
  * Khối từ dòng "PHẦN THIẾT KẾ KIẾN TRÚC" tới trước dòng "TỔNG CỘNG" được viết lại theo các phần có trong báo giá.
- * data.phan: [{ ten, moTa, donGia, dong: [{ ten, dt }] }]; data.giam: { soTien, lyDo }.
+ * data.phan: [{ ten, moTa, donGia, dong: [{ ten, dt, donGia? }] }] (dòng có donGia riêng thì dùng); data.giam: { soTien, lyDo }.
  */
 function dienBaoGia(ss, data) {
   const sh = ss.getSheetByName('Báo giá thiết kế') || ss.getSheets()[0];
@@ -2120,7 +2130,8 @@ function dienBaoGia(ss, data) {
     const r0 = r;
     dong.forEach((x) => {
       dinhDang(r, 2);
-      sh.getRange(r, 2, 1, 4).setValues([[x.ten || '', Number(x.dt) || 0, Number(p.donGia) || 0, '=C' + r + '*D' + r]]);
+      const gia = x.donGia != null && x.donGia !== '' ? Number(x.donGia) : Number(p.donGia);
+      sh.getRange(r, 2, 1, 4).setValues([[x.ten || '', Number(x.dt) || 0, gia || 0, '=C' + r + '*D' + r]]);
       r++;
     });
     sh.getRange(r0, 1).setValue(p.moTa || '').setWrap(true).setVerticalAlignment('middle');
@@ -2157,7 +2168,7 @@ const thoatThay = (v) => String(v == null ? '' : v).replace(/\\/g, '\\\\').repla
 
 /**
  * Điền HĐ Docs. data.thay: { khoá: chữ } thay cho {{khoá}}. data.dot: [chữ] → mỗi đợt 1 đoạn thay đoạn {{dot}}.
- * data.bang: { phan: [{ ten, moTa, donGia, dong: [{ ten, dt, thanhTien }] }], giam: { soTien, lyDo }, tongDT, tong } (đã định dạng chữ).
+ * data.bang: { phan: [{ ten, moTa, dong: [{ ten, dt, donGia, thanhTien }] }], giam: { soTien, lyDo } } (đã định dạng chữ).
  */
 function dienHopDong(body, data) {
   const b = data.bang;
@@ -2177,7 +2188,7 @@ function dienHopDong(body, data) {
       };
       (b.phan || []).forEach((p) => {
         chen(rowPhan, { phan: 'PHẦN ' + String(p.ten || '').toUpperCase() });
-        (p.dong || []).forEach((x, j) => chen(rowDong, { moTa: j ? '' : p.moTa, phong: x.ten, dt: x.dt, donGia: p.donGia, thanhTien: x.thanhTien, ghiChu: '' }));
+        (p.dong || []).forEach((x, j) => chen(rowDong, { moTa: j ? '' : p.moTa, phong: x.ten, dt: x.dt, donGia: x.donGia, thanhTien: x.thanhTien, ghiChu: '' }));
       });
       if (b.giam) {
         const row = chen(rowPhan, { phan: 'Giảm giá' + (b.giam.lyDo ? ': ' + b.giam.lyDo : '') });

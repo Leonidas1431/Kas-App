@@ -250,7 +250,9 @@ ul.tu-choi li { margin: 6px 0; }
 .bg-ban { border-top: 1px solid var(--vien); padding: 8px 0; }
 .bg-ban .actions { margin-top: 6px; }
 .bg-phan { border: 1px solid var(--vien); border-radius: 10px; padding: 8px 10px; margin-top: 8px; }
-.ba-cot { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.ba-o { font-size: 12px; min-width: 0; display: block; }
+.ba-o input { width: 100%; }
+.pt-dong { margin-top: 6px; }
 .ba-cot label { font-size: 12px; min-width: 0; }
 .ba-cot input { width: 100%; }
 button.nho { min-height: 36px; padding: 6px 10px; white-space: normal; }
