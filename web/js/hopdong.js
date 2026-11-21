@@ -80,6 +80,8 @@ export function taoHopDong(db, du, nguoi) {
     khauTru: { han: du.hanKhauTru || '', tyLe: du.tyLeKhauTru ?? (du.dang === 'TK' ? TY_LE_KHAU_TRU : 0) },
     truTK: { maHD: '', phan: [], soTien: 0 },
     linkFile: du.linkFile || '',
+    // id bản báo giá (trong hồ sơ khách) đã chuyển thành HĐ này.
+    tuBaoGia: du.tuBaoGia || '',
     // Chi dự kiến theo giá gốc (thầu, vật tư…), để tính lãi gộp ở phần Thu chi. Không bắt buộc.
     chiDuKien: Number(du.chiDuKien) || 0,
     trangThai: 'HIEU_LUC',

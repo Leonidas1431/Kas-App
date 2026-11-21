@@ -162,14 +162,25 @@ export function ghiChuKhach(db, kh, noiDung, nguoi) {
 }
 
 // Mỗi lần báo giá là 1 bản mới, giữ bản cũ. Báo giá xong thì chuyển "Đã báo giá" nếu chưa tới.
-export function themBaoGia(db, kh, { giaTri, link, ghiChu }, nguoi, homNay) {
-  const bg = { id: taoMa(), phienBan: kh.baoGia.length + 1, ngay: homNay, giaTri: Number(giaTri) || 0, link: link || '', ghiChu: ghiChu || '', khachChot: false };
+// chiTiet (không bắt buộc): báo giá lập theo bảng giá m² (xem baogia.js); hetHan: hết hiệu lực (mặc định 30 ngày).
+export function themBaoGia(db, kh, { giaTri, link, ghiChu, chiTiet, hetHan }, nguoi, homNay) {
+  const bg = { id: taoMa(), phienBan: kh.baoGia.length + 1, ngay: homNay, giaTri: Number(giaTri) || 0, link: link || '', ghiChu: ghiChu || '', khachChot: false,
+    hetHan: hetHan || addDays(homNay, 30), nguoi };
+  if (chiTiet) bg.chiTiet = chiTiet;
   kh.baoGia.push(bg);
   if (DANG_THEO.indexOf(kh.trangThai) < DANG_THEO.indexOf('BAO_GIA') && DANG_THEO.includes(kh.trangThai)) {
     doiTrangThai(db, kh, 'BAO_GIA', nguoi, homNay, { ghiChu: `Báo giá v${bg.phienBan}` });
   } else {
     ghiKhach(db, kh, homNay);
   }
+  return bg;
+}
+
+export function suaBaoGia(db, kh, idBg, thayDoi, homNay) {
+  const bg = (kh.baoGia || []).find((b) => b.id === idBg);
+  if (!bg) return null;
+  Object.assign(bg, thayDoi);
+  ghiKhach(db, kh, homNay);
   return bg;
 }
 
