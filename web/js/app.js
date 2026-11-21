@@ -1133,7 +1133,7 @@ function manKetNoi() {
       <div id="ggNut" style="min-height:44px;margin:12px 0"></div>
       <p class="muted" id="ggTT">${api ? 'Đang tải nút Google…' : ''}</p>
     </div>
-    <details class="cham-ds" ${api ? '' : 'open'}><summary>Link máy chủ${api ? ' (đã có)' : ''}</summary>
+    <details class="cham-ds" ${api ? '' : 'open'}><summary>${api ? 'Đổi máy chủ (nâng cao)' : 'Link máy chủ'}</summary>
       <label class="f">Link máy chủ (Web app URL trong Apps Script)</label>
       <input id="api" value="${esc(api)}" placeholder="https://script.google.com/macros/s/…/exec">
       <div class="actions"><button id="luuApi">Dùng máy chủ này</button></div>
@@ -1162,10 +1162,21 @@ function manKetNoi() {
         } catch (e) { tt.textContent = e.message; bao(e.message); }
       });
       tt.textContent = '';
-    } catch (e) { tt.textContent = (navigator.onLine ? 'Không mở được đăng nhập Google: ' + e.message : 'Mất mạng, cần mạng để đăng nhập lần đầu.'); }
+    } catch (e) {
+      const loiMang = /fetch|network|load failed/i.test(e.message);
+      tt.textContent = !navigator.onLine ? 'Mất mạng, cần mạng để đăng nhập lần đầu.'
+        : loiMang ? 'Máy chủ không trả lời. Kiểm tra lại link máy chủ: phải là URL ứng dụng web kết thúc bằng /exec (không phải link trang soạn mã hay /dev), và bản triển khai để "Người có quyền truy cập: Bất kỳ ai".'
+        : 'Không mở được đăng nhập Google: ' + e.message;
+      if (loiMang) $('details.cham-ds').open = true;
+    }
   };
   veNut(api);
-  $('#luuApi').onclick = () => { const a = $('#api').value.trim(); if (!a) return bao('Dán link máy chủ'); nhoApi(a); veNut(maApi(a)); };
+  $('#luuApi').onclick = () => {
+    const a = $('#api').value.trim();
+    if (!a) return bao('Dán link máy chủ');
+    if (/^https?:\/\//.test(a) && !/\/s\/[-\w]+\/exec/.test(a)) return bao('Link chưa đúng: cần URL ứng dụng web dạng https://script.google.com/macros/s/…/exec (Triển khai → Quản lý các bản triển khai)');
+    nhoApi(a); veNut(maApi(a));
+  };
   $('#kn').onclick = async () => {
     const a = apiDangNhap(), khoa = $('#khoa').value.trim();
     if (!a || !khoa) return bao('Cần cả link máy chủ và khoá');

@@ -22,12 +22,17 @@ export function maApi(api) {
   return m ? m[1] : String(api || '').trim();
 }
 
+// Máy chủ chính của KAS, gắn sẵn để mở app là vào thẳng Đăng nhập Gmail, không phải dán link.
+// Mã triển khai (phần giữa /s/ và /exec) không phải khoá bí mật: ai có cũng chỉ thấy màn đăng nhập.
+export const MAY_CHU_MAC_DINH = 'AKfycbzgSD9rRycAzwIvwzYSXvOUhJlnp-FQJxoQbY-PxkEYOk6v0LaLaKZIdfKqplBHEXI';
+
 // Máy chủ dùng gần nhất, giữ cả khi đăng xuất, để màn đăng nhập không phải hỏi lại link máy chủ.
 const API_CU = 'kas-api';
 export function apiDaBiet() {
   const kn = ketNoi();
   if (kn && kn.api) return kn.api;
-  try { return localStorage.getItem(API_CU) || ''; } catch { return ''; }
+  // Link nhớ trên máy mà không ra mã triển khai (dán nhầm chữ mẫu, link trang soạn mã…) thì bỏ, dùng máy chủ chính.
+  try { const cu = localStorage.getItem(API_CU) || ''; return /^[-\w]{20,}$/.test(cu) ? cu : MAY_CHU_MAC_DINH; } catch { return MAY_CHU_MAC_DINH; }
 }
 export function nhoApi(api) { try { if (api) localStorage.setItem(API_CU, maApi(api)); } catch { /* bị chặn bộ nhớ */ } }
 
