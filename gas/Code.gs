@@ -2095,11 +2095,15 @@ function dienBaoGia(ss, data) {
   const sh = ss.getSheetByName('Báo giá thiết kế') || ss.getSheets()[0];
   ss.getSheets().forEach((s) => { if (s.getSheetId() !== sh.getSheetId() && s.getName() !== 'BG Thiết kế Chung') ss.deleteSheet(s); });
   ss.setActiveSheet(sh); ss.moveActiveSheet(1);
+  // Bản sao giữ múi giờ của file mẫu: đặt về múi giờ máy chủ (Việt Nam) để ngày không bị lùi 1 ngày.
+  ss.setSpreadsheetTimeZone(Session.getScriptTimeZone());
   const dat = (o, v) => { if (o) o.setValue(v); };
+  // Ghi dạng chữ (giữ số 0 đầu SĐT).
+  const datChu = (o, v) => { if (o) o.setNumberFormat('@').setValue(String(v || '')); };
   dat(oCanh(sh, 'Ngày báo giá:', 1), ngayVN(data.ngay));
   dat(oCanh(sh, 'Có giá trị đến:', 1), ngayVN(data.hetHan));
   dat(oCanh(sh, 'KHÁCH HÀNG', 0, 1), data.ten || '');
-  dat(oCanh(sh, 'KHÁCH HÀNG', 0, 2), data.sdt || '');
+  datChu(oCanh(sh, 'KHÁCH HÀNG', 0, 2), data.sdt);
   dat(oCanh(sh, 'KHÁCH HÀNG', 0, 3), 'Add: ' + (data.diaChi || ''));
   dat(oCanh(sh, 'GÓI THẦU', 0, 1), data.goiThau || '');
   dat(oCanh(sh, 'GÓI THẦU', 0, 2), 'Phong cách ' + String(data.phongCach || '').toUpperCase());
