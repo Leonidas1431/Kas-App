@@ -6,7 +6,7 @@ import {
 } from './store.js';
 import {
   TRANG_THAI, DANG_THEO, NGUON, LY_DO_MAT, NHU_CAU_LOAI, O_NHU_CAU, taoKhach, timTheoSdt, suaKhach, doiTrangThai, daGoi,
-  ghiChuKhach, themBaoGia, chotBaoGia, ganCongTrinh, banGiao, xongChamSoc, viecKhachHomNay,
+  ghiChuKhach, themBaoGia, suaBaoGia, chotBaoGia, ganCongTrinh, banGiao, xongChamSoc, viecKhachHomNay,
 } from './khach.js';
 import {
   leadCanGoi, conLai, choGoiDau, PHU_TRACH, NHIET_DO, THOI_DIEM, MAT_BANG, PHAN_KHUC, goiYNhietDo, nhietDo, baoDuc,
@@ -39,6 +39,9 @@ import {
   KENH, KENH_TU_DONG, LOAI_BAI, TT_BAI, MAC_DINH_BD, MODEL, caiDatBD, timBai, taoBai, suaBai, xoaBai, nhanBai, boChoGui, kenhXong, kenhLoi, coLoi,
   MODEL_ANH, dauTuan, lichTuan, choDuyet, chuaHen, loiDang, choDangTay, daDangGanDay, goiYCongTrinh, chiAIThang, hanMucAI, soVoiHan, MAC_DINH_HAN, chuDeChep, nhomViet, kiemTruocKhiViet,
 } from './dangbai.js';
+import {
+  PHAN_BG, MO_TA_PHAN, PHONG_CACH, LOAI_CT, BANG_PT, bangGiaPT, DICH_VU_PT, BANG_GIA_MAC_DINH, bangGia, donGiaGoiY, toiThieu, tinhBaoGia, phamViTuBaoGia, hetHanBG, viecBaoGiaHomNay, docSoTien, ghiChuThanhToan,
+} from './baogia.js';
 import { MAU_BIA, veBia, taiAnh, catKho, KHO_BIA, dsDichBia } from './anhbia.js';
 import {
   ANH_TOI_THIEU, ANH_TUAN_TOI_DA, MOC_NHAC, bcCua, daNop, bcCuaCongTrinh, thauDuKien, viecConCuaThau, viecNgayMai, luuBaoCao, kiemTraNop, nhacBaoCao, tinZaloBC,
@@ -1309,11 +1312,13 @@ function khachHomNay(hn) {
   // Lead tự đăng ký qua form: Thầy phụ trách, gọi trong 2 giờ làm việc; quá hạn chỉ báo Thầy (Thầy chốt 19/11).
   const lead = vaiTro === 'THAY' ? leadCanGoi(db) : [];
   const goi = goi0.filter((k) => !choGoiDau(k));
-  if (!lead.length && !goi.length && !chamSoc.length && !hoaHong.length) return '';
+  const bgHan = viecBaoGiaHomNay(db, hn);
+  if (!lead.length && !goi.length && !chamSoc.length && !hoaHong.length && !bgHan.length) return '';
   return `<h3>Khách hàng hôm nay</h3>
     ${lead.map(({ k, han, quaHan }) => theKhach(k, `<span class="${quaHan ? 'tre' : ''}"><b>Lead mới, gọi trước ${gioNgay(han)}</b> (${conLai(han)})</span> · ${esc(k.sdt)} · ${esc(k.nguon)}`)).join('')}
     ${goi.map((k) => theKhach(k, `Gọi lại${k.nhacGoi < hn ? ` <span class="tre">(hẹn ${ddmm(k.nhacGoi)})</span>` : ''} · ${esc(k.sdt || 'chưa có SĐT')}${k.soLanNhac ? ` · đã nhắc ${k.soLanNhac} lần` : ''}`)).join('')}
     ${chamSoc.map(({ k, c }) => theKhach(k, `Chăm sóc sau bán tháng ${c.thang} · hạn ${ddmm(c.han)}`)).join('')}
+    ${bgHan.map(({ k, bg, han, con }) => theKhach(k, `<span class="${con < 0 ? 'tre' : ''}">Báo giá v${bg.phienBan} ${con < 0 ? `hết hạn ${ddmm(han)}` : con === 0 ? 'hết hạn hôm nay' : `còn ${con} ngày (đến ${ddmm(han)})`}</span> · gọi chốt hoặc gửi lại bản mới`)).join('')}
     ${hoaHong.map((k) => theKhach(k, `Chưa trả hoa hồng cho ${esc(k.nguoiGioiThieu)}${k.hoaHong && k.hoaHong.soTien ? ' · ' + tien(k.hoaHong.soTien) : ''}`)).join('')}`;
 }
 
@@ -1480,13 +1485,23 @@ function manMotKhach(ma) {
     </details>
 
     <details class="cham-ds" ${kh.trangThai === 'BAO_GIA' || kh.trangThai === 'KHAO_SAT' ? 'open' : ''}><summary>Báo giá thiết kế (${(kh.baoGia || []).length} bản${bgChot ? ', khách chốt v' + bgChot.phienBan : ''})</summary>
-      ${(kh.baoGia || []).map((b) => `<div class="cham-dong" style="justify-content:space-between"><span>v${b.phienBan} · ${ddmm(b.ngay)} · <b>${tien(b.giaTri)}</b>${b.link ? ` · <a href="${esc(b.link)}" target="_blank" rel="noopener">file</a>` : ''}${b.ghiChu ? ' · ' + esc(b.ghiChu) : ''}</span>
-        ${b.khachChot ? '<span class="tag XONG">Khách chốt</span>' : `<button data-chot="${esc(b.id)}" style="min-height:36px;padding:6px 10px">Khách chốt bản này</button>`}</div>`).join('')}
-      <label class="f">Thêm bản báo giá</label>
+      ${(kh.baoGia || []).map((b) => {
+        const han = hetHanBG(b), conNgay = han ? diffDays(hn, han) : 99;
+        const tt = b.khachChot ? '<span class="tag XONG">Khách chốt</span>' : conNgay < 0 ? '<span class="tag TRE">Hết hạn</span>' : '';
+        const ctBG = b.chiTiet ? tinhBaoGia(b.chiTiet, toiThieu(db)) : null;
+        return `<div class="bg-ban">
+        <div><b>v${b.phienBan}</b> · ${ddmm(b.ngay)} · <b>${tien(b.giaTri)}</b> ${tt}</div>
+        ${ctBG ? `<div class="muted">${ctBG.phan.map((x) => x.ma === 'PT' ? `phong thủy, dịch vụ lẻ ${tienGon(x.thanhTien)}` : `${esc(x.ten.replace('Thiết kế ', ''))} ${x.dienTich} m² × ${tienGon(x.donGia)}`).join(' · ')}${ctBG.giam ? ` · giảm ${tien(ctBG.giam)}${b.chiTiet.giam && b.chiTiet.giam.nguoi ? ' (' + esc(tenNguoi(b.chiTiet.giam.nguoi)) + ' duyệt)' : ''}` : ''}</div>` : ''}
+        <div class="muted">${han ? `Hiệu lực đến ${ddmm(han)}` : ''}${b.link ? ` · <a href="${esc(b.link)}" target="_blank" rel="noopener">file báo giá</a>` : ''}${b.ghiChu ? ' · ' + esc(b.ghiChu) : ''}</div>
+        <div class="actions">${b.chiTiet ? `<button data-bg-sao="${esc(b.id)}" class="nho">Lập bản mới từ bản này</button>` : ''}${b.chiTiet ? `<button data-bg-file="${esc(b.id)}" class="nho">${b.link ? 'Tạo lại file' : 'Tạo file báo giá'}</button>` : ''}
+          ${b.khachChot ? `<button data-bg-hd="${esc(b.id)}" class="nho btn-chinh">Lập HĐ thiết kế</button>` : `<button data-chot="${esc(b.id)}" class="nho">Khách chốt bản này</button>`}</div>
+      </div>`; }).join('')}
+      <div class="actions"><button id="lapBg" class="btn-chinh">Lập báo giá theo bảng giá</button></div>
+      <details><summary class="muted">Hoặc nhập số tay (báo giá làm ngoài app)</summary>
       <input id="bgGia" type="number" inputmode="numeric" placeholder="Giá trị (đồng)">
       <input id="bgLink" placeholder="Link file báo giá trên Drive" style="margin-top:6px">
       <input id="bgGc" placeholder="Ghi chú (vd: giá đối tác, bớt 1 phòng)" style="margin-top:6px">
-      <div class="actions"><button id="luuBg">Lưu báo giá</button></div>
+      <div class="actions"><button id="luuBg">Lưu báo giá</button></div></details>
     </details>
 
     <details class="cham-ds"><summary>Người giới thiệu, hoa hồng</summary>
@@ -1569,6 +1584,11 @@ function manMotKhach(ma) {
     suaKhach(db, kh, { nhuCau: moi }, hn); bao('Đã lưu bảng yêu cầu'); ve();
   };
   v.querySelectorAll('[data-chot]').forEach((b) => { b.onclick = () => { chotBaoGia(db, kh, b.dataset.chot, hn); bao('Đã đánh dấu bản khách chốt'); ve(); }; });
+  const timBG = (id) => kh.baoGia.find((b) => b.id === id);
+  $('#lapBg').onclick = () => { const cuoi = [...kh.baoGia].reverse().find((b) => b.chiTiet); moLapBaoGia(kh, cuoi, ve); };
+  v.querySelectorAll('[data-bg-sao]').forEach((b) => { b.onclick = () => moLapBaoGia(kh, timBG(b.dataset.bgSao), ve); });
+  v.querySelectorAll('[data-bg-file]').forEach((b) => { b.onclick = () => taoFileBaoGia(kh, timBG(b.dataset.bgFile), b, ve); });
+  v.querySelectorAll('[data-bg-hd]').forEach((b) => { b.onclick = () => { taoHDTu = hdTuBaoGia(kh, timBG(b.dataset.bgHd)); location.hash = '#tao-hd'; }; });
   $('#luuBg').onclick = () => {
     const gia = Number($('#bgGia').value);
     if (!gia) return bao('Nhập giá trị báo giá');
@@ -1821,10 +1841,57 @@ function manHopDong() {
     <details class="cham-ds" ${(db.caiDat || {}).taiKhoan ? '' : 'open'}><summary>Tài khoản nhận tiền (in vào đề nghị thanh toán)</summary>
       <textarea id="taiKhoan" rows="3" placeholder="Số TK, chủ TK, ngân hàng">${esc((db.caiDat || {}).taiKhoan || '')}</textarea>
       <div class="actions"><button id="luuTk">Lưu</button></div>
-    </details>`;
+    </details>
+    ${oBangGia()}`;
   $('#luuTk').onclick = () => { datCaiDat(db, 'taiKhoan', $('#taiKhoan').value.trim()); luu(); bao('Đã lưu tài khoản'); };
+  ganBangGia();
   $('#taoHd').onclick = () => { taoHDTu = null; location.hash = '#tao-hd'; };
   $('#view').querySelectorAll('[data-loc]').forEach((b) => { b.onclick = () => { locHD = b.dataset.loc; manHopDong(); }; });
+}
+
+// Bảng giá thiết kế đ/m² (theo file Báo giá KAS 2026), Thầy/Đức sửa được. Ô trống = chưa có giá.
+function oBangGia() {
+  const b = bangGia(db);
+  const o = (l, p, m) => `<input data-bgia="${l}.${p}.${m}" type="number" inputmode="numeric" value="${b[l][p][m] ?? ''}" placeholder="–" style="min-width:0">`;
+  return `<details class="cham-ds"><summary>Bảng giá thiết kế (đ/m², chưa VAT)</summary>
+    ${Object.entries(LOAI_CT).map(([l, ten]) => `<div class="bg-phan"><b>${esc(ten)}</b>
+      ${Object.entries(PHONG_CACH).map(([p, tp]) => `<div class="muted" style="margin-top:4px">${esc(tp)}</div>
+        <div class="hai-cot">${['KT', 'NT'].map((m) => `<label class="ba-o">${m === 'KT' ? 'Kiến trúc' : 'Nội thất'}${o(l, p, m)}</label>`).join('')}</div>`).join('')}</div>`).join('')}
+    <div class="bg-phan"><b>Dịch vụ phong thủy, thiết kế lẻ</b><div class="muted">Giá niêm yết · giá đối tác</div>
+      ${Object.entries(bangGiaPT(db)).map(([ma, g]) => `<div class="muted" style="margin-top:6px">${esc(g.ten)} (đ/${esc(g.dvt)})</div>
+        <div class="hai-cot">${[0, 1].map((i) => `<input data-bgpt="${ma}.${i}" type="number" inputmode="numeric" value="${g.gia[i]}" aria-label="${i ? 'Giá đối tác' : 'Giá niêm yết'}">`).join('')}</div>`).join('')}
+    </div>
+    <label class="f">Đơn giá tối thiểu kiến trúc / nội thất (đ/m²)</label><input id="bgMin" type="number" inputmode="numeric" value="${toiThieu(db)}">
+    <div class="actions"><button id="luuBangGia">Lưu bảng giá</button></div>
+  </details>
+  <details class="cham-ds"><summary>Mẫu file báo giá, hợp đồng (Google Drive)</summary>
+    <p class="muted">Để trống thì app dùng file mẫu trong thư mục Drive "KAS App – Mẫu". Dán link nếu muốn dùng file khác. App tạo bản sao, điền sẵn rồi lưu vào thư mục của khách. Sửa mẫu thì các file tạo sau dùng bản mới.</p>
+    ${[['mauBaoGia', 'Báo giá thiết kế (Google Sheets)'], ['mauHDTK', 'HĐ thiết kế (Google Docs)'], ['mauHDTG', 'HĐ thiết kế + thi công nội thất (Google Docs)'], ['mauHDXD', 'HĐ thi công xây dựng (Google Docs)']].map(([k, t]) => `<label class="f">${t}</label><input data-mau="${k}" value="${esc((db.caiDat || {})[k] || '')}" placeholder="https://docs.google.com/…">`).join('')}
+    <div class="actions"><button id="luuMau">Lưu mẫu file</button></div>
+  </details>`;
+}
+function ganBangGia() {
+  const n = $('#luuBangGia');
+  if (!n) return;
+  $('#luuMau').onclick = () => { $('#view').querySelectorAll('[data-mau]').forEach((i) => datCaiDat(db, i.dataset.mau, i.value.trim())); luu(); bao('Đã lưu mẫu file'); };
+  n.onclick = () => {
+    const rieng = {};
+    $('#view').querySelectorAll('[data-bgia]').forEach((i) => {
+      const [l, p, m] = i.dataset.bgia.split('.');
+      const g = i.value === '' ? null : Number(i.value);
+      if (g === BANG_GIA_MAC_DINH[l][p][m]) return;
+      ((rieng[l] = rieng[l] || {})[p] = rieng[l][p] || {})[m] = g;
+    });
+    datCaiDat(db, 'bangGiaTK', JSON.stringify(rieng));
+    const pt = {};
+    $('#view').querySelectorAll('[data-bgpt]').forEach((i) => {
+      const [ma, k] = i.dataset.bgpt.split('.');
+      (pt[ma] = pt[ma] || [...DICH_VU_PT[ma].gia])[+k] = Number(i.value) || 0;
+    });
+    datCaiDat(db, 'bangGiaPT', JSON.stringify(Object.fromEntries(Object.entries(pt).filter(([ma, g]) => g[0] !== DICH_VU_PT[ma].gia[0] || g[1] !== DICH_VU_PT[ma].gia[1]))));
+    datCaiDat(db, 'donGiaToiThieu', String(Number($('#bgMin').value) || 250000));
+    luu(); bao('Đã lưu bảng giá');
+  };
 }
 
 function manTaoHD() {
@@ -1903,6 +1970,15 @@ function manTaoHD() {
   $('#tenHd').oninput = () => { tenTay = true; if (!soTay) $('#soHd').value = soHopDong($('#ngay').value, $('#tenHd').value.trim(), $('#dang').value); };
   $('#soHd').oninput = () => { soTay = true; };
   $('#themDong').onclick = () => { dotTay = true; veDot([...docDot(), [0, 'Đợt thêm']]); };
+  // Lập từ báo giá khách chốt: điền sẵn giá trị, phạm vi, phần kiến trúc, 4 buổi GSTG (theo báo giá).
+  if (tu.tuBaoGia) {
+    $('#dang').value = tu.dang || 'TK';
+    $('#gia').value = tu.giaTri || '';
+    $('#phamVi').value = tu.phamVi || 'KTNT';
+    if (tu.giaTriKT) $('#giaKT').value = tu.giaTriKT;
+    $('#gstg').value = tu.soBuoiGSTG ?? 4;
+    $('#view').insertAdjacentHTML('afterbegin', '<p class="muted">Điền sẵn từ báo giá khách chốt. Thầy kiểm lại trước khi lưu.</p>');
+  }
   capNhat();
   $('#luu').onclick = () => {
     const dang = $('#dang').value, giaTri = Number($('#gia').value) || 0, dot = docDot();
@@ -1916,6 +1992,7 @@ function manTaoHD() {
       soLanSua: dang === 'TK' || dang === 'TG' ? Number($('#sua').value) || 0 : 0, soBuoiGSTG: dang === 'TK' || dang === 'TG' ? Number($('#gstg').value) || 0 : 0,
       phamVi: $('#phamVi').value, giaTriKT: $('#phamVi').value === 'KTNT' ? Number($('#giaKT').value) || 0 : 0,
       hanKhauTru: dang === 'TK' ? $('#hanKt').value : '', tyLeKhauTru: dang === 'TK' ? Number($('#tyleKt').value) || 0 : 0,
+      tuBaoGia: tu.tuBaoGia || '',
     }, vaiTro);
     const ung = !$('#truBox').hidden && $('#tru').checked ? hdThietKeDuocTru(db, hd) : null;
     if (ung) apKhauTru(db, hd, ung, vaiTro);
@@ -1957,6 +2034,7 @@ function manMotHD(ma) {
   $('#view').innerHTML = `<h2>${esc(hd.soHD)}</h2>
     <p class="muted">${esc(DANG_HD[hd.dang])}${hd.nguyenTac ? ' · HĐ nguyên tắc' : ''} · ký ${fmtNgay(hd.ngayKy)} · <span class="tag ${tagHD[hd.trangThai]}">${esc(TT_HD[hd.trangThai])}</span></p>
     <p>${kh ? `Khách: <a href="#kh-${esc(kh.ma)}">${esc(kh.ten)}</a>` : ''}${kh && ct ? ' · ' : ''}${ct ? `Công trình: <a href="#ct-${esc(ct.ma)}">${esc(ct.ma)}</a>` : ''}${hd.linkFile ? ` · <a href="${esc(hd.linkFile)}" target="_blank" rel="noopener">File HĐ</a>` : ''}</p>
+    ${hd.dang !== 'NT' ? `<div class="actions"><button id="taoFileHd">${hd.linkFile ? 'Tạo lại file hợp đồng' : 'Tạo file hợp đồng từ mẫu'}</button></div>` : ''}
     ${hd.trangThai === 'DUNG' ? `<div class="note">Dừng ngày ${fmtNgay(hd.ngayDung)}: ${esc(hd.lyDo)}. Đã thu ${tien(th.daThu)}. Hoàn thiện thủ tục (thanh lý, đối chiếu công nợ) rồi bấm Hoàn thành.</div>` : ''}
     <div class="so-lieu">
       <div><span>Giá trị ký</span><b>${tienGon(hd.giaTri)}</b></div>
@@ -2017,6 +2095,7 @@ function manMotHD(ma) {
   const nut = (id, f) => { const x = $(id); if (x) x.onclick = f; };
   nut('#apTru', () => { apKhauTru(db, hd, ung, vaiTro); bao('Đã trừ phí thiết kế vào đợt cuối'); ve(); });
   nut('#themDot', () => moThemDot(hd));
+  nut('#taoFileHd', () => moTaoFileHD(hd, kh, ct, ve));
   nut('#themPl', () => moThemPhuLuc(hd));
   nut('#dungHd', () => moDungHD(hd));
   nut('#xongHd', () => { doiTrangThaiHD(db, hd, 'XONG', { ngay: hn }, vaiTro); bao('Hợp đồng đã hoàn thành'); ve(); });
@@ -2148,6 +2227,253 @@ function moDungHD(hd) {
 }
 
 // ---------- Thiết kế trong trang công trình: phương án gửi khách, giám sát tác giả ----------
+// ---------- Báo giá thiết kế theo bảng giá m² (Thầy chốt 21/11) ----------
+// Lập báo giá: chọn loại công trình + phong cách, app lấy đơn giá trong bảng giá (sửa tay được), nhập diện tích từng phòng
+// hoặc tổng. Giảm giá: người đang lập (Thầy hoặc Đức) là người duyệt. Dưới 250k/m² phải tick xác nhận.
+function moLapBaoGia(kh, tuBan, xong) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const nc = kh.nhuCau || {};
+  const goc = tuBan && tuBan.chiTiet ? JSON.parse(JSON.stringify(tuBan.chiTiet)) : null;
+  const loai0 = goc ? goc.loaiCT : /chung cư|căn hộ|penthouse/i.test(nc.loai || '') ? 'CC' : /biệt thự|villa|vườn/i.test(nc.loai || '') ? 'BT' : 'NP';
+  const st = goc || { loaiCT: loai0, phongCach: 'HD', goiThau: '', phan: [], giam: { kieu: 'PT', giaTri: 0, lyDo: '' } };
+  const co = (m) => st.phan.find((p) => p.ma === m);
+  if (!goc) {
+    const m2 = String(nc.dienTich || '').match(/(\d+(?:[.,]\d+)?)\s*m/i);
+    const dt = m2 ? Number(m2[1].replace(',', '.')) : '';
+    if (loai0 !== 'CC') st.phan.push({ ma: 'KT', donGia: donGiaGoiY(db, loai0, 'HD', 'KT'), dong: [{ ten: 'Tổng diện tích sàn', dt }] });
+    st.phan.push({ ma: 'NT', donGia: donGiaGoiY(db, loai0, 'HD', 'NT'), dong: [{ ten: 'Tổng diện tích sàn', dt }] });
+  }
+  const mm = toiThieu(db);
+  d.innerHTML = `<h2>Báo giá thiết kế · ${esc(kh.ten)}</h2>
+    <div class="hai-cot"><div><label class="f">Loại công trình</label><select id="bgLoai">${Object.entries(LOAI_CT).map(([k, t]) => `<option value="${k}" ${k === st.loaiCT ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div>
+      <div><label class="f">Phong cách</label><select id="bgPc">${Object.entries(PHONG_CACH).map(([k, t]) => `<option value="${k}" ${k === st.phongCach ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select></div></div>
+    <label class="f">Gói thầu (in trên báo giá)</label><input id="bgGoi" value="${esc(st.goiThau || '')}" placeholder="Tự điền theo phần đã chọn">
+    <div id="bgPhan"></div>
+    <label class="f">Giảm giá</label>
+    <div class="hai-cot"><div><select id="bgGk"><option value="PT" ${st.giam.kieu === 'PT' ? 'selected' : ''}>Theo %</option><option value="TIEN" ${st.giam.kieu === 'TIEN' ? 'selected' : ''}>Số tiền (đồng)</option></select></div>
+      <div><input id="bgGv" type="number" inputmode="decimal" value="${esc(st.giam.giaTri || '')}" placeholder="0"></div></div>
+    <input id="bgGl" value="${esc(st.giam.lyDo || '')}" placeholder="Lý do giảm (vd: khách giới thiệu, ký sớm)" style="margin-top:6px">
+    <div id="bgTong" class="the" style="margin-top:10px"></div>
+    <label class="cham-dong" id="bgDuoiBox" hidden><input type="checkbox" id="bgDuoi"> <span>${esc(tenNguoi(vaiTro))} đồng ý giá dưới mức tối thiểu ${tienGon(mm)}/m²</span></label>
+    <label class="f">Ghi chú</label><input id="bgGc2" value="" placeholder="Không bắt buộc">
+    <p class="muted">Giá chưa VAT. Hiệu lực 30 ngày, hết hạn app nhắc ở màn Hôm nay. Lưu xong bấm "Tạo file báo giá" để có file gửi khách.</p>
+    <div class="actions"><button id="bgDong">Đóng</button><button id="bgLuu" class="btn-chinh">Lưu báo giá v${kh.baoGia.length + 1}</button></div>`;
+  const doc = () => {
+    st.loaiCT = $('#bgLoai', d).value; st.phongCach = $('#bgPc', d).value; st.goiThau = $('#bgGoi', d).value.trim();
+    st.giam = { kieu: $('#bgGk', d).value, giaTri: Number($('#bgGv', d).value) || 0, lyDo: $('#bgGl', d).value.trim(), nguoi: vaiTro };
+  };
+  const vePhan = () => {
+    $('#bgPhan', d).innerHTML = Object.keys(PHAN_BG).map((m) => {
+      const p = co(m);
+      if (m === 'PT') return vePT(p);
+      const gy = donGiaGoiY(db, st.loaiCT, st.phongCach, m);
+      return `<div class="bg-phan" data-m="${m}">
+        <label class="cham-dong"><input type="checkbox" data-co="${m}" ${p ? 'checked' : ''}> <b>${esc(PHAN_BG[m])}</b></label>
+        ${p ? `<p class="muted" style="margin:0 0 4px">${esc(MO_TA_PHAN[m])}</p>
+        <label class="f">Đơn giá (đ/m²)${gy ? ` · bảng giá ${tienGon(gy)}` : ' · bảng giá chưa có, nhập tay'}</label>
+        <input data-dg="${m}" type="number" inputmode="numeric" value="${esc(p.donGia ?? '')}">
+        ${p.dong.map((x, i) => `<div class="dot-dong dt-dong"><input data-ten="${m}:${i}" value="${esc(x.ten)}" aria-label="Phòng / khu vực"><input data-dt="${m}:${i}" type="number" inputmode="decimal" value="${esc(x.dt)}" placeholder="m²" aria-label="Diện tích"><button class="xoa" type="button" data-xoa="${m}:${i}" aria-label="Xoá dòng">✕</button></div>`).join('')}
+        <div class="actions"><button type="button" class="nho" data-them="${m}">+ Thêm phòng / tầng</button></div>` : ''}
+      </div>`;
+    }).join('');
+    $('#bgPhan', d).querySelectorAll('[data-co]').forEach((c) => { c.onchange = () => {
+      const m = c.dataset.co;
+      if (c.checked && m === 'PT') st.phan.push({ ma: 'PT', bang: 'NY', dong: [] });
+      else if (c.checked) st.phan.push({ ma: m, donGia: donGiaGoiY(db, st.loaiCT, st.phongCach, m), dong: [{ ten: 'Tổng diện tích sàn', dt: (st.phan[0] && st.phan[0].dong.length === 1 ? st.phan[0].dong[0].dt : '') }] });
+      else st.phan = st.phan.filter((p) => p.ma !== m);
+      st.phan.sort((a, b) => Object.keys(PHAN_BG).indexOf(a.ma) - Object.keys(PHAN_BG).indexOf(b.ma));
+      vePhan(); tinh();
+    }; });
+    $('#bgPhan', d).querySelectorAll('[data-dg]').forEach((i) => { i.oninput = () => { co(i.dataset.dg).donGia = i.value === '' ? null : Number(i.value); tinh(); }; });
+    $('#bgPhan', d).querySelectorAll('[data-ten]').forEach((i) => { i.oninput = () => { const [m, k] = i.dataset.ten.split(':'); co(m).dong[k].ten = i.value; }; });
+    $('#bgPhan', d).querySelectorAll('[data-dt]').forEach((i) => { i.oninput = () => { const [m, k] = i.dataset.dt.split(':'); co(m).dong[k].dt = i.value === '' ? '' : Number(i.value); tinh(); }; });
+    $('#bgPhan', d).querySelectorAll('[data-xoa]').forEach((b) => { b.onclick = () => { const [m, k] = b.dataset.xoa.split(':'); co(m).dong.splice(+k, 1); if (!co(m).dong.length) co(m).dong.push({ ten: '', dt: '' }); vePhan(); tinh(); }; });
+    $('#bgPhan', d).querySelectorAll('[data-them]').forEach((b) => { b.onclick = () => {
+      const p = co(b.dataset.them);
+      if (p.dong.length === 1 && p.dong[0].ten === 'Tổng diện tích sàn' && !p.dong[0].dt) p.dong[0].ten = '';
+      p.dong.push({ ten: '', dt: '' }); vePhan(); tinh();
+      const o = $(`[data-ten="${b.dataset.them}:${p.dong.length - 1}"]`, d); if (o) o.focus();
+    }; });
+    // Phong thủy: tick dịch vụ, nhập số lượng; đổi bảng giá niêm yết / đối tác thì cập nhật giá các dòng chưa sửa tay.
+    const pt = co('PT');
+    if (pt) {
+      const gia = bangGiaPT(db);
+      const giaBang = (ma, bang) => gia[ma].gia[bang === 'DT' ? 1 : 0];
+      $('#ptBang', d).onchange = () => {
+        const cu = pt.bang; pt.bang = $('#ptBang', d).value;
+        pt.dong.forEach((x) => { if (gia[x.ma] && x.donGia === giaBang(x.ma, cu)) x.donGia = giaBang(x.ma, pt.bang); });
+        vePhan(); tinh();
+      };
+      $('#bgPhan', d).querySelectorAll('[data-pt]').forEach((c) => { c.onchange = () => {
+        const ma = c.dataset.pt;
+        if (c.checked) pt.dong.push({ ma, ten: gia[ma].ten, dvt: gia[ma].dvt, dt: gia[ma].dvt === 'm²' ? (Number((st.phan.find((x) => x.ma !== 'PT') || { dong: [{}] }).dong[0].dt) || '') : 1, donGia: giaBang(ma, pt.bang) });
+        else pt.dong = pt.dong.filter((x) => x.ma !== ma);
+        pt.dong.sort((a, b) => Object.keys(gia).indexOf(a.ma) - Object.keys(gia).indexOf(b.ma));
+        vePhan(); tinh();
+      }; });
+      $('#bgPhan', d).querySelectorAll('[data-pt-sl]').forEach((i) => { i.oninput = () => { pt.dong.find((x) => x.ma === i.dataset.ptSl).dt = i.value === '' ? '' : Number(i.value); tinh(); }; });
+      $('#bgPhan', d).querySelectorAll('[data-pt-gia]').forEach((i) => { i.oninput = () => { pt.dong.find((x) => x.ma === i.dataset.ptGia).donGia = i.value === '' ? '' : Number(i.value); tinh(); }; });
+    }
+  };
+  const vePT = (p) => {
+    const gia = bangGiaPT(db);
+    return `<div class="bg-phan" data-m="PT">
+      <label class="cham-dong"><input type="checkbox" data-co="PT" ${p ? 'checked' : ''}> <b>${esc(PHAN_BG.PT)}</b></label>
+      ${p ? `<label class="f">Bảng giá</label><select id="ptBang">${Object.entries(BANG_PT).map(([k, t]) => `<option value="${k}" ${k === p.bang ? 'selected' : ''}>${t}</option>`).join('')}</select>
+      ${Object.entries(gia).map(([ma, g]) => { const x = p.dong.find((y) => y.ma === ma); return `<div class="pt-dong">
+        <label class="cham-dong"><input type="checkbox" data-pt="${ma}" ${x ? 'checked' : ''}> <span>${esc(g.ten)} <span class="muted">· ${tienGon(g.gia[p.bang === 'DT' ? 1 : 0])}/${esc(g.dvt)}</span></span></label>
+        ${x ? `<div class="hai-cot"><div><label class="f">Số lượng (${esc(g.dvt)})</label><input data-pt-sl="${ma}" type="number" inputmode="decimal" value="${esc(x.dt)}"></div><div><label class="f">Đơn giá</label><input data-pt-gia="${ma}" type="number" inputmode="numeric" value="${esc(x.donGia)}"></div></div>` : ''}
+      </div>`; }).join('')}` : ''}
+    </div>`;
+  };
+  let kq = null;
+  const tinh = () => {
+    doc();
+    kq = tinhBaoGia(st, mm);
+    $('#bgTong', d).innerHTML = kq.phan.length ? `${kq.phan.map((p) => p.ma === 'PT'
+      ? p.dong.map((x) => `<div class="cham-dong" style="justify-content:space-between"><span>${esc(x.ten.replace(/ \(.*\)$/, ''))}: ${x.dt} ${esc(x.dvt || '')} × ${tienGon(x.donGia)}</span><b>${tien(x.thanhTien)}</b></div>`).join('')
+      : `<div class="cham-dong" style="justify-content:space-between"><span>${esc(p.ten)}: ${p.dienTich} m² × ${tienGon(p.donGia)}</span><b>${tien(p.thanhTien)}</b></div>`).join('')}
+      ${kq.giam ? `<div class="cham-dong" style="justify-content:space-between"><span>Giảm giá${st.giam.kieu === 'PT' ? ' ' + st.giam.giaTri + '%' : ''}</span><b>− ${tien(kq.giam)}</b></div>` : ''}
+      <div class="cham-dong" style="justify-content:space-between"><span><b>Tổng (chưa VAT)</b></span><b>${tien(kq.tong)}</b></div>
+      <div class="muted">${esc(docSoTien(kq.tong))}</div>
+      ${kq.canhBao.map((c) => `<div class="tre">⚠ ${esc(c)}</div>`).join('')}` : '<span class="muted">Chọn ít nhất 1 phần và nhập diện tích</span>';
+    const duoi = kq.canhBao.some((c) => c.includes('tối thiểu'));
+    $('#bgDuoiBox', d).hidden = !duoi;
+    const ten = kq.phan.filter((p) => p.ma !== 'PT').map((p) => p.ma === 'KT' ? 'kiến trúc' : 'nội thất');
+    const coPT = kq.phan.some((p) => p.ma === 'PT');
+    $('#bgGoi', d).placeholder = (ten.length ? 'Thiết kế ' + ten.join(' và ') + ' ' + (st.loaiCT === 'CC' ? 'căn hộ' : st.loaiCT === 'NP' || st.loaiCT === 'BT' ? 'nhà ở' : 'công trình') : '') + (coPT ? (ten.length ? ', ' : '') + 'tư vấn phong thủy' : '');
+  };
+  // Đổi loại / phong cách: cập nhật đơn giá theo bảng giá (chỉ phần chưa sửa tay so với bảng giá cũ).
+  const doiLoai = () => {
+    const cu = { loaiCT: st.loaiCT, phongCach: st.phongCach };
+    doc();
+    st.phan.forEach((p) => { if (p.donGia == null || p.donGia === donGiaGoiY(db, cu.loaiCT, cu.phongCach, p.ma)) p.donGia = donGiaGoiY(db, st.loaiCT, st.phongCach, p.ma); });
+    vePhan(); tinh();
+  };
+  $('#bgLoai', d).onchange = doiLoai; $('#bgPc', d).onchange = doiLoai;
+  ['#bgGk', '#bgGv', '#bgGl'].forEach((id) => { $(id, d).oninput = tinh; $(id, d).onchange = tinh; });
+  vePhan(); tinh();
+  d.showModal();
+  $('#bgDong', d).onclick = () => d.close();
+  $('#bgLuu', d).onclick = () => {
+    tinh();
+    if (!kq.phan.length || !kq.tong) return bao('Chưa có diện tích hoặc đơn giá');
+    if (kq.canhBao.some((c) => c.includes('chưa có đơn giá'))) return bao('Còn phần chưa có đơn giá');
+    if (!$('#bgDuoiBox', d).hidden && !$('#bgDuoi', d).checked) return bao('Giá dưới mức tối thiểu: tick xác nhận trước khi lưu');
+    if (kq.giam && !st.giam.lyDo) return bao('Ghi lý do giảm giá');
+    const chiTiet = { ...st, goiThau: st.goiThau || $('#bgGoi', d).placeholder, giam: kq.giam ? st.giam : { kieu: 'PT', giaTri: 0, lyDo: '' }, giaTriKT: kq.giaTriKT, duoiToiThieu: !$('#bgDuoiBox', d).hidden };
+    chiTiet.phan = chiTiet.phan.map((p) => ({ ...p, dong: p.dong.filter((x) => Number(x.dt) > 0) })).filter((p) => p.dong.length);
+    const bg = themBaoGia(db, kh, { giaTri: kq.tong, ghiChu: $('#bgGc2', d).value.trim(), chiTiet }, vaiTro, homNay());
+    luu(); d.close(); bao(`Đã lưu báo giá v${bg.phienBan}: ${tien(kq.tong)}`); xong();
+  };
+}
+
+const so = (n) => (Number(n) || 0).toLocaleString('vi-VN');
+const moTaFile = (p) => p.ma === 'PT' ? 'Tư vấn phong thủy và các hạng mục thiết kế lẻ' : '- ' + MO_TA_PHAN[p.ma].split(', ').join('\n- ');
+const tenDongFile = (x) => x.dvt ? `${x.ten} (${x.dvt})` : x.ten;
+// Số liệu báo giá gửi máy chủ điền vào file mẫu Sheets.
+function duLieuFileBG(kh, bg) {
+  const ct = bg.chiTiet;
+  const kq = tinhBaoGia(ct, toiThieu(db));
+  return {
+    maKhach: kh.ma, idBaoGia: bg.id, tenFile: `Báo giá thiết kế v${bg.phienBan} - ${kh.ten} - ${ddmm(bg.ngay)}`,
+    ten: kh.ten, sdt: kh.sdt || '', diaChi: (kh.nhuCau || {}).diaDiem || kh.diaChi || '', goiThau: ct.goiThau || '', phongCach: PHONG_CACH[ct.phongCach] || '',
+    ngay: bg.ngay, hetHan: hetHanBG(bg),
+    phan: kq.phan.map((p) => ({ ten: p.ten, moTa: moTaFile(p), donGia: p.donGia, dong: p.dong.map((x) => ({ ten: tenDongFile(x), dt: x.dt, donGia: x.donGia })) })),
+    giam: kq.giam ? { soTien: kq.giam, lyDo: (ct.giam || {}).lyDo || '' } : null,
+    tong: kq.tong, ghiChuTT: ghiChuThanhToan(kq.tong),
+  };
+}
+
+// Tạo file HĐ (Google Docs) từ mẫu: HĐ thiết kế (TK), HĐ thiết kế + thi công nội thất (TG), HĐ thi công xây dựng (XD, mẫu chờ Thầy duyệt).
+function moTaoFileHD(hd, kh, ct, xong) {
+  const d = $('#sheet');
+  if (d.open) d.close();
+  const a = hd.benA || {};
+  const nc = (kh && kh.nhuCau) || {};
+  const bg = kh && hd.tuBaoGia ? (kh.baoGia || []).find((b) => b.id === hd.tuBaoGia) : null;
+  const noiDung0 = a.noiDung || (bg && bg.chiTiet && bg.chiTiet.goiThau ? bg.chiTiet.goiThau.replace(/^Thiết kế/, 'thiết kế') : 'thiết kế ' + (PHAM_VI_TK[hd.phamVi] || 'nội thất').toLowerCase());
+  const o = (id, nhan, gt, ph = '') => `<label class="f">${nhan}</label><input id="${id}" value="${esc(gt || '')}" placeholder="${esc(ph)}">`;
+  d.innerHTML = `<h2>Tạo file ${esc(hd.soHD)}</h2>
+    <p class="muted">Thông tin bên A in vào hợp đồng. Ô nào để trống thì file để dấu chấm, Thầy điền tay.</p>
+    ${o('aTen', 'Bên A (đại diện)', a.ten || (kh ? kh.ten.toUpperCase() : ''))}
+    <div class="hai-cot"><div>${o('aCccd', 'Số CCCD', a.cccd)}</div><div>${o('aSdt', 'Điện thoại', a.sdt || (kh && kh.sdt))}</div></div>
+    ${hd.dang !== 'TK' ? `<div class="hai-cot"><div>${o('aNgayCap', 'Ngày cấp', a.ngayCap, 'dd/mm/yyyy')}</div><div>${o('aNoiCap', 'Nơi cấp', a.noiCap || 'Cục Cảnh sát QLHC về TTXH')}</div></div>` : ''}
+    ${o('aDiaChi', 'Địa chỉ bên A', a.diaChi || (kh && kh.diaChi))}
+    ${hd.dang === 'TK' ? o('aEmail', 'Email', a.email) : ''}
+    ${o('aDiaChiCT', 'Địa chỉ công trình', a.diaChiCT || nc.diaDiem)}
+    ${hd.dang === 'TK' ? o('aNoiDung', 'Bên A giao cho Bên B…', noiDung0) : ''}
+    <div class="actions"><button id="fDong">Đóng</button><button id="fTao" class="btn-chinh">Tạo file</button></div>`;
+  d.showModal();
+  $('#fDong', d).onclick = () => d.close();
+  $('#fTao', d).onclick = async () => {
+    const v = (id) => { const x = $('#' + id, d); return x ? x.value.trim() : ''; };
+    const benA = { ten: v('aTen'), cccd: v('aCccd'), sdt: v('aSdt'), ngayCap: v('aNgayCap'), noiCap: v('aNoiCap'), diaChi: v('aDiaChi'), email: v('aEmail'), diaChiCT: v('aDiaChiCT'), noiDung: v('aNoiDung') };
+    suaHopDong(db, hd, { benA });
+    luu();
+    if (!ketNoi()) return bao('Bản thử không tạo được file. Kết nối máy chủ trước.');
+    const nut = $('#fTao', d); nut.disabled = true; nut.textContent = 'Đang tạo file…';
+    try {
+      await chayDongBo();
+      const r = await goi('taoFileHopDong', duLieuFileHD(hd, kh, benA, bg));
+      suaHopDong(db, hd, { linkFile: r.link });
+      luu(); d.close(); bao('Đã tạo file hợp đồng'); xong();
+      window.open(r.link, '_blank', 'noopener');
+    } catch (e) { bao(e.message); nut.disabled = false; nut.textContent = 'Tạo file'; }
+  };
+}
+
+const CHU_SO = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín', 'mười'];
+function duLieuFileHD(hd, kh, a, bg) {
+  const [nam, thang, ngay] = String(hd.ngayKy || '').split('-');
+  const g = Number(hd.giaTri) || 0;
+  const soPA = (Number(hd.soLanSua) || 0) + 1;
+  const thay = {
+    soHD: hd.soHD, ngay: ngay || '', thang: thang || '', nam: nam || '', benA: a.ten, cccd: a.cccd, ngayCap: a.ngayCap, noiCap: a.noiCap, diaChi: a.diaChi, sdt: a.sdt, email: a.email,
+    diaChiCT: a.diaChiCT, noiDung: a.noiDung, giaTri: so(g), bangChu: docSoTien(g),
+    soPA: hd.dang === 'TK' ? String(soPA) : String(soPA).padStart(2, '0'), lanPhi: String(soPA + 1),
+    gstg: `${hd.soBuoiGSTG || 0} (${CHU_SO[hd.soBuoiGSTG] || ''})`,
+  };
+  const tienDot = (d) => Math.round((g * (Number(d.tyLe) || 0)) / 100);
+  const du = { maHD: hd.ma, thay };
+  // HĐ thiết kế + thi công nội thất: các đợt thu trong file để Thầy điền tay theo từng công trình (Thầy chốt 21/11).
+  if (hd.dang === 'TG') return du;
+  du.dot = (hd.dot || []).map((d) => `Đợt ${d.so}: Bên A thanh toán cho Bên B ${d.tyLe}% giá trị hợp đồng, tương đương ${so(tienDot(d))} đồng (bằng chữ: ${docSoTien(tienDot(d)).toLowerCase()}). Thời điểm: ${d.ten}.`);
+  if (hd.dang !== 'TK') return du;
+  const kq = bg && bg.chiTiet ? tinhBaoGia(bg.chiTiet, toiThieu(db)) : null;
+  du.bang = kq && kq.tong === g ? {
+    phan: kq.phan.map((p) => ({ ten: p.ten, moTa: moTaFile(p), dong: p.dong.map((x) => ({ ten: tenDongFile(x), dt: so(x.dt), donGia: so(x.donGia), thanhTien: so(x.thanhTien) })) })),
+    giam: kq.giam ? { soTien: so(kq.giam), lyDo: (bg.chiTiet.giam || {}).lyDo || '' } : null,
+  } : { phan: [{ ten: 'Thiết kế ' + (PHAM_VI_TK[hd.phamVi] || 'nội thất').toLowerCase(), moTa: '', dong: [{ ten: '', dt: '', donGia: '', thanhTien: so(g) }] }] };
+  thay.tongDT = kq && kq.tong === g ? so(kq.phan.reduce((s, p) => s + p.dienTich, 0)) : '';
+  thay.tong = so(g);
+  return du;
+}
+
+// Dữ liệu điền sẵn màn Thêm hợp đồng từ báo giá khách chốt.
+function hdTuBaoGia(kh, bg) {
+  const ct = bg.chiTiet;
+  const kq = ct ? tinhBaoGia(ct, toiThieu(db)) : null;
+  return {
+    maKhach: kh.ma, maCongTrinh: kh.maCongTrinh || '', dang: 'TK', giaTri: bg.giaTri,
+    phamVi: kq ? phamViTuBaoGia(kq) : 'KTNT', giaTriKT: kq ? kq.giaTriKT : '', soBuoiGSTG: 4, tuBaoGia: bg.id,
+  };
+}
+
+// Tạo file báo giá (Google Sheets, bản sao từ mẫu của Thầy) trong thư mục Drive của khách.
+async function taoFileBaoGia(kh, bg, nut, xong) {
+  if (!ketNoi()) return bao('Bản thử không tạo được file. Kết nối máy chủ trước.');
+  if (db.outbox.length) await chayDongBo();
+  nut.disabled = true; const chu = nut.textContent; nut.textContent = 'Đang tạo file…';
+  try {
+    const r = await goi('taoFileBaoGia', duLieuFileBG(kh, bg));
+    suaBaoGia(db, kh, bg.id, { link: r.link }, homNay());
+    luu(); bao('Đã tạo file báo giá'); xong();
+    window.open(r.link, '_blank', 'noopener');
+  } catch (e) { bao(e.message); nut.disabled = false; nut.textContent = chu; }
+}
+
 // ---------- Thu chi, trả thầu (văn phòng; giám sát chỉ xác nhận khối lượng) ----------
 let locThang = '';
 let locMaTC = '';

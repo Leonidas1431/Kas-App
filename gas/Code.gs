@@ -26,7 +26,7 @@ const TAB = {
   LichSu: ['id', 'luc', 'ma', 'viec', 'tenViec', 'nguoi', 'loai', 'cu', 'moi', 'nguyenNhan', 'ghiChu', 'congKhai'],
   Anh: ['id', 'ma', 'viec', 'luc', 'tenFile', 'fileId', 'nguoi', 'loai'],
   HopDong: ['ma', 'soHD', 'dang', 'nguyenTac', 'tenHD', 'maKhach', 'maCongTrinh', 'ngayKy', 'giaTri', 'dot', 'phuLuc', 'soLanSua',
-    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT', 'chiDuKien', 'doiLuc'],
+    'soBuoiGSTG', 'khauTru', 'truTK', 'linkFile', 'trangThai', 'lyDo', 'ngayDung', 'nguoiTao', 'taoLuc', 'capNhatLuc', 'phamVi', 'giaTriKT', 'chiDuKien', 'doiLuc', 'tuBaoGia', 'benA'],
   PhuongAn: ['id', 'maCongTrinh', 'hangMuc', 'lan', 'viec', 'ngayGui', 'link', 'ghiChu', 'trangThai', 'ngayPhanHoi', 'yKien',
     'duyetQua', 'duyetLuc', 'phi', 'nguoiGui', 'capNhatLuc'],
   GSTG: ['id', 'maCongTrinh', 'lan', 'ten', 'viec', 'ngay', 'xong', 'ghiChu', 'nhacGiamSat', 'capNhatLuc'],
@@ -77,7 +77,7 @@ const TAB = {
   NhatKy: ['luc', 'email', 'ten', 'vaiTro', 'cach', 'thaoTac', 'ma', 'chiTiet'],
 };
 // Cột lưu dạng JSON trong 1 ô
-const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet', 'buoc', 'phongThuy', 'doiLuc'];
+const JSON_COT = ['lich', 'diSau', 'goc', 'thucTe', 'hoaHong', 'nhuCau', 'baoGia', 'chamSoc', 'dot', 'phuLuc', 'khauTru', 'truTK', 'klXacNhan', 'checklist', 'tonTai', 'kenh', 'baiViet', 'dsAnh', 'ketQua', 'canva', 'canvaWeb', 'webThe', 'thauLam', 'viecAnhHuong', 'tomTat', 'hangMucBH', 'thietBi', 'giaoNhan', 'nhacHet', 'buoc', 'phongThuy', 'doiLuc', 'benA'];
 // Thầy và Đức toàn quyền. KHA (giám sát) và TAM (quyền tạm, có hạn ngày) chỉ thấy công trình được giao, không thấy tiền, không thấy sổ khách.
 const VAN_PHONG = ['THAY', 'DUC'];
 const VAI_TRO = ['THAY', 'DUC', 'KHA', 'TAM'];
@@ -1410,6 +1410,44 @@ Object.assign(HANH_DONG, {
   },
 
   // AI tìm trong tài liệu các đoạn liên quan chủ đề. AI chỉ được chép nguyên văn; đoạn nào không có trong tài liệu thì máy chủ bỏ.
+  // Báo giá thiết kế: bản sao file mẫu Sheets của Thầy (caiDat.mauBaoGia), điền khách + bảng diện tích, xuất thêm PDF.
+  // App tính sẵn số liệu (baogia.js) rồi gửi lên; máy chủ chỉ điền vào file. Lưu vào thư mục Drive của khách.
+  taoFileBaoGia: (n, data) => {
+    canVanPhong(n);
+    const kh = docBang('Khach').find((r) => r.ma === data.maKhach);
+    if (!kh) throw new Error('Không có khách ' + data.maKhach);
+    const mau = timMau('mauBaoGia');
+    if (!mau) throw new Error('Chưa có file mẫu báo giá. Vào Hợp đồng → Mẫu file, dán link file mẫu.');
+    if (DriveApp.getFileById(mau).getMimeType() !== MimeType.GOOGLE_SHEETS) throw new Error('File mẫu báo giá đang là file Excel. Mở file trên Drive, chọn Tệp → Lưu dưới dạng Google Trang tính, rồi dán link bản mới.');
+    const thuMuc = thuMucKhach(kh);
+    const f = DriveApp.getFileById(mau).makeCopy(String(data.tenFile || 'Báo giá thiết kế').slice(0, 150), thuMuc);
+    const ss = SpreadsheetApp.openById(f.getId());
+    const sh = dienBaoGia(ss, data);
+    const pdf = xuatPdfSheet(ss, sh, thuMuc, f.getName());
+    return { link: f.getUrl(), pdf: pdf ? pdf.getUrl() : '' };
+  },
+
+  // Hợp đồng: bản sao file mẫu Docs (TK: caiDat.mauHDTK; TG nội thất: caiDat.mauHDTG), thay các chỗ {{...}}.
+  taoFileHopDong: (n, data) => {
+    canVanPhong(n);
+    const hd = docBang('HopDong').find((r) => r.ma === data.maHD);
+    if (!hd) throw new Error('Không có hợp đồng ' + data.maHD + ' (đợi đồng bộ xong rồi thử lại)');
+    const khoa = { TK: 'mauHDTK', TG: 'mauHDTG', XD: 'mauHDXD' }[hd.dang];
+    if (!khoa) throw new Error('Chưa có mẫu hợp đồng cho dạng ' + hd.dang + '.');
+    const mau = timMau(khoa);
+    if (!mau) throw new Error('Chưa có file mẫu hợp đồng. Vào Hợp đồng → Mẫu file, dán link file mẫu.');
+    const kh = hd.maKhach ? docBang('Khach').find((r) => r.ma === hd.maKhach) : null;
+    const ct = hd.maCongTrinh ? docBang('CongTrinh').find((r) => r.ma === hd.maCongTrinh) : null;
+    const thuMuc = kh ? thuMucKhach(kh) : ct && ct.thuMucDrive ? DriveApp.getFolderById(ct.thuMucDrive) : timHoacTao(DriveApp.getRootFolder(), 'KAS App – Hợp đồng');
+    const ten = ('Hợp đồng ' + String(hd.soHD).replace(/\//g, '-')).slice(0, 150);
+    const f = DriveApp.getFileById(mau).makeCopy(ten, thuMuc);
+    const doc = DocumentApp.openById(f.getId());
+    dienHopDong(doc.getBody(), data);
+    doc.saveAndClose();
+    capNhatDong('HopDong', (r) => r.ma === hd.ma, { linkFile: f.getUrl() }, true);
+    return { link: f.getUrl() };
+  },
+
   // Dán đoạn chat Zalo/Messenger hoặc lời nói: AI tách thông tin khách, Thầy xem lại rồi mới lưu. Không đoán thông tin không có.
   tachKhach: (n, data) => {
     canVanPhong(n);
@@ -2021,6 +2059,163 @@ function thuMucAnh(ma) {
 function timHoacTao(cha, ten) {
   const it = cha.getFoldersByName(ten);
   return it.hasNext() ? it.next() : cha.createFolder(ten);
+}
+
+// ---------- Báo giá, hợp đồng: điền file mẫu ----------
+// File mẫu: link Thầy dán ở màn Hợp đồng (caiDat), không có thì tìm theo tên trong thư mục Drive "KAS App – Mẫu".
+const TEN_MAU = { mauBaoGia: 'KAS Mau Bao gia thiet ke', mauHDTK: 'KAS Mau HD thiet ke', mauHDTG: 'KAS Mau HD TK-TC noi that', mauHDXD: 'KAS Mau HD thi cong xay dung' };
+function timMau(khoa) {
+  const id = layIdThuMuc(caiDatMay()[khoa]);
+  if (id) return id;
+  const tm = DriveApp.getRootFolder().getFoldersByName('KAS App – Mẫu');
+  if (tm.hasNext()) { const it = tm.next().getFilesByName(TEN_MAU[khoa]); while (it.hasNext()) { const f = it.next(); if (!f.isTrashed()) return f.getId(); } }
+  return '';
+}
+function thuMucKhach(kh) {
+  if (kh.thuMucDrive) return DriveApp.getFolderById(kh.thuMucDrive);
+  const g = timHoacTao(timHoacTao(DriveApp.getRootFolder(), 'KAS App – Khách'), kh.ma);
+  capNhatDong('Khach', (r) => r.ma === kh.ma, { thuMucDrive: g.getId() }, true);
+  return g;
+}
+
+const ngayVN = (s) => { const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : ''; };
+
+// Ô bên phải ô có chữ `chu` (vd "Ngày báo giá:"). Trả null nếu mẫu không có.
+function oCanh(sh, chu, dx, dy) {
+  const o = sh.createTextFinder(chu).findNext();
+  return o ? sh.getRange(o.getRow() + (dy || 0), o.getColumn() + (dx || 0)) : null;
+}
+
+/**
+ * Điền sheet "Báo giá thiết kế" theo mẫu của Thầy: giữ dòng tiêu đề, khung chữ, logo, ghi chú.
+ * Khối từ dòng "PHẦN THIẾT KẾ KIẾN TRÚC" tới trước dòng "TỔNG CỘNG" được viết lại theo các phần có trong báo giá.
+ * data.phan: [{ ten, moTa, donGia, dong: [{ ten, dt, donGia? }] }] (dòng có donGia riêng thì dùng); data.giam: { soTien, lyDo }.
+ */
+function dienBaoGia(ss, data) {
+  const sh = ss.getSheetByName('Báo giá thiết kế') || ss.getSheets()[0];
+  ss.getSheets().forEach((s) => { if (s.getSheetId() !== sh.getSheetId() && s.getName() !== 'BG Thiết kế Chung') ss.deleteSheet(s); });
+  ss.setActiveSheet(sh); ss.moveActiveSheet(1);
+  const dat = (o, v) => { if (o) o.setValue(v); };
+  dat(oCanh(sh, 'Ngày báo giá:', 1), ngayVN(data.ngay));
+  dat(oCanh(sh, 'Có giá trị đến:', 1), ngayVN(data.hetHan));
+  dat(oCanh(sh, 'KHÁCH HÀNG', 0, 1), data.ten || '');
+  dat(oCanh(sh, 'KHÁCH HÀNG', 0, 2), data.sdt || '');
+  dat(oCanh(sh, 'KHÁCH HÀNG', 0, 3), 'Add: ' + (data.diaChi || ''));
+  dat(oCanh(sh, 'GÓI THẦU', 0, 1), data.goiThau || '');
+  dat(oCanh(sh, 'GÓI THẦU', 0, 2), 'Phong cách ' + String(data.phongCach || '').toUpperCase());
+
+  const dau = sh.createTextFinder('PHẦN THIẾT KẾ KIẾN TRÚC').findNext();
+  const tong = sh.createTextFinder('TỔNG CỘNG').findNext();
+  if (!dau || !tong || tong.getRow() <= dau.getRow() + 1) throw new Error('File mẫu báo giá thiếu dòng "PHẦN THIẾT KẾ KIẾN TRÚC" hoặc "TỔNG CỘNG"');
+  const S = dau.getRow(), C = 6;
+  const co = tong.getRow() - S;
+  const phan = data.phan || [];
+  const giam = data.giam && Number(data.giam.soTien) > 0 ? data.giam : null;
+  const N = phan.reduce((s, p) => s + 1 + Math.max(1, (p.dong || []).length), 0) + (giam ? 1 : 0);
+  // Giữ định dạng dòng tiêu đề phần và dòng phòng của mẫu.
+  const tam = ss.insertSheet('_tam');
+  sh.getRange(S, 1, 2, C).copyTo(tam.getRange(1, 1));
+  const caoDau = sh.getRowHeight(S);
+  sh.getRange(S, 1, co, C).breakApart();
+  if (N > co) sh.insertRowsAfter(S + 1, N - co);
+  else if (N < co) sh.deleteRows(S + 1, co - N);
+  sh.getRange(S, 1, N, C).clearContent();
+  const dinhDang = (r, mau) => tam.getRange(mau, 1, 1, C).copyTo(sh.getRange(r, 1, 1, C), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  let r = S;
+  phan.forEach((p) => {
+    dinhDang(r, 1); sh.setRowHeight(r, caoDau);
+    sh.getRange(r, 1).setValue('PHẦN ' + String(p.ten || '').toUpperCase());
+    r++;
+    const dong = (p.dong && p.dong.length) ? p.dong : [{ ten: '', dt: 0 }];
+    const r0 = r;
+    dong.forEach((x) => {
+      dinhDang(r, 2);
+      const gia = x.donGia != null && x.donGia !== '' ? Number(x.donGia) : Number(p.donGia);
+      sh.getRange(r, 2, 1, 4).setValues([[x.ten || '', Number(x.dt) || 0, gia || 0, '=C' + r + '*D' + r]]);
+      r++;
+    });
+    sh.getRange(r0, 1).setValue(p.moTa || '').setWrap(true).setVerticalAlignment('middle');
+    if (dong.length > 1) sh.getRange(r0, 1, dong.length, 1).merge();
+  });
+  if (giam) {
+    dinhDang(r, 2);
+    sh.getRange(r, 1).setValue('Giảm giá' + (giam.lyDo ? ': ' + giam.lyDo : ''));
+    sh.getRange(r, 5).setValue(-Number(giam.soTien));
+    r++;
+  }
+  const rT = S + N;
+  sh.getRange(rT, 3).setValue('');
+  sh.getRange(rT, 5).setFormula('=SUM(E' + S + ':E' + (rT - 1) + ')');
+  ss.deleteSheet(tam);
+  // Ghi chú: dòng thanh toán theo giá trị (70/30 hoặc 50/30/20).
+  const lu = sh.createTextFinder('- Thanh toán:').findNext();
+  if (lu && data.ghiChuTT) lu.setValue(String(lu.getValue()).replace(/- Thanh toán:[^\n]*/, '- ' + data.ghiChuTT));
+  SpreadsheetApp.flush();
+  return sh;
+}
+
+function xuatPdfSheet(ss, sh, thuMuc, ten) {
+  try {
+    const url = 'https://docs.google.com/spreadsheets/d/' + ss.getId() + '/export?format=pdf&gid=' + sh.getSheetId()
+      + '&size=A4&portrait=true&fitw=true&gridlines=false&printtitle=false&sheetnames=false&pagenum=false&horizontal_alignment=CENTER';
+    const r = UrlFetchApp.fetch(url, { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) return null;
+    return thuMuc.createFile(r.getBlob().setName(ten + '.pdf'));
+  } catch (e) { return null; }
+}
+
+const thoatThay = (v) => String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/\$/g, '\\$');
+
+/**
+ * Điền HĐ Docs. data.thay: { khoá: chữ } thay cho {{khoá}}. data.dot: [chữ] → mỗi đợt 1 đoạn thay đoạn {{dot}}.
+ * data.bang: { phan: [{ ten, moTa, dong: [{ ten, dt, donGia, thanhTien }] }], giam: { soTien, lyDo } } (đã định dạng chữ).
+ */
+function dienHopDong(body, data) {
+  const b = data.bang;
+  if (b) {
+    const tim = body.findText('\\{\\{phan\\}\\}');
+    if (tim) {
+      let el = tim.getElement();
+      while (el && el.getType() !== DocumentApp.ElementType.TABLE_ROW) el = el.getParent();
+      const rowPhan = el, bang = rowPhan.getParentTable();
+      const iPhan = bang.getChildIndex(rowPhan);
+      const rowDong = bang.getRow(iPhan + 1);
+      let i = iPhan + 2;
+      const chen = (mau, thay) => {
+        const row = bang.insertTableRow(i++, mau.copy());
+        Object.keys(thay).forEach((k) => row.replaceText('\\{\\{' + k + '\\}\\}', thoatThay(thay[k])));
+        return row;
+      };
+      (b.phan || []).forEach((p) => {
+        chen(rowPhan, { phan: 'PHẦN ' + String(p.ten || '').toUpperCase() });
+        (p.dong || []).forEach((x, j) => chen(rowDong, { moTa: j ? '' : p.moTa, phong: x.ten, dt: x.dt, donGia: x.donGia, thanhTien: x.thanhTien, ghiChu: '' }));
+      });
+      if (b.giam) {
+        const row = chen(rowPhan, { phan: 'Giảm giá' + (b.giam.lyDo ? ': ' + b.giam.lyDo : '') });
+        if (row.getNumCells() >= 5) row.getCell(4).setText('-' + b.giam.soTien);
+      }
+      bang.removeRow(iPhan + 1);
+      bang.removeRow(iPhan);
+    }
+  }
+  if (data.dot && data.dot.length) {
+    const tim = body.findText('\\{\\{dot\\}\\}');
+    if (tim) {
+      let p = tim.getElement();
+      while (p && p.getType() !== DocumentApp.ElementType.PARAGRAPH && p.getType() !== DocumentApp.ElementType.LIST_ITEM) p = p.getParent();
+      const cha = p.getParent(), i0 = cha.getChildIndex(p);
+      data.dot.forEach((t, j) => {
+        const c = p.copy();
+        if (c.getType() === DocumentApp.ElementType.LIST_ITEM) cha.insertListItem(i0 + 1 + j, c); else cha.insertParagraph(i0 + 1 + j, c);
+        c.replaceText('\\{\\{dot\\}\\}', thoatThay(t));
+      });
+      p.removeFromParent();
+    }
+  }
+  const thay = data.thay || {};
+  Object.keys(thay).forEach((k) => body.replaceText('\\{\\{' + k + '\\}\\}', thoatThay(thay[k])));
+  // Chỗ chưa có dữ liệu: để dấu chấm cho Thầy điền tay.
+  body.replaceText('\\{\\{[A-Za-z0-9]+\\}\\}', '……………');
 }
 
 // ---------- Sheets ----------
